@@ -1,0 +1,96 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  engine-x64:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            engine/target
+          key: x64-${{ hashFiles('engine/Cargo.lock') }}-${{ hashFiles('engine/src/**') }}
+          restore-keys: x64-${{ hashFiles('engine/Cargo.lock') }}-
+      - name: Build (64-bit)
+        working-directory: engine
+        run: cargo build --release
+      - name: Unit tests
+        working-directory: engine
+        run: cargo test --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-x64
+          path: engine/target/release/modern_voices.dll
+
+  engine-x86:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            engine/target
+            ${{ runner.temp }}/sherpa-x86/lib
+          key: x86-${{ hashFiles('engine/Cargo.lock') }}-${{ hashFiles('engine/src/**', 'tools/Get-SherpaX86.ps1') }}
+          restore-keys: x86-${{ hashFiles('engine/Cargo.lock') }}-
+      - name: sherpa-onnx for 32-bit
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: ./tools/Get-SherpaX86.ps1 -Out "${{ runner.temp }}/sherpa-x86"
+      - name: Build (32-bit)
+        working-directory: engine
+        env:
+          SHERPA_ONNX_LIB_DIR: ${{ runner.temp }}/sherpa-x86/lib
+        run: |
+          rustup target add i686-pc-windows-msvc
+          cargo build --release --target i686-pc-windows-msvc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-x86
+          path: engine/target/i686-pc-windows-msvc/release/modern_voices.dll
+
+  package:
+    needs: [engine-x64, engine-x86]
+    if: ${{ always() && needs.engine-x64.result == 'success' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: engine-x64
+          path: built/x64
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: engine-x86
+          path: built/x86
+      - name: Sign and package
+        id: kit
+        shell: powershell
+        run: ./tools/Package.ps1 -X64 built/x64/modern_voices.dll -X86 built/x86/modern_voices.dll -Out out
+      - name: Install, test, repair, uninstall (Windows PowerShell, as users run it)
+        shell: powershell
+        run: ./tools/Test-Kit.ps1 -Kit "out/${{ steps.kit.outputs.name }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ steps.kit.outputs.name }}
+          path: out/${{ steps.kit.outputs.name }}.zip
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: engine-log
+          path: ~/AppData/Local/ModernVoices/
+          if-no-files-found: ignore
