@@ -717,7 +717,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $speedBar = $speedSlider.Bar; $speedValue = $speedSlider.Value
     $speedValue.Font = $bold
     Add-UiNote $globalGrid (New-UiLabel ("how fast every voice speaks before a program's own rate: 125% is about rate +2 " +
-        "(each voice's Speed adjusts from here)") -Grey)
+        "(each voice's own Dictation speed, on the Voice manager, adjusts from here)") -Grey)
     $rateWarn = New-UiLabel ''
     $rateWarn.ForeColor = $red
     Add-UiNote $globalGrid $rateWarn
