@@ -945,7 +945,9 @@ function Update-UiInstalledList {
         [void]$item.SubItems.Add($(if ($isDefault) { 'yes' } else { '' }))
         [void]$item.SubItems.Add($key)
         $item.Tag = @{ Key = $key; Dir = $dir; Title = $title; Shared = ($names.Count -gt 1); Names = $names; Entry = $entry }
-        foreach ($n in $(if ($names.Count) { $names } else { @($null) })) { $allVoices += $(if ($entry) { Get-DisplayName $entry $n } else { $key }) }
+        if (-not $entry) { $allVoices += $key }
+        elseif ($names.Count) { foreach ($n in $names) { $allVoices += Get-DisplayName $entry $n } }
+        else { $allVoices += Get-DisplayName $entry $null }
         [void]$ui.InstalledList.Items.Add($item)
     }
     $ui.InstalledList.EndUpdate()
