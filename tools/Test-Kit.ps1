@@ -124,13 +124,19 @@ Check ($liveResult -and [math]::Abs($liveResult.before - 0.95) -lt 0.03 -and [ma
 Step 'Pauses: measured gaps'
 $settingsFile = Join-Path $App 'settings.json'
 $maleName = 'Northern English Male (British)'
+# Piper's own pause between sentences still varies a little from one time to the next, and a faint
+# sound can split it in two: each measurement is the median of three.
 function Measure-Speech([string]$Voice, [string]$Text, [int]$Rate = 0) {
     $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Text))
-    $line = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Measure $Voice -TextBase64 $b64 -Rate $Rate 2>&1 |
-        Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1
-    $r = $line | ConvertFrom-Json
-    $longest = if (@($r.gaps).Count) { (@($r.gaps) | Measure-Object -Maximum).Maximum } else { 0 }
-    return [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Gaps = @($r.gaps); Tail = [double]$r.tail }
+    $runs = foreach ($n in 1..3) {
+        $line = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Measure $Voice -TextBase64 $b64 -Rate $Rate 2>&1 |
+            Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1
+        $r = $line | ConvertFrom-Json
+        $longest = if (@($r.gaps).Count) { (@($r.gaps) | Measure-Object -Maximum).Maximum } else { 0 }
+        [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Tail = [double]$r.tail }
+    }
+    $median = { param($key) (@($runs | ForEach-Object { $_.$key }) | Sort-Object)[1] }
+    return [pscustomobject]@{ Seconds = (& $median 'Seconds'); Longest = (& $median 'Longest'); Tail = (& $median 'Tail') }
 }
 function Check-Added([string]$What, $Without, $With, [double]$Expected, [double]$Slack) {
     $added = $With.Longest - $Without.Longest
