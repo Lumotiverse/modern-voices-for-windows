@@ -13,8 +13,10 @@
 #   "pauses": { "own_pauses": 1, "sentence_ms": 600, "comma_ms": 0, "paragraph_ms": 1200 }
 #     this voice's own pauses (with own_pauses 1; else the program's settings.json, same keys, applies)
 #     the silence added to the voice's own pause after a sentence, at a comma (0 = commas untouched)
-#     and at a line break, in milliseconds at rate 0 and the voice's own speed: faster speech, shorter
-#     gaps, in proportion
+#     and at a line break, in milliseconds at rate 0, 100% speed and the voice's own speed: faster
+#     speech, shorter gaps, in proportion
+# The program's settings.json also has "speed_percent": the speed every voice speaks at before a
+# program's own rate (125 unless set; each voice's length_scale adjusts from there).
 
 $script:PevUtf8 = New-Object System.Text.UTF8Encoding $false
 
@@ -232,6 +234,31 @@ function Format-PausesBlock([double]$Sentence, [double]$Comma, [double]$Paragrap
 function Set-GlobalPauses([string]$Path, [double]$Sentence, [double]$Comma, [double]$Paragraph) {
     Test-Pauses $Sentence $Comma $Paragraph
     Set-PausesBlock $Path (Format-PausesBlock $Sentence $Comma $Paragraph $null)
+}
+
+# The speed every voice speaks at before a program's rate, in % (settings.json's speed_percent).
+$script:SpeedDefault = 125
+function Get-GlobalSpeed([string]$Path) {
+    $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8) } else { '' }
+    $m = [regex]::Match($text, '"speed_percent"\s*:\s*' + $script:PevNumber)
+    if (-not $m.Success) { return $script:SpeedDefault }
+    return [math]::Max(50, [math]::Min(200, [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)))
+}
+function Set-GlobalSpeed([string]$Path, [double]$Percent) {
+    if ($Percent -lt 50 -or $Percent -gt 200) { throw "speed must be 50 to 200% (got $Percent)" }
+    $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8).Replace("`r`n", "`n") } else { "{`n}`n" }
+    $line = '"speed_percent": ' + (Format-Number $Percent)
+    $existing = [regex]::Match($text, '"speed_percent"\s*:\s*' + $script:PevNumber)
+    if ($existing.Success) {
+        $text = $text.Substring(0, $existing.Index) + $line + $text.Substring($existing.Index + $existing.Length)
+    } else {
+        $start = $text.IndexOf('{') + 1
+        $rest = $text.Substring($start).TrimStart()
+        $text = $text.Substring(0, $start) + "`n  " + $line + $(if ($rest.StartsWith('}')) { "`n" } else { ",`n  " }) + $rest
+    }
+    $temp = "$Path.writing"
+    [System.IO.File]::WriteAllText($temp, $text, $script:PevUtf8)
+    Move-Item $temp $Path -Force
 }
 
 # A voice's own pauses ($Own true) or not (the global ones apply; its values are kept for next time).

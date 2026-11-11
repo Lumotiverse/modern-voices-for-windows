@@ -54,7 +54,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.7.0'
+$Version = '0.7.1'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -414,7 +414,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
 
     $tabs = New-Control 'TabControl' $form 12 12 840 640 '' 'Top, Bottom, Left, Right'
     $tabInstalled = New-Object System.Windows.Forms.TabPage 'Voice manager'
-    $tabPauses = New-Object System.Windows.Forms.TabPage 'Pauses'
+    $tabPauses = New-Object System.Windows.Forms.TabPage 'Speed and pauses'
     $tabAdd = New-Object System.Windows.Forms.TabPage 'Add or remove voices'
     $tabs.TabPages.Add($tabInstalled); $tabs.TabPages.Add($tabPauses); $tabs.TabPages.Add($tabAdd)
 
@@ -446,7 +446,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
                         @('Sentence gap', 0, $PauseLimits.Sentence, 50, 250), @('Comma gap', 0, $PauseLimits.Comma, 50, 250),
                         @('Paragraph gap', 0, $PauseLimits.Paragraph, 50, 250))) {
         if ($spec[0] -eq 'Sentence gap') {
-            $ownBox = New-Control 'CheckBox' $tabInstalled 10 ($y + 2) 810 22 'Use the pauses for every voice (Pauses tab); untick to give this voice its own' 'Top, Left, Right'
+            $ownBox = New-Control 'CheckBox' $tabInstalled 10 ($y + 2) 810 22 'Use the pauses for every voice (Speed and pauses tab); untick to give this voice its own' 'Top, Left, Right'
             $ownBox.Enabled = $false
             $y += 28
         }
@@ -461,7 +461,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         $y += 33
     }
     $explain = New-Control 'Label' $tabInstalled 10 ($y + 2) 810 34 ("Volume: each sentence's loudest moment (0 = as Piper made it). Boost: lifts quiet parts more than " +
-        "loud ones (higher sounds more compressed). Speed: 100% is the voice's own pace. Gaps: added to the voice's own pause, at rate 0.") 'Top, Left, Right'
+        "loud ones (higher sounds more compressed). Speed: 100% = the speed for every voice (Speed and pauses tab). Gaps: added to the voice's own pause.") 'Top, Left, Right'
     $explain.ForeColor = $grey
     $y += 40
     $previewBox = New-Control 'TextBox' $tabInstalled 10 $y 600 24 $PreviewText 'Top, Left, Right'
@@ -472,11 +472,24 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         "using the voice (from the next thing they say). A voice's speakers share its settings.") 'Top, Left, Right'
     $live.ForeColor = $grey
 
-    # ---- Pauses (every voice without its own)
-    $pausesTitle = New-Control 'Label' $tabPauses 10 12 810 20 'Pauses for every voice (a voice can have its own: Voice manager)' 'Top, Left, Right'
+    # ---- Speed and pauses (every voice; pauses for those without their own)
+    $pausesTitle = New-Control 'Label' $tabPauses 10 12 810 20 'Speed and pauses for every voice (a voice can adjust its speed and have its own pauses: Voice manager)' 'Top, Left, Right'
     $pausesTitle.Font = $bold
+    [void](New-Control 'Label' $tabPauses 10 52 100 20 'Speed' '')
+    $speedBar = New-Control 'TrackBar' $tabPauses 110 44 540 45 '' 'Top, Left, Right'
+    $speedBar.Minimum = 50; $speedBar.Maximum = 200; $speedBar.SmallChange = 5; $speedBar.LargeChange = 25; $speedBar.TickFrequency = 25
+    $speedValue = New-Control 'Label' $tabPauses 660 52 160 20 '' 'Top, Right'
+    $speedValue.Font = $bold
+    $speedWhat = New-Control 'Label' $tabPauses 110 88 710 20 ("how fast every voice speaks before a program's own rate: 125% is about rate +2 " +
+        "(each voice's Speed adjusts from here)") 'Top, Left, Right'
+    $speedWhat.ForeColor = $grey
+    $rateWarn = New-Control 'Label' $tabPauses 110 108 520 34 '' 'Top, Left, Right'
+    $rateWarn.ForeColor = [System.Drawing.Color]::Firebrick
+    $rateReset = New-Control 'Button' $tabPauses 640 108 180 27 "Set Windows' speed to 0" 'Top, Right'
+    $rateReset.Visible = $false
+    $speedBar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.GlobalTimer.Stop(); $script:Ui.GlobalTimer.Start() } })
     $globalBars = @{}
-    $y = 44
+    $y = 150
     foreach ($spec in @(@('Sentence gap', $PauseLimits.Sentence, 'after each sentence, when another follows (none after the last)'),
                         @('Comma gap', $PauseLimits.Comma, 'at each , ; or : (0 = commas left as the voice says them)'),
                         @('Paragraph gap', $PauseLimits.Paragraph, 'at a line break, in place of the sentence gap'))) {
@@ -490,15 +503,14 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         $example = New-Control 'Label' $tabPauses 110 ($y + 62) 710 20 '' 'Top, Left, Right'
         $globalBars[$spec[0]] = @{ Bar = $bar; Value = $value; Example = $example }
         $bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.GlobalTimer.Stop(); $script:Ui.GlobalTimer.Start() } })
-        $y += 100
+        $y += 96
     }
-    $pausesExplain = New-Control 'Label' $tabPauses 10 ($y + 4) 810 110 ("Each gap is silence added to the voice's own pause, in milliseconds at a program's speech rate 0 and the " +
-        "voice's own speed. A program speaking faster uses a smaller share of it, and slower a larger share, in step with the speech: at rate +2 " +
-        "(TTS Enhanced's default in World of Warcraft) a 600 ms gap is 482 ms; at -2 it is 747 ms.`n`nA comma gap above 0 has the voice say " +
-        "each part of a sentence separately, so that the gap can go between them: the intonation can sound a little more broken up.") 'Top, Left, Right'
+    $pausesExplain = New-Control 'Label' $tabPauses 10 ($y + 2) 810 64 ("Each gap is silence added to the voice's own pause, in milliseconds at 100% speed and a program's rate 0. " +
+        "Faster speech uses a smaller share of it and slower a larger share, in step with the speech (the line under each shows what you get). " +
+        "A comma gap above 0 has the voice say each part of a sentence separately, so the intonation can sound a little more broken up.") 'Top, Left, Right'
     $pausesExplain.ForeColor = $grey
-    $pausesReset = New-Control 'Button' $tabPauses 10 ($y + 120) 140 27 'Reset to defaults' 'Top, Left'
-    $pausesNote = New-Control 'Label' $tabPauses 160 ($y + 125) 660 20 ("Defaults: sentence 600 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; " +
+    $pausesReset = New-Control 'Button' $tabPauses 10 ($y + 70) 140 27 'Reset to defaults' 'Top, Left'
+    $pausesNote = New-Control 'Label' $tabPauses 160 ($y + 75) 660 20 ("Defaults: speed 125%, sentence 600 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; " +
         "applies straight away.") 'Top, Left, Right'
     $pausesNote.ForeColor = $grey
 
@@ -561,7 +573,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $timer.add_Tick({ $script:Ui.SaveTimer.Stop(); Save-UiSettings })
     $globalTimer = New-Object System.Windows.Forms.Timer
     $globalTimer.Interval = 350
-    $globalTimer.add_Tick({ $script:Ui.GlobalTimer.Stop(); Save-UiGlobalPauses })
+    $globalTimer.add_Tick({ $script:Ui.GlobalTimer.Stop(); Save-UiGlobalSettings })
 
     $script:Ui = @{ Form = $form; Tabs = $tabs; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
         Speakers = $chosenSpeakers; Current = $null; Player = $null; Filling = $false; InstalledKeys = @($speakersOf.Keys)
@@ -570,7 +582,8 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         PreviewProcess = $null; SizeLabel = $sizeLabel; WarnLabel = $warnLabel; Catalogue = $Catalogue; ByKey = $ByKey
         DefaultLabel = $defaultLabel; DefaultButton = $defaultButton; Progress = $progress; Status = $status; Apply = $apply
         Close = $close; Busy = $false; UsTags = $UsTags; Installed = @($Installed); Bold = $bold; Plain = $form.Font; Changed = $false
-        OwnBox = $ownBox; GlobalBars = $globalBars; GlobalTimer = $globalTimer }
+        OwnBox = $ownBox; GlobalBars = $globalBars; GlobalTimer = $globalTimer; SpeedBar = $speedBar; SpeedValue = $speedValue
+        RateWarn = $rateWarn; RateReset = $rateReset }
     $list.add_SelectedIndexChanged({ Update-UiSelection })
     $list.add_ItemChecked({ if (-not $script:Ui.Filling) { Update-UiSummary } })
     $speakerList.add_ItemCheck({
@@ -587,16 +600,20 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $resetButton.add_Click({ Reset-UiSettings })
     $ownBox.add_CheckedChanged({ Update-UiOwnPauses })
     $pausesReset.add_Click({ Reset-UiGlobalPauses })
+    $rateReset.add_Click({ Set-WindowsRate 0; Update-UiWindowsRate })
+    # Windows' speed can be changed in its Speech settings while the window is open: checked on return.
+    $form.add_Activated({ Update-UiWindowsRate })
     $form.add_FormClosing({
         param($sender, $e)
         if ($script:Ui.Busy) { $e.Cancel = $true; return }   # not while changes are being applied
         Save-UiSpeakers
         if ($script:Ui.SaveTimer.Enabled) { $script:Ui.SaveTimer.Stop(); Save-UiSettings }
-        if ($script:Ui.GlobalTimer.Enabled) { $script:Ui.GlobalTimer.Stop(); Save-UiGlobalPauses }
+        if ($script:Ui.GlobalTimer.Enabled) { $script:Ui.GlobalTimer.Stop(); Save-UiGlobalSettings }
         if ($script:Ui.Player) { $script:Ui.Player.Stop() }
         Stop-UiPreview
     })
-    Set-UiGlobalBars (Get-Pauses $SettingsFile)
+    Set-UiGlobalBars (Get-Pauses $SettingsFile) (Get-GlobalSpeed $SettingsFile)
+    Update-UiWindowsRate
     Update-UiInstalledList
     Update-UiSummary
     if ($installedList.Items.Count -eq 0) { $tabs.SelectedTab = $tabAdd }
@@ -610,13 +627,16 @@ function Update-UiSliderLabels {
     $boost = $s.Boost.Bar.Value / 10.0
     $s.Boost.Value.Text = if ($boost -le 1.0) { 'none' } else { $boost.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture) + 'x' }
     $s.Speed.Value.Text = "$($s.Speed.Bar.Value)%"
+    $speed = $script:Ui.SpeedBar.Value / 100.0
+    $script:Ui.SpeedValue.Text = "$($script:Ui.SpeedBar.Value)%"
     foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') {
         $ms = Get-RoundedMs $s[$k].Bar.Value
         $s[$k].Value.Text = Format-Gap $ms $k
         $g = $script:Ui.GlobalBars[$k]
         $gms = Get-RoundedMs $g.Bar.Value
         $g.Value.Text = Format-Gap $gms $k
-        $g.Example.Text = if ($gms -gt 0) { "at rate +2: $([math]::Round($gms / [math]::Pow(3, 0.2))) ms   at rate -2: $([math]::Round($gms * [math]::Pow(3, 0.2))) ms" } else { '' }
+        $g.Example.Text = if ($gms -gt 0) { "at $($script:Ui.SpeedBar.Value)%: $([math]::Round($gms / $speed)) ms at rate 0, " +
+            "$([math]::Round($gms / $speed / [math]::Pow(3, 0.2))) ms at rate +2, $([math]::Round($gms / $speed * [math]::Pow(3, 0.2))) ms at rate -2" } else { '' }
     }
 }
 
@@ -626,11 +646,12 @@ function Format-Gap([int]$Ms, [string]$Kind) {
     return "+$Ms ms"
 }
 
-# The Pauses tab's sliders, from the settings file's values.
-function Set-UiGlobalBars($Pauses) {
+# The Speed and pauses tab's sliders, from the settings file's values.
+function Set-UiGlobalBars($Pauses, [double]$Speed) {
     $ui = $script:Ui
     $ui.Filling = $true
     try {
+        $ui.SpeedBar.Value = [int][math]::Max(50, [math]::Min(200, $Speed))
         $ui.GlobalBars['Sentence gap'].Bar.Value = [int][math]::Min($PauseLimits.Sentence, $Pauses.Sentence)
         $ui.GlobalBars['Comma gap'].Bar.Value = [int][math]::Min($PauseLimits.Comma, $Pauses.Comma)
         $ui.GlobalBars['Paragraph gap'].Bar.Value = [int][math]::Min($PauseLimits.Paragraph, $Pauses.Paragraph)
@@ -640,12 +661,13 @@ function Set-UiGlobalBars($Pauses) {
     }
 }
 
-function Save-UiGlobalPauses {
+function Save-UiGlobalSettings {
     $g = $script:Ui.GlobalBars
     try {
+        Set-GlobalSpeed $SettingsFile $script:Ui.SpeedBar.Value
         Set-GlobalPauses $SettingsFile (Get-RoundedMs $g['Sentence gap'].Bar.Value) (Get-RoundedMs $g['Comma gap'].Bar.Value) (Get-RoundedMs $g['Paragraph gap'].Bar.Value)
     } catch {
-        [void][System.Windows.Forms.MessageBox]::Show("Could not save the pauses: $($_.Exception.Message)", $AppName)
+        [void][System.Windows.Forms.MessageBox]::Show("Could not save the speed and pauses: $($_.Exception.Message)", $AppName)
     }
     # A voice that uses these shows them.
     if ($script:Ui.CurrentInstalled -and $script:Ui.OwnBox.Checked) { Update-UiOwnPauses }
@@ -653,12 +675,39 @@ function Save-UiGlobalPauses {
 
 function Reset-UiGlobalPauses {
     $g = $script:Ui.GlobalBars
+    $script:Ui.SpeedBar.Value = $SpeedDefault
     $g['Sentence gap'].Bar.Value = $PauseDefaults.Sentence
     $g['Comma gap'].Bar.Value = $PauseDefaults.Comma
     $g['Paragraph gap'].Bar.Value = $PauseDefaults.Paragraph
 }
 
-# The selected voice's pause sliders: its own (unticked), or the Pauses tab's shown greyed (ticked).
+# Windows' own default speech speed (its Speech settings, sapi.cpl: -10 to 10, per user). Programs
+# that leave the speed to Windows add it on top of the speed set here.
+function Get-WindowsRate {
+    $p = Get-ItemProperty 'HKCU:\Software\Microsoft\Speech\Voices' -Name DefaultTTSRate -ErrorAction SilentlyContinue
+    if ($null -eq $p) { return 0 }
+    return [int]$p.DefaultTTSRate
+}
+function Set-WindowsRate([int]$Rate) {
+    $key = 'HKCU:\Software\Microsoft\Speech\Voices'
+    if (-not (Test-Path $key)) { New-Item $key -Force | Out-Null }
+    Set-ItemProperty $key -Name DefaultTTSRate -Value $Rate -Type DWord
+}
+
+function Update-UiWindowsRate {
+    $ui = $script:Ui
+    $rate = Get-WindowsRate
+    if ($rate -eq 0) {
+        $ui.RateWarn.Text = ''; $ui.RateReset.Visible = $false
+    } else {
+        $sign = if ($rate -gt 0) { '+' } else { '' }
+        $ui.RateWarn.Text = ("Windows' speech speed (its Speech settings) is $sign$rate. Programs that leave the speed to Windows " +
+            "add it on top of this one, so these voices are " + $(if ($rate -gt 0) { 'faster' } else { 'slower' }) + " still.")
+        $ui.RateReset.Visible = $true
+    }
+}
+
+# The selected voice's pause sliders: its own (unticked), or the Speed and pauses tab's shown greyed (ticked).
 function Update-UiOwnPauses {
     $ui = $script:Ui
     $useGlobal = $ui.OwnBox.Checked
@@ -1290,15 +1339,31 @@ try {
             Write-Output ("sliders: {0} -> peak {1}, boost {2}, length_scale {3}" -f $ui.CurrentInstalled.Title, $now.Peak, $now.Boost, $now.LengthScale)
             if ($now.Peak -ne 0.6 -or $now.Boost -ne 2 -or $now.LengthScale -ne 1.25) { $bad += 'sliders' }
             Set-VoiceSettings $dir $was.Peak $was.Boost $was.LengthScale
-            # The Pauses tab: saved to settings.json.
+            # The Speed and pauses tab: saved to settings.json.
             $before = Get-Pauses $SettingsFile
+            $speedBefore = Get-GlobalSpeed $SettingsFile
             $ui.GlobalBars['Sentence gap'].Bar.Value = 750
-            Save-UiGlobalPauses
+            $ui.SpeedBar.Value = 150
+            Save-UiGlobalSettings
             $now = Get-Pauses $SettingsFile
-            Write-Output ("pauses tab: sentence {0} -> {1} ms" -f $before.Sentence, $now.Sentence)
-            if ($now.Sentence -ne 750) { $bad += 'pauses tab' }
+            $speedNow = Get-GlobalSpeed $SettingsFile
+            Write-Output ("speed and pauses tab: speed {0} -> {1}%, sentence {2} -> {3} ms; example: {4}" -f $speedBefore, $speedNow,
+                $before.Sentence, $now.Sentence, $ui.GlobalBars['Sentence gap'].Example.Text)
+            if ($now.Sentence -ne 750 -or $speedNow -ne 150 -or $speedBefore -ne 125 -or $now.Paragraph -ne $before.Paragraph) { $bad += 'speed and pauses tab' }
+            Set-GlobalSpeed $SettingsFile $speedBefore
             Set-GlobalPauses $SettingsFile $before.Sentence $before.Comma $before.Paragraph
-            Set-UiGlobalBars (Get-Pauses $SettingsFile)
+            Set-UiGlobalBars (Get-Pauses $SettingsFile) (Get-GlobalSpeed $SettingsFile)
+            # Windows' own speed: the warning shows when it isn't 0, and the button sets it back.
+            $rateWas = Get-ItemProperty 'HKCU:\Software\Microsoft\Speech\Voices' -Name DefaultTTSRate -ErrorAction SilentlyContinue
+            Set-WindowsRate 2
+            Update-UiWindowsRate
+            $warned = $ui.RateWarn.Text -like '*+2*'
+            Set-WindowsRate 0; Update-UiWindowsRate      # what the button does
+            $cleared = (Get-WindowsRate) -eq 0 -and $ui.RateWarn.Text -eq ''
+            Write-Output ("Windows' speed +2: warning shown {0}; button sets it to 0 {1}" -f $warned, $cleared)
+            if (-not ($warned -and $cleared)) { $bad += "Windows' speed warning" }
+            if ($null -eq $rateWas) { Remove-ItemProperty 'HKCU:\Software\Microsoft\Speech\Voices' -Name DefaultTTSRate -ErrorAction SilentlyContinue }
+            else { Set-WindowsRate $rateWas.DefaultTTSRate }
             # A voice of its own: untick, move its sentence gap, saved to its voice.json; tick again.
             $ui.OwnBox.Checked = $false
             Update-UiOwnPauses
@@ -1369,6 +1434,7 @@ try {
     New-Item $App -ItemType Directory -Force | Out-Null
     if ($fresh) { Protect-AppFolder }
     if (-not (Test-Path $SettingsFile)) {
+        Set-GlobalSpeed $SettingsFile $SpeedDefault
         Set-GlobalPauses $SettingsFile $PauseDefaults.Sentence $PauseDefaults.Comma $PauseDefaults.Paragraph
     }
     $usTags = [bool]$UsEnglishTags

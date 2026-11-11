@@ -201,6 +201,15 @@ impl Pauses {
     }
 }
 
+/// The speed every voice speaks at before a program's rate, unless set: 125%, about rate +2.
+pub const DEFAULT_SPEED_PERCENT: f32 = 125.0;
+
+/// The speed for every voice a settings file sets (`speed_percent`, 50 to 200) as a multiple of the
+/// voices' own: 1.25 for 125%.
+pub fn global_speed(info: &str) -> f32 {
+    number(info, "speed_percent", DEFAULT_SPEED_PERCENT).clamp(50.0, 200.0) / 100.0
+}
+
 /// Samples of silence for a pause of `ms` (at normal speed) when speaking `speed` times as fast:
 /// faster speech, shorter pauses, in proportion.
 pub fn gap_samples(ms: f32, speed: f32, sample_rate: u32) -> usize {
@@ -358,6 +367,16 @@ mod tests {
         assert!(near(gap_samples(600.0, 3f32.powf(0.2), 22050), 481.7));   // rate +2: 482 ms
         assert!(near(gap_samples(600.0, 3f32.powf(-0.2), 22050), 747.4));  // rate -2: 747 ms
         assert_eq!(gap_samples(0.0, 1.0, 22050), 0);
+    }
+
+    #[test]
+    fn speed_for_every_voice() {
+        assert_eq!(global_speed(""), 1.25);
+        assert_eq!(global_speed("{\n  \"speed_percent\": 100,\n  \"pauses\": { \"sentence_ms\": 600 }\n}"), 1.0);
+        assert_eq!(global_speed(r#"{"speed_percent": 900}"#), 2.0);
+        assert_eq!(global_speed(r#"{"speed_percent": 10}"#), 0.5);
+        // 600 ms at 125% and rate 0: 480 ms.
+        assert_eq!(gap_samples(600.0, global_speed(""), 22050), 10584);
     }
 
     #[test]

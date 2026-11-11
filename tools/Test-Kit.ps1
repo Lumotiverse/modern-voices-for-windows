@@ -94,6 +94,8 @@ Check (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Mode
 $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"
 Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 0.95') 'voice.json: loudness set (95%, 1.5x)'
+$settingsText = Get-Content (Join-Path $App 'settings.json') -Raw
+Check ($settingsText -match '"speed_percent": 125' -and $settingsText -match '"sentence_ms": 600' -and $settingsText -match '"paragraph_ms": 1200') 'settings.json: speed 125%, sentence 600 ms, paragraph 1200 ms'
 
 Step 'Speaking through System.Speech (SAPI 5), at the set loudness'
 $normal = Test-Speech $PS64 64 3
@@ -158,6 +160,8 @@ $para = "Pulling in three.`nWatch the patrol on the left."
 $comma = 'Pulling in three, watch the patrol on the left.'
 $one = 'Watch the patrol on the left.'
 
+# The gaps below are measured at 100% speed for every voice; 125% (the default) after.
+Set-GlobalSpeed $settingsFile 100
 Set-GlobalPauses $settingsFile 0 0 0
 $base = Measure-Speech $albaName $two
 $baseFast = Measure-Speech $albaName $two 5
@@ -181,11 +185,19 @@ Check-Added "Alba's own sentence gap 300 ms" $base (Measure-Speech $albaName $tw
 Check-Added 'Northern English Male still the global 1000 ms' $baseMale (Measure-Speech $maleName $two) 1000 30
 Set-VoicePauses $albaDir $false 300 0 600
 Check-Added 'Alba back on the global 1000 ms' $base (Measure-Speech $albaName $two) 1000 30
+# Speed for every voice 125%: speech and gaps 1.25x as fast (sentence gap 1000 ms -> 800 ms).
+Set-GlobalSpeed $settingsFile 125
+Set-GlobalPauses $settingsFile 0 0 0
+$fastBase = Measure-Speech $albaName $two
+$ratio = $fastBase.Seconds / $base.Seconds
+Check ($ratio -gt 0.72 -and $ratio -lt 0.88) ("speed 125%: Alba {0:N2}x as long (expected 0.80)" -f $ratio)
+Set-GlobalPauses $settingsFile 1000 0 2000
+Check-Added 'speed 125%, sentence gap 1000 ms (800 ms)' $fastBase (Measure-Speech $albaName $two) 800 30
 Set-GlobalPauses $settingsFile 600 0 1200
 [void](Set-Noise $albaDir $albaNoise)
 [void](Set-Noise $maleDir $maleNoise)
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest | Out-Host
-Check ($LASTEXITCODE -eq 0) 'window: pause sliders save (Pauses tab and a voice of its own)'
+Check ($LASTEXITCODE -eq 0) 'window: pause sliders save (Speed and pauses tab and a voice of its own)'
 
 Step 'Repair (registers everything again; settings kept)'
 Set-VoiceSettings $albaDir 0.8 2 1

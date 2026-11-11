@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.7.0
+Modern Voices for Windows 0.7.1
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -34,7 +34,7 @@ change its files (every program that speaks loads the engine from it).
 
 Afterwards, from the Start menu (Modern Voices for Windows):
   Modern Voices   the window: Voice manager (installed voices, how they sound, Windows' default
-                  voice) and Add or remove voices
+                  voice), Speed and pauses, and Add or remove voices
   Test voices     hear each voice, with each word shown as the engine reports it
   Repair          registers everything again (if a voice went missing from programs)
   Uninstall       removes everything (also in Windows' Installed apps)
@@ -48,7 +48,7 @@ In the Modern Voices window, on "Voice manager", select a voice:
            made it (quieter: the model's own level).
   Boost    lifts the quieter parts more than the loud ones, so the voice sounds louder overall without
            clipping. None, 1.5x (the default), up to 4x; higher sounds more compressed, like radio.
-  Speed    100% is the voice's own pace.
+  Speed    adjusts this voice from the speed for every voice (Speed and pauses): 100% = that speed.
 
 Changes are saved as you move a slider and take effect straight away, also in programs that are already
 using the voice (from the next thing they say): no restarting, no repair. Preview says a line with the
@@ -61,9 +61,12 @@ speech settings opens that). It is per Windows user, for 64- and 32-bit programs
 Settings app has its own voice choice, for Microsoft's newer voice system: these voices can't appear
 there, and it doesn't affect programs that use these.
 
-Pauses
-------
-On the Pauses tab, for every voice:
+Speed and pauses
+----------------
+On the Speed and pauses tab, for every voice:
+
+  Speed           how fast every voice speaks before a program's own rate. Default 125%, about what
+                  Windows' speech speed +2 gives (each voice's own Speed adjusts from here).
 
   Sentence gap    added after a sentence when another follows (never after the last, so short bits
                   of speech, such as a screen reader's, don't gain dead air). Default 600 ms.
@@ -72,15 +75,22 @@ On the Pauses tab, for every voice:
                   each part of a sentence separately so the gap can go between them, which can make
                   the intonation a little more broken up.
 
-Each is silence added to the voice's own pause, in milliseconds at a program's speech rate 0 and the
-voice's own speed. Faster speech uses a smaller share of it and slower a larger share, in step with
-the speech: a 600 ms gap is 482 ms at rate +2 (TTS Enhanced's default in World of Warcraft: set
-750 ms there for 0.6 s) and 747 ms at -2.
+Each gap is silence added to the voice's own pause, in milliseconds at 100% speed and a program's
+speech rate 0. Faster speech uses a smaller share of it and slower a larger share, in step with the
+speech: at the default 125%, a 600 ms gap is 480 ms (as it was at Windows' speed +2 before), 385 ms
+if a program also sets rate +2, and 598 ms at -2. The tab shows each gap's result at the speed set.
+
+Speed is applied inside the engine, so it works in every program, also those that set their own
+rate (World of Warcraft, Balabolka, NVDA): theirs adds to it. So does Windows' own speech speed (its
+Speech settings, sapi.cpl), for programs that leave the speed to Windows: when that isn't 0, the tab
+says so, with a button to set it to 0. Set the speed here instead, and leave Windows' and the
+program's at 0 (TTS Enhanced in World of Warcraft: its speed 0) unless you want faster still.
 
 A voice can have its own: in the Voice manager, untick "Use the pauses for every voice" and set its
 three gaps. Changes apply straight away, like volume.
 
-The settings live in the install folder: settings.json (the Pauses tab) and voices\<voice>\voice.json
+The settings live in the install folder: settings.json (the Speed and pauses tab: "speed_percent"
+and "pauses") and voices\<voice>\voice.json
 ("loudness": peak and boost; "inference": length_scale, higher = slower; "pauses": its own), if you'd
 rather edit them.
 

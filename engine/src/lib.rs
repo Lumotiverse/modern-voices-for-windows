@@ -176,24 +176,39 @@ impl Settings {
     }
 }
 
-/// The pauses for every voice that has none of its own: the settings file the voice token names
-/// (`SettingsFile`), read again whenever it changes. The defaults without one.
-fn global_pauses(path: Option<&str>) -> Pauses {
-    let Some(path) = path else { return DEFAULT_PAUSES };
-    static CACHE: OnceLock<Mutex<HashMap<String, (Option<SystemTime>, Pauses)>>> = OnceLock::new();
+/// What the program's settings file sets for every voice: the pauses (for a voice without its own)
+/// and the speed every voice speaks at before the program's own rate.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Global {
+    pauses: Pauses,
+    speed: f32,
+}
+
+impl Global {
+    fn from(info: &str) -> Global {
+        Global { pauses: Pauses::read(info), speed: global_speed(info) }
+    }
+}
+
+/// The settings file the voice token names (`SettingsFile`), read again whenever it changes. The
+/// defaults without one.
+fn global_settings(path: Option<&str>) -> Global {
+    let fallback = Global::from("");
+    let Some(path) = path else { return fallback };
+    static CACHE: OnceLock<Mutex<HashMap<String, (Option<SystemTime>, Global)>>> = OnceLock::new();
     let changed = std::fs::metadata(path).and_then(|m| m.modified()).ok();
-    let Ok(mut cache) = CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock() else { return DEFAULT_PAUSES };
-    if let Some((when, pauses)) = cache.get(path) {
+    let Ok(mut cache) = CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock() else { return fallback };
+    if let Some((when, global)) = cache.get(path) {
         if *when == changed {
-            return *pauses;
+            return *global;
         }
     }
-    let pauses = Pauses::read(&std::fs::read_to_string(path).unwrap_or_default());
+    let global = Global::from(&std::fs::read_to_string(path).unwrap_or_default());
     if cache.contains_key(path) || log::enabled() {
-        log::write(&format!("pauses for every voice: {pauses:?} ({path})"));
+        log::write(&format!("settings for every voice: {global:?} ({path})"));
     }
-    cache.insert(path.to_string(), (changed, pauses));
-    pauses
+    cache.insert(path.to_string(), (changed, global));
+    global
 }
 
 impl Model {
@@ -616,18 +631,21 @@ impl Engine_Impl {
 
     /// One run, sentence by sentence, each sentence word by word. Between sentences, the voice's
     /// pause plus the set gap (a paragraph's at a line break); within one, when commas have a gap, a
-    /// clause at a time with that gap between. Gaps shrink as speech speeds up: at rate 0 and the
-    /// voice's own speed, the full gap. False when it was stopped or SAPI took no more.
+    /// clause at a time with that gap between. Gaps shrink as speech speeds up: at rate 0, 100% for
+    /// every voice and the voice's own speed, the full gap. False when it was stopped or SAPI took no more.
     fn say(&self, voice: &Voice, run: &Run, base_rate: i32, base_volume: f32, out: &mut Output) -> bool {
         // SAPI's rate is -10 to 10, a third to three times as fast; its pitch is taken as
         // semitones, a few at most, by which the speech is shifted.
         let rate = (base_rate + run.rate).clamp(-10, 10) as f32;
-        let speed = 3f32.powf(rate / 10.0).clamp(0.4, 2.5);
         let semitones = run.pitch.clamp(-6, 6) as f32;
         let shift = 2f32.powf(semitones / 12.0);
         let gain = base_volume * (run.volume.min(100) as f32 / 100.0);
         let settings = voice.model.settings();
-        let pauses = settings.own_pauses.unwrap_or_else(|| global_pauses(voice.settings_file.as_deref()));
+        let global = global_settings(voice.settings_file.as_deref());
+        let pauses = settings.own_pauses.unwrap_or(global.pauses);
+        // The program's rate on top of the speed set for every voice (the window's Speed and pauses
+        // tab): 125% is about as fast as rate +2.
+        let speed = (3f32.powf(rate / 10.0).clamp(0.4, 2.5) * global.speed).clamp(0.3, 3.0);
         let pace = speed / settings.length_scale;
         let rate_hz = voice.model.sample_rate;
         let config = GenerationConfig { speed: speed / shift / settings.length_scale, sid: voice.speaker, ..Default::default() };
