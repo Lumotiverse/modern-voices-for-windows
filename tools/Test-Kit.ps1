@@ -124,8 +124,7 @@ Check ($liveResult -and [math]::Abs($liveResult.before - 0.95) -lt 0.03 -and [ma
 Step 'Pauses: measured gaps'
 $settingsFile = Join-Path $App 'settings.json'
 $maleName = 'Northern English Male (British)'
-# Piper's own pause between sentences still varies a little from one time to the next, and a faint
-# sound can split it in two: each measurement is the median of three.
+# A faint sound can split a pause in two: each measurement is the median of three.
 function Measure-Speech([string]$Voice, [string]$Text, [int]$Rate = 0) {
     $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Text))
     $runs = foreach ($n in 1..3) {

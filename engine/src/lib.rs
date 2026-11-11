@@ -323,7 +323,8 @@ fn load_model(model_dir: &str, data_dir: &str) -> Option<Arc<Model>> {
     log::write(&format!("loading {model_dir} ..."));
     let started = Instant::now();
     let info = std::fs::read_to_string(format!("{model_dir}\\voice.json")).unwrap_or_default();
-    let (noise_scale, noise_w) = (number(&info, "noise_scale", NOISE_SCALE), number(&info, "noise_w", NOISE_W));
+    // sherpa-onnx takes 0 as "not set" and uses its own 0.667 and 0.8: 0 here is near enough 0 instead.
+    let (noise_scale, noise_w) = (number(&info, "noise_scale", NOISE_SCALE).max(0.001), number(&info, "noise_w", NOISE_W).max(0.001));
     let config = OfflineTtsConfig {
         model: OfflineTtsModelConfig {
             vits: OfflineTtsVitsModelConfig {
