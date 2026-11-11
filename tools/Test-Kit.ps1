@@ -198,8 +198,9 @@ Check-Added 'speed 125%, sentence gap 1000 ms (800 ms)' $fastBase (Measure-Speec
 Set-GlobalPauses $settingsFile 600 0 1200
 [void](Set-Noise $albaDir $albaNoise)
 [void](Set-Noise $maleDir $maleNoise)
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest | Out-Host
-Check ($LASTEXITCODE -eq 0) 'window: pause sliders save (Speed and pauses tab and a voice of its own)'
+$screens = Join-Path (Split-Path (Resolve-Path $Kit).Path -Parent) 'screens'
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest -ScreenshotDir $screens | Out-Host
+Check ($LASTEXITCODE -eq 0) 'window: pause sliders save (Speed and pauses tab and a voice of its own), preview voices, pictures'
 
 Step 'Repair (registers everything again; settings kept)'
 Set-VoiceSettings $albaDir 0.8 2 1

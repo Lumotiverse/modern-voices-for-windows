@@ -23,6 +23,7 @@ param(
     [switch]$UsEnglishTags,
     [string]$InstallDir,      # where to install (a folder named Modern Voices for Windows is made in it); else asked
     [switch]$PickerSelfTest,  # builds the voice list window without showing it (for the build's tests)
+    [string]$ScreenshotDir,   # with -PickerSelfTest: pictures of the window's tabs are saved here
     [switch]$FunctionsOnly    # defines the functions and stops (for tests)
 )
 
@@ -54,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.7.1'
+$Version = '0.7.2'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -358,7 +359,7 @@ function Protect-AppFolder {
 # applied in the window, with progress). The window's controls and state live in $script:Ui: its event
 # handlers run later (while it is shown), in the script's scope.
 
-$PreviewText = 'Pulling in three. Watch the patrol on the left, it has a skull!'
+$PreviewText = 'Speaking a preview of the selected voice, to hear how natural it sounds. Change the speed and pause values to adjust the sound to your liking.'
 
 function Get-DisplayName($Entry, [string]$SpeakerName) {
     if ($SpeakerName) { return "$($Entry.Display) $SpeakerName ($($Entry.Accent))" }
@@ -395,6 +396,135 @@ function Set-DefaultVoiceToken([string]$TokenName) {
     Set-ItemProperty $DefaultVoiceKey -Name 'DefaultTokenId' -Value "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\$TokenName"
 }
 
+# ---- the window's building blocks. Rows are laid out by what is in them (grids that size themselves),
+# so text and sliders can't overlap whatever the display's text size.
+function Get-Px([double]$N) { return [int][math]::Round($N * $script:UiScale) }
+
+# Text that wraps to the width it is given.
+function New-UiLabel([string]$Text, [switch]$Grey, [switch]$Bold) {
+    $l = New-Object System.Windows.Forms.Label
+    $l.AutoSize = $true; $l.Dock = 'Fill'; $l.Text = $Text
+    $l.Margin = New-Object System.Windows.Forms.Padding(3, (Get-Px 3), 3, (Get-Px 3))
+    if ($Grey) { $l.ForeColor = [System.Drawing.Color]::DimGray }
+    if ($Bold) { $l.Font = $script:UiBold }
+    return $l
+}
+
+function New-UiButton([string]$Text) {
+    $b = New-Object System.Windows.Forms.Button
+    $b.Text = $Text; $b.AutoSize = $true; $b.AutoSizeMode = 'GrowAndShrink'
+    $b.Padding = New-Object System.Windows.Forms.Padding((Get-Px 8), (Get-Px 2), (Get-Px 8), (Get-Px 2))
+    $b.Anchor = 'Left'
+    return $b
+}
+
+# A tab's rows, each the tab's width, top to bottom; the tab scrolls when they don't fit.
+function New-UiPage($Tab) {
+    $g = New-Object System.Windows.Forms.TableLayoutPanel
+    $g.ColumnCount = 1
+    [void]$g.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+    $g.AutoSize = $true; $g.AutoSizeMode = 'GrowAndShrink'; $g.Dock = 'Top'
+    $g.Padding = New-Object System.Windows.Forms.Padding (Get-Px 6)
+    $Tab.Controls.Add($g)
+    return $g
+}
+
+# The next row of a page: as tall as the control needs, or (-Fill) taking the room left over.
+function Add-UiRow($Grid, $Control, [switch]$Fill) {
+    $Grid.RowCount++
+    $style = if ($Fill) { New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100) }
+             else { New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize) }
+    [void]$Grid.RowStyles.Add($style)
+    $Grid.Controls.Add($Control, 0, ($Grid.RowCount - 1))
+}
+
+# One row of controls side by side: each column fits its control ('auto') or stretches ('fill').
+function New-UiLine([string[]]$Columns) {
+    $g = New-Object System.Windows.Forms.TableLayoutPanel
+    $g.ColumnCount = $Columns.Count; $g.RowCount = 1
+    foreach ($kind in $Columns) {
+        $style = if ($kind -eq 'fill') { New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100) }
+                 else { New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize) }
+        [void]$g.ColumnStyles.Add($style)
+    }
+    [void]$g.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+    $g.AutoSize = $true; $g.AutoSizeMode = 'GrowAndShrink'; $g.Dock = 'Fill'
+    $g.Margin = New-Object System.Windows.Forms.Padding 0
+    return $g
+}
+
+# Controls one after another, onto the next line when they don't fit.
+function New-UiFlow {
+    $f = New-Object System.Windows.Forms.FlowLayoutPanel
+    $f.AutoSize = $true; $f.AutoSizeMode = 'GrowAndShrink'; $f.Dock = 'Fill'; $f.WrapContents = $true
+    $f.Margin = New-Object System.Windows.Forms.Padding 0
+    return $f
+}
+
+# Sliders: name | slider | value, a row each (and notes under a slider, in its column).
+function New-UiSliderGrid { return (New-UiLine @('auto', 'fill', 'auto')) }
+function Add-UiGridRow($Grid) {
+    if ($Grid.Controls.Count -gt 0) { $Grid.RowCount++; [void]$Grid.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize))) }
+    return ($Grid.RowCount - 1)
+}
+function Add-UiSlider($Grid, [string]$Name, [int]$Min, [int]$Max, [int]$Small, [int]$Large, [int]$Tick) {
+    $row = Add-UiGridRow $Grid
+    $label = New-UiLabel $Name
+    $label.Dock = 'None'; $label.Anchor = 'Left'
+    $bar = New-Object System.Windows.Forms.TrackBar
+    $bar.Maximum = $Max; $bar.Minimum = $Min; $bar.SmallChange = $Small; $bar.LargeChange = $Large; $bar.TickFrequency = $Tick
+    $bar.Dock = 'Fill'
+    $bar.Margin = New-Object System.Windows.Forms.Padding 0
+    $value = New-UiLabel ''
+    $value.Dock = 'None'; $value.Anchor = 'Left'
+    $value.MinimumSize = New-Object System.Drawing.Size((Get-Px 150), 0)
+    $Grid.Controls.Add($label, 0, $row); $Grid.Controls.Add($bar, 1, $row); $Grid.Controls.Add($value, 2, $row)
+    return @{ Bar = $bar; Value = $value }
+}
+function Add-UiNote($Grid, $Label) {
+    $row = Add-UiGridRow $Grid
+    $Grid.Controls.Add($Label, 1, $row)
+}
+
+# The names Windows has for this program's voices (what Preview asks for).
+function Get-OurVoiceNames {
+    $tokens = 'HKLM:\SOFTWARE\Microsoft\Speech\Voices\Tokens'
+    return @(Get-ChildItem $tokens | Where-Object { $_.PSChildName -like 'ModernVoices_*' } | ForEach-Object { (Get-ItemProperty $_.PSPath).'(default)' })
+}
+
+# Pictures of the window's tabs (the build's test looks at them): as it opens, and made small.
+function Save-UiPictures([string]$Dir) {
+    $ui = $script:Ui
+    New-Item $Dir -ItemType Directory -Force | Out-Null
+    $ui.Form.Show()
+    foreach ($shape in @(@('open', 0, 0), @('small', 640, 440))) {
+        if ($shape[1]) { $ui.Form.Size = New-Object System.Drawing.Size($shape[1], $shape[2]) }
+        for ($i = 0; $i -lt $ui.Tabs.TabPages.Count; $i++) {
+            $ui.Tabs.SelectedIndex = $i
+            [System.Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 150
+            [System.Windows.Forms.Application]::DoEvents()
+            $picture = New-Object System.Drawing.Bitmap($ui.Form.Width, $ui.Form.Height)
+            $ui.Form.DrawToBitmap($picture, (New-Object System.Drawing.Rectangle(0, 0, $ui.Form.Width, $ui.Form.Height)))
+            $picture.Save((Join-Path $Dir ("{0}-{1}.png" -f $shape[0], ($i + 1))), [System.Drawing.Imaging.ImageFormat]::Png)
+            $picture.Dispose()
+        }
+    }
+    $ui.Tabs.SelectedIndex = 0
+    $ui.Form.Hide()
+    Write-Output "pictures of the window: $Dir"
+}
+
+# The Add or remove tab's rows: the tab's size, but no shorter than they need (the tab then scrolls).
+function Update-UiAddLayout {
+    if (-not $script:Ui -or -not $script:Ui.AddGrid) { return }
+    $tab = $script:Ui.AddTab
+    $wide = $tab.ClientSize.Width
+    $high = [math]::Max($tab.ClientSize.Height, (Get-Px 520))
+    $grid = $script:Ui.AddGrid
+    if ($grid.Width -ne $wide -or $grid.Height -ne $high) { $grid.Size = New-Object System.Drawing.Size($wide, $high) }
+}
+
 function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey) {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -402,35 +532,66 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "$AppName $Version"
-    $form.Size = New-Object System.Drawing.Size(880, 770)
-    $form.MinimumSize = New-Object System.Drawing.Size(760, 690)
-    $form.StartPosition = 'CenterScreen'
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    # Sizes here are for a display at 100%; one scaled up (125%, 150%, ...) gets them scaled with its
+    # text. Rows are laid out by what is in them, so nothing overlaps at any text size; the window never
+    # opens larger than the screen, and a tab that doesn't fit scrolls.
+    $screenGraphics = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $script:UiScale = [math]::Max(1.0, $screenGraphics.DpiX / 96.0)
+    $screenGraphics.Dispose()
+    $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $form.Size = New-Object System.Drawing.Size([math]::Min((Get-Px 900), $area.Width), [math]::Min((Get-Px 800), $area.Height))
+    $form.MinimumSize = New-Object System.Drawing.Size([math]::Min((Get-Px 600), $area.Width), [math]::Min((Get-Px 400), $area.Height))
+    $form.StartPosition = 'CenterScreen'
+    $form.Padding = New-Object System.Windows.Forms.Padding (Get-Px 8)
     # In front of the console it was started from (else it can open behind it, unseen).
     $form.TopMost = $true
     $form.add_Shown({ $script:Ui.Form.Activate(); $script:Ui.Form.TopMost = $false })
     $bold = New-Object System.Drawing.Font($form.Font, [System.Drawing.FontStyle]::Bold)
-    $grey = [System.Drawing.Color]::DimGray
+    $script:UiBold = $bold
+    $red = [System.Drawing.Color]::Firebrick
 
-    $tabs = New-Control 'TabControl' $form 12 12 840 640 '' 'Top, Bottom, Left, Right'
+    $tabs = New-Object System.Windows.Forms.TabControl
+    $tabs.Dock = 'Fill'
     $tabInstalled = New-Object System.Windows.Forms.TabPage 'Voice manager'
     $tabPauses = New-Object System.Windows.Forms.TabPage 'Speed and pauses'
     $tabAdd = New-Object System.Windows.Forms.TabPage 'Add or remove voices'
-    $tabs.TabPages.Add($tabInstalled); $tabs.TabPages.Add($tabPauses); $tabs.TabPages.Add($tabAdd)
+    foreach ($tab in $tabInstalled, $tabPauses, $tabAdd) { $tab.AutoScroll = $true; $tab.UseVisualStyleBackColor = $true; $tabs.TabPages.Add($tab) }
+    $form.Controls.Add($tabs)
+
+    # ---- bottom of the window: progress while applying changes
+    $bottom = New-UiLine @('fill', 'auto', 'auto')
+    $bottom.Dock = 'Bottom'
+    $bottom.RowStyles.Clear()
+    [void]$bottom.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, (Get-Px 20))))
+    [void]$bottom.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
+    $bottom.RowCount = 2
+    $progress = New-Object System.Windows.Forms.ProgressBar
+    $progress.Dock = 'Fill'; $progress.Visible = $false
+    $progress.Margin = New-Object System.Windows.Forms.Padding(3, (Get-Px 6), 3, 0)
+    $bottom.Controls.Add($progress, 0, 0); $bottom.SetColumnSpan($progress, 3)
+    $status = New-UiLabel '' -Grey
+    $status.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 34))
+    $apply = New-UiButton 'Apply changes'
+    $close = New-UiButton 'Close'
+    $close.DialogResult = 'Cancel'
+    $bottom.Controls.Add($status, 0, 1); $bottom.Controls.Add($apply, 1, 1); $bottom.Controls.Add($close, 2, 1)
+    $form.Controls.Add($bottom)
+    $form.CancelButton = $close
 
     # ---- Voice manager
-    $installedList = New-Control 'ListView' $tabInstalled 10 10 810 150 '' 'Top, Left, Right'
+    $page = New-UiPage $tabInstalled
+    $installedList = New-Object System.Windows.Forms.ListView
     $installedList.View = 'Details'; $installedList.FullRowSelect = $true; $installedList.HideSelection = $false
     $installedList.MultiSelect = $false
-    [void]$installedList.Columns.Add('Voice', 230)
-    [void]$installedList.Columns.Add('Speakers installed', 270)
-    [void]$installedList.Columns.Add('On disk', 70)
-    [void]$installedList.Columns.Add('Windows default', 110)
-    [void]$installedList.Columns.Add('Folder', 120)
-    $defaultLabel = New-Control 'Label' $tabInstalled 10 170 470 20 '' 'Top, Left, Right'
-    $defaultButton = New-Control 'Button' $tabInstalled 490 166 160 27 'Make default voice' 'Top, Right'
-    $defaultButton.Enabled = $false
-    $sapiButton = New-Control 'Button' $tabInstalled 660 166 160 27 'Windows speech settings' 'Top, Right'
+    $installedList.Dock = 'Fill'; $installedList.Height = Get-Px 120
+    $installedList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 120))
+    [void]$installedList.Columns.Add('Voice', (Get-Px 230))
+    [void]$installedList.Columns.Add('Speakers installed', (Get-Px 250))
+    [void]$installedList.Columns.Add('On disk', (Get-Px 70))
+    [void]$installedList.Columns.Add('Windows default', (Get-Px 110))
+    [void]$installedList.Columns.Add('Folder', (Get-Px 160))
+    Add-UiRow $page $installedList
     $speakersOf = [ordered]@{}
     foreach ($id in $Installed) {
         $idParts = Split-VoiceId $id
@@ -438,94 +599,127 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         if ($null -ne $idParts[1]) { $speakersOf[$idParts[0]] += $idParts[1] }
     }
 
-    $soundLabel = New-Control 'Label' $tabInstalled 10 204 810 20 'Select a voice above to set how it sounds.' 'Top, Left, Right'
-    $soundLabel.Font = $bold
+    # The selected voice: which of its speakers, hear it, make it Windows' default.
+    $voiceLine = New-UiFlow
+    $speakerBoxLabel = New-UiLabel 'Speaker'
+    $speakerBoxLabel.Dock = 'None'; $speakerBoxLabel.Anchor = 'Left'
+    $speakerBox = New-Object System.Windows.Forms.ComboBox
+    $speakerBox.DropDownStyle = 'DropDownList'; $speakerBox.Width = Get-Px 150; $speakerBox.Enabled = $false
+    $speakerBox.Anchor = 'Left'
+    $previewButton = New-UiButton 'Preview'
+    $defaultButton = New-UiButton 'Make default voice'
+    $sapiButton = New-UiButton 'Windows speech settings'
+    $previewButton.Enabled = $false; $defaultButton.Enabled = $false
+    foreach ($c in $speakerBoxLabel, $speakerBox, $previewButton, $defaultButton, $sapiButton) { $voiceLine.Controls.Add($c) }
+    Add-UiRow $page $voiceLine
+    $previewLine = New-UiLine @('auto', 'fill')
+    $previewLabel = New-UiLabel 'Preview says'
+    $previewLabel.Dock = 'None'; $previewLabel.Anchor = 'Left'
+    $previewBox = New-Object System.Windows.Forms.TextBox
+    $previewBox.Text = $PreviewText; $previewBox.Dock = 'Fill'
+    $previewLine.Controls.Add($previewLabel, 0, 0); $previewLine.Controls.Add($previewBox, 1, 0)
+    Add-UiRow $page $previewLine
+    $defaultLabel = New-UiLabel ''
+    Add-UiRow $page $defaultLabel
+
+    $soundLine = New-UiLine @('fill', 'auto')
+    $soundLabel = New-UiLabel 'Select a voice above to set how it sounds.' -Bold
+    $soundLabel.Dock = 'None'; $soundLabel.Anchor = 'Left'
+    $resetButton = New-UiButton 'Reset'
+    $resetButton.Enabled = $false
+    $soundLine.Controls.Add($soundLabel, 0, 0); $soundLine.Controls.Add($resetButton, 1, 0)
+    Add-UiRow $page $soundLine
     $sliders = @{}
-    $y = 228
-    foreach ($spec in @(@('Volume', 0, 100, 1, 5), @('Boost', 10, 40, 1, 5), @('Speed', 50, 200, 1, 5),
-                        @('Sentence gap', 0, $PauseLimits.Sentence, 50, 250), @('Comma gap', 0, $PauseLimits.Comma, 50, 250),
-                        @('Paragraph gap', 0, $PauseLimits.Paragraph, 50, 250))) {
-        if ($spec[0] -eq 'Sentence gap') {
-            $ownBox = New-Control 'CheckBox' $tabInstalled 10 ($y + 2) 810 22 'Use the pauses for every voice (Speed and pauses tab); untick to give this voice its own' 'Top, Left, Right'
-            $ownBox.Enabled = $false
-            $y += 28
-        }
-        [void](New-Control 'Label' $tabInstalled 10 ($y + 6) 100 20 $spec[0] '')
-        $bar = New-Control 'TrackBar' $tabInstalled 110 $y 540 30 '' 'Top, Left, Right'
-        $bar.AutoSize = $false; $bar.TickStyle = 'None'
-        $bar.Minimum = $spec[1]; $bar.Maximum = $spec[2]; $bar.SmallChange = $spec[3]; $bar.LargeChange = $spec[4]
-        $bar.Enabled = $false
-        $value = New-Control 'Label' $tabInstalled 660 ($y + 6) 160 20 '' 'Top, Right'
-        $sliders[$spec[0]] = @{ Bar = $bar; Value = $value }
-        $bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.SaveTimer.Stop(); $script:Ui.SaveTimer.Start() } })
-        $y += 33
+    $soundGrid = New-UiSliderGrid
+    foreach ($spec in @(@('Volume', 0, 100, 1, 5, 10), @('Boost', 10, 40, 1, 5, 5), @('Speed', 50, 200, 1, 5, 25))) {
+        $sliders[$spec[0]] = Add-UiSlider $soundGrid $spec[0] $spec[1] $spec[2] $spec[3] $spec[4] $spec[5]
     }
-    $explain = New-Control 'Label' $tabInstalled 10 ($y + 2) 810 34 ("Volume: each sentence's loudest moment (0 = as Piper made it). Boost: lifts quiet parts more than " +
-        "loud ones (higher sounds more compressed). Speed: 100% = the speed for every voice (Speed and pauses tab). Gaps: added to the voice's own pause.") 'Top, Left, Right'
-    $explain.ForeColor = $grey
-    $y += 40
-    $previewBox = New-Control 'TextBox' $tabInstalled 10 $y 600 24 $PreviewText 'Top, Left, Right'
-    $previewButton = New-Control 'Button' $tabInstalled 620 ($y - 1) 95 27 'Preview' 'Top, Right'
-    $resetButton = New-Control 'Button' $tabInstalled 725 ($y - 1) 95 27 'Reset' 'Top, Right'
-    $previewButton.Enabled = $false; $resetButton.Enabled = $false
-    $live = New-Control 'Label' $tabInstalled 10 ($y + 32) 810 34 ("Changes are saved as you move a slider and take effect straight away, also in programs already " +
-        "using the voice (from the next thing they say). A voice's speakers share its settings.") 'Top, Left, Right'
-    $live.ForeColor = $grey
+    Add-UiRow $page $soundGrid
+    $ownBox = New-Object System.Windows.Forms.CheckBox
+    $ownBox.Text = 'Modify pause duration for the selected voice'
+    $ownBox.AutoSize = $true; $ownBox.Enabled = $false; $ownBox.Checked = $false
+    Add-UiRow $page $ownBox
+    $gapGrid = New-UiSliderGrid
+    foreach ($spec in @(@('Sentence gap', $PauseLimits.Sentence), @('Comma gap', $PauseLimits.Comma), @('Paragraph gap', $PauseLimits.Paragraph))) {
+        $sliders[$spec[0]] = Add-UiSlider $gapGrid $spec[0] 0 $spec[1] 50 250 250
+    }
+    $gapGrid.Visible = $false
+    Add-UiRow $page $gapGrid
+    foreach ($k in @($sliders.Keys)) {
+        $sliders[$k].Bar.Enabled = $false
+        $sliders[$k].Bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.SaveTimer.Stop(); $script:Ui.SaveTimer.Start() } })
+    }
+    Add-UiRow $page (New-UiLabel ("Volume: each sentence's loudest moment (0 = as Piper made it). Boost: lifts quiet parts more than loud ones " +
+        "(higher sounds more compressed). Speed: 100% = the speed for every voice (Speed and pauses tab). Unticked, the voice uses the pauses " +
+        "for every voice; ticked, its own.") -Grey)
+    Add-UiRow $page (New-UiLabel ("Changes are saved as you move a slider and take effect straight away, also in programs already using the " +
+        "voice (from the next thing they say): press Preview to hear them. A voice's speakers share its settings.") -Grey)
 
     # ---- Speed and pauses (every voice; pauses for those without their own)
-    $pausesTitle = New-Control 'Label' $tabPauses 10 12 810 20 'Speed and pauses for every voice (a voice can adjust its speed and have its own pauses: Voice manager)' 'Top, Left, Right'
-    $pausesTitle.Font = $bold
-    [void](New-Control 'Label' $tabPauses 10 52 100 20 'Speed' '')
-    $speedBar = New-Control 'TrackBar' $tabPauses 110 44 540 45 '' 'Top, Left, Right'
-    $speedBar.Minimum = 50; $speedBar.Maximum = 200; $speedBar.SmallChange = 5; $speedBar.LargeChange = 25; $speedBar.TickFrequency = 25
-    $speedValue = New-Control 'Label' $tabPauses 660 52 160 20 '' 'Top, Right'
+    $page = New-UiPage $tabPauses
+    Add-UiRow $page (New-UiLabel 'Speed and pauses for every voice (a voice can adjust its speed and have its own pauses: Voice manager)' -Bold)
+    $hearLine = New-UiFlow
+    $hearLabel = New-UiLabel 'Preview with'
+    $hearLabel.Dock = 'None'; $hearLabel.Anchor = 'Left'
+    $previewVoiceBox = New-Object System.Windows.Forms.ComboBox
+    $previewVoiceBox.DropDownStyle = 'DropDownList'; $previewVoiceBox.Width = Get-Px 280; $previewVoiceBox.Anchor = 'Left'
+    $globalPreview = New-UiButton 'Preview'
+    $globalPreview.Enabled = $false
+    foreach ($c in $hearLabel, $previewVoiceBox, $globalPreview) { $hearLine.Controls.Add($c) }
+    Add-UiRow $page $hearLine
+    $globalGrid = New-UiSliderGrid
+    $speedSlider = Add-UiSlider $globalGrid 'Speed' 50 200 5 25 25
+    $speedBar = $speedSlider.Bar; $speedValue = $speedSlider.Value
     $speedValue.Font = $bold
-    $speedWhat = New-Control 'Label' $tabPauses 110 88 710 20 ("how fast every voice speaks before a program's own rate: 125% is about rate +2 " +
-        "(each voice's Speed adjusts from here)") 'Top, Left, Right'
-    $speedWhat.ForeColor = $grey
-    $rateWarn = New-Control 'Label' $tabPauses 110 108 520 34 '' 'Top, Left, Right'
-    $rateWarn.ForeColor = [System.Drawing.Color]::Firebrick
-    $rateReset = New-Control 'Button' $tabPauses 640 108 180 27 "Set Windows' speed to 0" 'Top, Right'
+    Add-UiNote $globalGrid (New-UiLabel ("how fast every voice speaks before a program's own rate: 125% is about rate +2 " +
+        "(each voice's Speed adjusts from here)") -Grey)
+    $rateWarn = New-UiLabel ''
+    $rateWarn.ForeColor = $red
+    Add-UiNote $globalGrid $rateWarn
+    $rateReset = New-UiButton "Set Windows' speed to 0"
     $rateReset.Visible = $false
+    $globalGrid.Controls.Add($rateReset, 2, ($globalGrid.RowCount - 1))
     $speedBar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.GlobalTimer.Stop(); $script:Ui.GlobalTimer.Start() } })
     $globalBars = @{}
-    $y = 150
     foreach ($spec in @(@('Sentence gap', $PauseLimits.Sentence, 'after each sentence, when another follows (none after the last)'),
                         @('Comma gap', $PauseLimits.Comma, 'at each , ; or : (0 = commas left as the voice says them)'),
                         @('Paragraph gap', $PauseLimits.Paragraph, 'at a line break, in place of the sentence gap'))) {
-        [void](New-Control 'Label' $tabPauses 10 ($y + 8) 100 20 $spec[0] '')
-        $bar = New-Control 'TrackBar' $tabPauses 110 $y 540 45 '' 'Top, Left, Right'
-        $bar.Minimum = 0; $bar.Maximum = $spec[1]; $bar.SmallChange = 50; $bar.LargeChange = 250; $bar.TickFrequency = 250
-        $value = New-Control 'Label' $tabPauses 660 ($y + 8) 160 20 '' 'Top, Right'
-        $value.Font = $bold
-        $what = New-Control 'Label' $tabPauses 110 ($y + 44) 710 20 $spec[2] 'Top, Left, Right'
-        $what.ForeColor = $grey
-        $example = New-Control 'Label' $tabPauses 110 ($y + 62) 710 20 '' 'Top, Left, Right'
-        $globalBars[$spec[0]] = @{ Bar = $bar; Value = $value; Example = $example }
-        $bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.GlobalTimer.Stop(); $script:Ui.GlobalTimer.Start() } })
-        $y += 96
+        $slider = Add-UiSlider $globalGrid $spec[0] 0 $spec[1] 50 250 250
+        $slider.Value.Font = $bold
+        Add-UiNote $globalGrid (New-UiLabel $spec[2] -Grey)
+        $example = New-UiLabel ''
+        Add-UiNote $globalGrid $example
+        $globalBars[$spec[0]] = @{ Bar = $slider.Bar; Value = $slider.Value; Example = $example }
+        $slider.Bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.GlobalTimer.Stop(); $script:Ui.GlobalTimer.Start() } })
     }
-    $pausesExplain = New-Control 'Label' $tabPauses 10 ($y + 2) 810 64 ("Each gap is silence added to the voice's own pause, in milliseconds at 100% speed and a program's rate 0. " +
+    Add-UiRow $page $globalGrid
+    Add-UiRow $page (New-UiLabel ("Each gap is silence added to the voice's own pause, in milliseconds at 100% speed and a program's rate 0. " +
         "Faster speech uses a smaller share of it and slower a larger share, in step with the speech (the line under each shows what you get). " +
-        "A comma gap above 0 has the voice say each part of a sentence separately, so the intonation can sound a little more broken up.") 'Top, Left, Right'
-    $pausesExplain.ForeColor = $grey
-    $pausesReset = New-Control 'Button' $tabPauses 10 ($y + 70) 140 27 'Reset to defaults' 'Top, Left'
-    $pausesNote = New-Control 'Label' $tabPauses 160 ($y + 75) 660 20 ("Defaults: speed 125%, sentence 600 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; " +
-        "applies straight away.") 'Top, Left, Right'
-    $pausesNote.ForeColor = $grey
+        "A comma gap above 0 has the voice say each part of a sentence separately, so the intonation can sound a little more broken up.") -Grey)
+    $resetLine = New-UiLine @('auto', 'fill')
+    $pausesReset = New-UiButton 'Reset to defaults'
+    $pausesNote = New-UiLabel 'Defaults: speed 125%, sentence 600 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.' -Grey
+    $resetLine.Controls.Add($pausesReset, 0, 0); $resetLine.Controls.Add($pausesNote, 1, 0)
+    Add-UiRow $page $resetLine
 
-    # ---- Add or remove voices
-    $intro = New-Control 'Label' $tabAdd 10 8 810 32 ("Tick the voices to install; untick one to remove it. Select a voice and press Play sample to hear it. " +
-        "Then press Apply changes: the window shows the progress below.") 'Top, Left, Right'
-    $list = New-Control 'ListView' $tabAdd 10 42 810 290 '' 'Top, Bottom, Left, Right'
+    # ---- Add or remove voices (the list takes the room there is; the tab scrolls below a minimum)
+    $addGrid = New-Object System.Windows.Forms.TableLayoutPanel
+    $addGrid.ColumnCount = 1
+    [void]$addGrid.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
+    $addGrid.Padding = New-Object System.Windows.Forms.Padding (Get-Px 6)
+    $addGrid.Location = New-Object System.Drawing.Point(0, 0)
+    $tabAdd.Controls.Add($addGrid)
+    Add-UiRow $addGrid (New-UiLabel ("Tick the voices to install; untick one to remove it. Select a voice and press Play sample to hear it. " +
+        "Then press Apply changes: the window shows the progress below.") )
+    $list = New-Object System.Windows.Forms.ListView
     $list.View = 'Details'; $list.CheckBoxes = $true; $list.FullRowSelect = $true; $list.HideSelection = $false
-    $list.MultiSelect = $false
-    [void]$list.Columns.Add('Voice', 220)
-    [void]$list.Columns.Add('Accent', 90)
-    [void]$list.Columns.Add('Quality', 70)
-    [void]$list.Columns.Add('Speakers', 90)
-    [void]$list.Columns.Add('Download', 80)
-    [void]$list.Columns.Add('Catalogue key', 220)
+    $list.MultiSelect = $false; $list.Dock = 'Fill'
+    [void]$list.Columns.Add('Voice', (Get-Px 220))
+    [void]$list.Columns.Add('Accent', (Get-Px 90))
+    [void]$list.Columns.Add('Quality', (Get-Px 70))
+    [void]$list.Columns.Add('Speakers', (Get-Px 90))
+    [void]$list.Columns.Add('Download', (Get-Px 80))
+    [void]$list.Columns.Add('Catalogue key', (Get-Px 220))
     $chosenSpeakers = @{}
     foreach ($key in $speakersOf.Keys) { if (@($speakersOf[$key]).Count) { $chosenSpeakers[$key] = @($speakersOf[$key]) -join ', ' } }
     foreach ($v in $Catalogue) {
@@ -540,33 +734,30 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         if ($item.Checked) { $item.Font = $bold }
         [void]$list.Items.Add($item)
     }
-    $speakerLabel = New-Control 'Label' $tabAdd 10 340 810 18 'Select a voice with several speakers to choose which of them to install (each becomes a voice).' 'Bottom, Left, Right'
-    $speakerLabel.AutoEllipsis = $true
-    $speakerList = New-Control 'CheckedListBox' $tabAdd 10 360 700 104 '' 'Bottom, Left, Right'
-    $speakerList.MultiColumn = $true; $speakerList.ColumnWidth = 90; $speakerList.CheckOnClick = $true
+    Add-UiRow $addGrid $list -Fill
+    $playLine = New-UiLine @('auto', 'fill')
+    $play = New-UiButton 'Play sample'
+    $speakerLabel = New-UiLabel 'Select a voice with several speakers to choose which of them to install (each becomes a voice).'
+    $playLine.Controls.Add($play, 0, 0); $playLine.Controls.Add($speakerLabel, 1, 0)
+    Add-UiRow $addGrid $playLine
+    $speakerList = New-Object System.Windows.Forms.CheckedListBox
+    $speakerList.MultiColumn = $true; $speakerList.ColumnWidth = Get-Px 90; $speakerList.CheckOnClick = $true
     $speakerList.IntegralHeight = $false; $speakerList.Enabled = $false
-    $play = New-Control 'Button' $tabAdd 720 360 100 27 'Play sample' 'Bottom, Right'
-    $playHint = New-Control 'Label' $tabAdd 720 390 100 60 'plays the voice, or the speaker selected in this list' 'Bottom, Right'
-    $playHint.ForeColor = $grey
-    $sizeLabel = New-Control 'Label' $tabAdd 10 470 810 20 '' 'Bottom, Left, Right'
-    $warnLabel = New-Control 'Label' $tabAdd 10 492 810 36 '' 'Bottom, Left, Right'
-    $warnLabel.ForeColor = [System.Drawing.Color]::Firebrick
-    $usBox = New-Control 'CheckBox' $tabAdd 10 530 810 22 'Also list British voices as US English (only if a program does not show them)' 'Bottom, Left, Right'
-    $usBox.Checked = $UsTags
-    $sizeNote = New-Control 'Label' $tabAdd 10 554 810 50 ("Speakers of one voice share its model, so extra speakers take no extra space. Two qualities of the same voice " +
+    $speakerList.Dock = 'Fill'; $speakerList.Height = Get-Px 110
+    $speakerList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 110))
+    Add-UiRow $addGrid $speakerList
+    $sizeLabel = New-UiLabel ''
+    Add-UiRow $addGrid $sizeLabel
+    $warnLabel = New-UiLabel ''
+    $warnLabel.ForeColor = $red
+    Add-UiRow $addGrid $warnLabel
+    $usBox = New-Object System.Windows.Forms.CheckBox
+    $usBox.Text = 'Also list British voices as US English (only if a program does not show them)'
+    $usBox.AutoSize = $true; $usBox.Checked = $UsTags
+    Add-UiRow $addGrid $usBox
+    Add-UiRow $addGrid (New-UiLabel ("Speakers of one voice share its model, so extra speakers take no extra space. Two qualities of the same voice " +
         "(medium and high) are separate models: each takes its full size. Some programs (World of Warcraft, for one) take longer to " +
-        "start the more voices Windows has: keep the list to the ones you use.") 'Bottom, Left, Right'
-    $sizeNote.ForeColor = $grey
-
-    # ---- bottom of the window: progress while applying changes
-    $progress = New-Control 'ProgressBar' $form 12 664 600 14 '' 'Bottom, Left, Right'
-    $progress.Visible = $false
-    $status = New-Control 'Label' $form 12 682 600 36 '' 'Bottom, Left, Right'
-    $status.ForeColor = $grey
-    $apply = New-Control 'Button' $form 632 670 110 30 'Apply changes' 'Bottom, Right'
-    $close = New-Control 'Button' $form 752 670 100 30 'Close' 'Bottom, Right'
-    $close.DialogResult = 'Cancel'
-    $form.CancelButton = $close
+        "start the more voices Windows has: keep the list to the ones you use.") -Grey)
 
     $timer = New-Object System.Windows.Forms.Timer
     $timer.Interval = 350
@@ -583,7 +774,8 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         DefaultLabel = $defaultLabel; DefaultButton = $defaultButton; Progress = $progress; Status = $status; Apply = $apply
         Close = $close; Busy = $false; UsTags = $UsTags; Installed = @($Installed); Bold = $bold; Plain = $form.Font; Changed = $false
         OwnBox = $ownBox; GlobalBars = $globalBars; GlobalTimer = $globalTimer; SpeedBar = $speedBar; SpeedValue = $speedValue
-        RateWarn = $rateWarn; RateReset = $rateReset }
+        RateWarn = $rateWarn; RateReset = $rateReset; SpeakerBox = $speakerBox; PreviewVoiceBox = $previewVoiceBox
+        GlobalPreview = $globalPreview; GapGrid = $gapGrid; AddGrid = $addGrid; AddTab = $tabAdd }
     $list.add_SelectedIndexChanged({ Update-UiSelection })
     $list.add_ItemChecked({ if (-not $script:Ui.Filling) { Update-UiSummary } })
     $speakerList.add_ItemCheck({
@@ -594,6 +786,9 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $play.add_Click({ Invoke-UiSample })
     $installedList.add_SelectedIndexChanged({ Update-UiInstalled })
     $previewButton.add_Click({ Invoke-UiPreview })
+    $globalPreview.add_Click({ Invoke-UiGlobalPreview })
+    $tabAdd.add_Resize({ Update-UiAddLayout })
+    $tabAdd.add_ClientSizeChanged({ Update-UiAddLayout })
     $defaultButton.add_Click({ Set-UiDefaultVoice })
     $sapiButton.add_Click({ Start-Process "$env:SystemRoot\System32\Speech\SpeechUX\sapi.cpl" })
     $apply.add_Click({ Invoke-UiApply })
@@ -614,6 +809,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     })
     Set-UiGlobalBars (Get-Pauses $SettingsFile) (Get-GlobalSpeed $SettingsFile)
     Update-UiWindowsRate
+    Update-UiAddLayout
     Update-UiInstalledList
     Update-UiSummary
     if ($installedList.Items.Count -eq 0) { $tabs.SelectedTab = $tabAdd }
@@ -669,8 +865,6 @@ function Save-UiGlobalSettings {
     } catch {
         [void][System.Windows.Forms.MessageBox]::Show("Could not save the speed and pauses: $($_.Exception.Message)", $AppName)
     }
-    # A voice that uses these shows them.
-    if ($script:Ui.CurrentInstalled -and $script:Ui.OwnBox.Checked) { Update-UiOwnPauses }
 }
 
 function Reset-UiGlobalPauses {
@@ -707,22 +901,13 @@ function Update-UiWindowsRate {
     }
 }
 
-# The selected voice's pause sliders: its own (unticked), or the Speed and pauses tab's shown greyed (ticked).
+# The selected voice's pauses: its own (ticked: its three sliders show), else those for every voice.
 function Update-UiOwnPauses {
     $ui = $script:Ui
-    $useGlobal = $ui.OwnBox.Checked
+    $own = $ui.OwnBox.Checked
     $s = $ui.Sliders
-    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $s[$k].Bar.Enabled = ($ui.CurrentInstalled -ne $null) -and -not $useGlobal }
-    if ($useGlobal -and -not $ui.Filling) {
-        $was = $ui.Filling
-        $ui.Filling = $true
-        try {
-            foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $s[$k].Bar.Value = $ui.GlobalBars[$k].Bar.Value }
-            Update-UiSliderLabels
-        } finally {
-            $ui.Filling = $was
-        }
-    }
+    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $s[$k].Bar.Enabled = ($ui.CurrentInstalled -ne $null) -and $own }
+    $ui.GapGrid.Visible = $own
     if (-not $ui.Filling -and $ui.CurrentInstalled) { $ui.SaveTimer.Stop(); $ui.SaveTimer.Start() }
 }
 
@@ -738,6 +923,7 @@ function Update-UiInstalledList {
     $ui.InstalledKeys = @($speakersOf.Keys)
     $default = Get-DefaultVoiceToken
     $defaultName = ''
+    $allVoices = @()
     $ui.InstalledList.BeginUpdate()
     $ui.InstalledList.Items.Clear()
     foreach ($key in $speakersOf.Keys) {
@@ -758,10 +944,16 @@ function Update-UiInstalledList {
         [void]$item.SubItems.Add("$(Get-FolderMb $dir) MB")
         [void]$item.SubItems.Add($(if ($isDefault) { 'yes' } else { '' }))
         [void]$item.SubItems.Add($key)
-        $item.Tag = @{ Key = $key; Dir = $dir; Title = $title; Voice = $voiceName; Shared = ($names.Count -gt 1); Token = $tokens[0] }
+        $item.Tag = @{ Key = $key; Dir = $dir; Title = $title; Shared = ($names.Count -gt 1); Names = $names; Entry = $entry }
+        foreach ($n in $(if ($names.Count) { $names } else { @($null) })) { $allVoices += $(if ($entry) { Get-DisplayName $entry $n } else { $key }) }
         [void]$ui.InstalledList.Items.Add($item)
     }
     $ui.InstalledList.EndUpdate()
+    # The Speed and pauses tab's Preview: any installed voice (Windows' default first, if it is one).
+    $ui.PreviewVoiceBox.Items.Clear()
+    foreach ($n in $allVoices) { [void]$ui.PreviewVoiceBox.Items.Add($n) }
+    if ($allVoices.Count) { $ui.PreviewVoiceBox.SelectedIndex = [math]::Max(0, [array]::IndexOf($allVoices, $defaultName)) }
+    $ui.GlobalPreview.Enabled = $allVoices.Count -gt 0
     $ui.DefaultLabel.Text = if ($defaultName) { "Windows default voice: $defaultName" }
         elseif ($default) { "Windows default voice: $default (not one of these)" } else { 'Windows default voice: not set' }
     if ($ui.InstalledList.Items.Count -gt 0) { $ui.InstalledList.Items[0].Selected = $true; Update-UiInstalled }
@@ -774,9 +966,9 @@ function Update-UiInstalledList {
 # Makes the selected voice SAPI's default: what programs that don't choose a voice speak with (the
 # setting in sapi.cpl, Windows' Speech control panel).
 function Set-UiDefaultVoice {
-    $tag = $script:Ui.CurrentInstalled
-    if (-not $tag) { return }
-    Set-DefaultVoiceToken $tag.Token
+    $voice = Get-UiCurrentVoice
+    if (-not $voice) { return }
+    Set-DefaultVoiceToken $voice.Token
     $selected = $script:Ui.InstalledList.SelectedIndices
     $index = if ($selected.Count) { $selected[0] } else { 0 }
     Update-UiInstalledList
@@ -830,10 +1022,27 @@ function Invoke-UiApply {
     }
 }
 
+# The selected voice's speaker chosen in the Voice manager (its only one, for a voice with one): its
+# token and the name programs see.
+function Get-UiCurrentVoice {
+    $ui = $script:Ui
+    $tag = $ui.CurrentInstalled
+    if (-not $tag) { return $null }
+    $name = $null
+    if (@($tag.Names).Count) {
+        $name = [string]$ui.SpeakerBox.SelectedItem
+        if (-not $name) { $name = $tag.Names[0] }
+    }
+    $id = if ($name) { "$($tag.Key)#$name" } else { $tag.Key }
+    $voice = if ($tag.Entry) { Get-DisplayName $tag.Entry $name } else { $tag.Key }
+    return @{ Token = (Get-TokenName $id); Voice = $voice }
+}
+
 function Update-UiInstalled {
     $ui = $script:Ui
     if ($ui.SaveTimer.Enabled) { $ui.SaveTimer.Stop(); Save-UiSettings }
     $ui.CurrentInstalled = $null
+    $ui.SpeakerBox.Items.Clear(); $ui.SpeakerBox.Enabled = $false
     $on = $ui.InstalledList.SelectedItems.Count -gt 0
     foreach ($k in 'Volume', 'Boost', 'Speed') { $ui.Sliders[$k].Bar.Enabled = $on }
     $ui.OwnBox.Enabled = $on
@@ -852,7 +1061,8 @@ function Update-UiInstalled {
     $shown = if ($voicePauses.Own -or $voicePauses.Stored) { $voicePauses } else { Get-Pauses $SettingsFile }
     $ui.Filling = $true
     try {
-        $ui.OwnBox.Checked = -not $voicePauses.Own
+        $ui.OwnBox.Checked = $voicePauses.Own
+        $ui.GapGrid.Visible = $voicePauses.Own
         $ui.Sliders['Sentence gap'].Bar.Value = [int][math]::Min($PauseLimits.Sentence, $shown.Sentence)
         $ui.Sliders['Comma gap'].Bar.Value = [int][math]::Min($PauseLimits.Comma, $shown.Comma)
         $ui.Sliders['Paragraph gap'].Bar.Value = [int][math]::Min($PauseLimits.Paragraph, $shown.Paragraph)
@@ -864,7 +1074,16 @@ function Update-UiInstalled {
         $ui.Filling = $false
     }
     $ui.CurrentInstalled = $tag
-    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $ui.Sliders[$k].Bar.Enabled = -not $ui.OwnBox.Checked }
+    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $ui.Sliders[$k].Bar.Enabled = $ui.OwnBox.Checked }
+    # Its installed speakers: the one Preview and Make default voice use (Windows' default first, if it is one).
+    $names = @($tag.Names)
+    if ($names.Count) {
+        foreach ($n in $names) { [void]$ui.SpeakerBox.Items.Add($n) }
+        $default = Get-DefaultVoiceToken
+        $isDefault = @($names | Where-Object { (Get-TokenName "$($tag.Key)#$_") -eq $default })
+        $ui.SpeakerBox.SelectedIndex = if ($isDefault.Count) { [array]::IndexOf($names, $isDefault[0]) } else { 0 }
+        $ui.SpeakerBox.Enabled = $names.Count -gt 1
+    }
     $ui.SoundLabel.Text = "How $($tag.Title) sounds" + $(if ($tag.Shared) { ' (all its speakers)' } else { '' })
 }
 
@@ -878,7 +1097,7 @@ function Save-UiSettings {
     $s = $ui.Sliders
     try {
         Set-VoiceSettings $tag.Dir $peak $boost $lengthScale
-        Set-VoicePauses $tag.Dir (-not $ui.OwnBox.Checked) (Get-RoundedMs $s['Sentence gap'].Bar.Value) `
+        Set-VoicePauses $tag.Dir $ui.OwnBox.Checked (Get-RoundedMs $s['Sentence gap'].Bar.Value) `
             (Get-RoundedMs $s['Comma gap'].Bar.Value) (Get-RoundedMs $s['Paragraph gap'].Bar.Value)
     } catch {
         [void][System.Windows.Forms.MessageBox]::Show("Could not save the settings: $($_.Exception.Message)", $AppName)
@@ -899,18 +1118,29 @@ function Stop-UiPreview {
     $script:Ui.PreviewProcess = $null
 }
 
-# Speaks the line with the selected voice in a separate PowerShell, as any program would (the engine
-# is never loaded into this one, so nothing here holds its files).
-function Invoke-UiPreview {
+# Speaks the line with a voice in a separate PowerShell, as any program would (the engine is never
+# loaded into this one, so nothing here holds its files). Settings not yet saved are saved first.
+function Start-UiPreview([string]$VoiceName) {
     $ui = $script:Ui
-    $tag = $ui.CurrentInstalled
-    if (-not $tag) { return }
     if ($ui.SaveTimer.Enabled) { $ui.SaveTimer.Stop(); Save-UiSettings }
+    if ($ui.GlobalTimer.Enabled) { $ui.GlobalTimer.Stop(); Save-UiGlobalSettings }
     Stop-UiPreview
     $text = if ($ui.PreviewBox.Text.Trim()) { $ui.PreviewBox.Text } else { $PreviewText }
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($text))
     $ui.PreviewProcess = Start-Process $PS64 -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass',
-        '-File', "`"$(Join-Path $Here 'Speak.ps1')`"", '-Voice', "`"$($tag.Voice)`"", '-TextBase64', $encoded)
+        '-File', "`"$(Join-Path $Here 'Speak.ps1')`"", '-Voice', "`"$VoiceName`"", '-TextBase64', $encoded)
+}
+
+# The Voice manager's Preview: the selected voice (its chosen speaker).
+function Invoke-UiPreview {
+    $voice = Get-UiCurrentVoice
+    if ($voice) { Start-UiPreview $voice.Voice }
+}
+
+# The Speed and pauses tab's Preview: the voice chosen there.
+function Invoke-UiGlobalPreview {
+    $name = [string]$script:Ui.PreviewVoiceBox.SelectedItem
+    if ($name) { Start-UiPreview $name }
 }
 
 function Update-UiSummary {
@@ -1364,21 +1594,30 @@ try {
             if (-not ($warned -and $cleared)) { $bad += "Windows' speed warning" }
             if ($null -eq $rateWas) { Remove-ItemProperty 'HKCU:\Software\Microsoft\Speech\Voices' -Name DefaultTTSRate -ErrorAction SilentlyContinue }
             else { Set-WindowsRate $rateWas.DefaultTTSRate }
-            # A voice of its own: untick, move its sentence gap, saved to its voice.json; tick again.
-            $ui.OwnBox.Checked = $false
+            # A voice's own pauses: off to begin with (its sliders hidden); ticked, its sentence gap moved
+            # and saved to its voice.json; unticked again.
+            $offFirst = -not $ui.OwnBox.Checked -and -not $ui.GapGrid.Visible
+            $ui.OwnBox.Checked = $true
             Update-UiOwnPauses
             $enabled = $ui.Sliders['Sentence gap'].Bar.Enabled
             $ui.Sliders['Sentence gap'].Bar.Value = 300
             Save-UiSettings
             $own = Get-Pauses (Join-Path $dir 'voice.json')
-            $ui.OwnBox.Checked = $true
+            if ($ScreenshotDir) { Save-UiPictures $ScreenshotDir }
+            $ui.OwnBox.Checked = $false
             Update-UiOwnPauses
             Save-UiSettings
             $back = Get-Pauses (Join-Path $dir 'voice.json')
-            Write-Output ("own pauses: sliders on {0}; own {1}, sentence {2} ms; ticked again: own {3}, shows {4} ms" -f $enabled, $own.Own,
-                $own.Sentence, $back.Own, $ui.Sliders['Sentence gap'].Bar.Value)
-            if (-not $enabled -or -not $own.Own -or $own.Sentence -ne 300 -or $back.Own -or
-                $ui.Sliders['Sentence gap'].Bar.Value -ne $ui.GlobalBars['Sentence gap'].Bar.Value) { $bad += 'own pauses' }
+            Write-Output ("own pauses: off at first {0}; ticked: sliders on {1}, own {2}, sentence {3} ms; unticked: own {4}" -f $offFirst, $enabled,
+                $own.Own, $own.Sentence, $back.Own)
+            if (-not $offFirst -or -not $enabled -or -not $own.Own -or $own.Sentence -ne 300 -or $back.Own) { $bad += 'own pauses' }
+            # Preview: the selected voice by the name programs see; the Speed and pauses tab lists every voice.
+            $voice = Get-UiCurrentVoice
+            $known = @(Get-OurVoiceNames)
+            Write-Output ("preview: Voice manager would say it with '{0}'; Speed and pauses offers {1} voice(s), '{2}' chosen" -f $voice.Voice,
+                $ui.PreviewVoiceBox.Items.Count, $ui.PreviewVoiceBox.SelectedItem)
+            if ($known -notcontains $voice.Voice -or $ui.PreviewVoiceBox.Items.Count -ne $known.Count -or
+                @($ui.PreviewVoiceBox.Items | Where-Object { $known -notcontains $_ }).Count) { $bad += 'preview voices' }
         }
         # Apply with nothing changed: says so, changes nothing.
         foreach ($item in $ui.List.Items) { if ($item.Tag.Name -eq 'lessac') { $item.Checked = $false } }
@@ -1392,7 +1631,7 @@ try {
             $before = (Get-ItemProperty $DefaultVoiceKey -ErrorAction SilentlyContinue).DefaultTokenId
             $ui.InstalledList.Items[0].Selected = $true
             Update-UiInstalled
-            $token = $ui.CurrentInstalled.Token
+            $token = (Get-UiCurrentVoice).Token
             Set-UiDefaultVoice
             $now = (Get-ItemProperty $DefaultVoiceKey).DefaultTokenId
             $marked = $ui.InstalledList.Items[0].SubItems[3].Text

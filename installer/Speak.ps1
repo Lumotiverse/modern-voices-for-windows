@@ -3,7 +3,7 @@
 param([Parameter(Mandatory)][string]$Voice, [string]$TextBase64)
 
 Add-Type -AssemblyName System.Speech
-$text = 'Pulling in three. Watch the patrol on the left, it has a skull!'
+$text = 'Speaking a preview of the selected voice, to hear how natural it sounds. Change the speed and pause values to adjust the sound to your liking.'
 if ($TextBase64) { $text = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($TextBase64)) }
 $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
 $synth.SelectVoice($Voice)

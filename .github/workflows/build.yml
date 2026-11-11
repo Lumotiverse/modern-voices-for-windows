@@ -93,12 +93,14 @@ jobs:
           $version = $name -replace '^ModernVoicesForWindows', ''
           $tag = "v$version"
           $notes = "Built from ${{ github.sha }}. Download $name.zip, unzip, run Install.cmd."
+          $files = @("out/$name.zip")
+          if (Test-Path out/screens) { Compress-Archive out/screens/* out/ui-screens.zip -Force; $files += 'out/ui-screens.zip' }
           gh release view $tag 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag "out/$name.zip" --clobber
+            gh release upload $tag @files --clobber
             gh release edit $tag --notes $notes
           } else {
-            gh release create $tag "out/$name.zip" --title "Modern Voices for Windows $version" --notes $notes --target ${{ github.sha }}
+            gh release create $tag @files --title "Modern Voices for Windows $version" --notes $notes --target ${{ github.sha }}
           }
       - uses: actions/upload-artifact@v4
         if: always()

@@ -173,7 +173,7 @@ if ($Quiet) {
 }
 
 # Aloud, each word shown as the engine reports it.
-$text = 'Pulling in three. Watch the patrol on the left, it has a skull!'
+$text = 'Speaking a preview of this voice, to hear how natural it sounds. Each word shows here as the engine reports it.'
 Write-Host "Modern Voices for Windows: $($ours.Count) voice(s) for $bits-bit programs`n" -ForegroundColor Cyan
 $synth.SetOutputToDefaultAudioDevice()
 foreach ($v in $ours) {

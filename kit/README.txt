@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.7.1
+Modern Voices for Windows 0.7.2
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -51,9 +51,10 @@ In the Modern Voices window, on "Voice manager", select a voice:
   Speed    adjusts this voice from the speed for every voice (Speed and pauses): 100% = that speed.
 
 Changes are saved as you move a slider and take effect straight away, also in programs that are already
-using the voice (from the next thing they say): no restarting, no repair. Preview says a line with the
-voice as it now is; Reset puts back 95%, 1.5x, 100%. A voice's speakers share its settings. A program's
-own volume and speed still adjust from there.
+using the voice (from the next thing they say): no restarting, no repair. Preview says the line in the
+"Preview says" box with the voice as it now is; Reset puts back 95%, 1.5x, 100%. A voice's speakers
+share its settings: Speaker chooses which of the installed ones Preview and Make default voice use (add
+or remove speakers on "Add or remove voices"). A program's own volume and speed still adjust from there.
 
 Make default voice sets the selected voice as Windows' default speech voice: the one programs speak
 with when they don't choose a voice (what Windows' Speech control panel, sapi.cpl, sets; Windows
@@ -86,8 +87,11 @@ Speech settings, sapi.cpl), for programs that leave the speed to Windows: when t
 says so, with a button to set it to 0. Set the speed here instead, and leave Windows' and the
 program's at 0 (TTS Enhanced in World of Warcraft: its speed 0) unless you want faster still.
 
-A voice can have its own: in the Voice manager, untick "Use the pauses for every voice" and set its
-three gaps. Changes apply straight away, like volume.
+A voice can have its own: in the Voice manager, tick "Modify pause duration for the selected voice" and
+set its three gaps. Changes apply straight away, like volume. Preview on this tab says the Voice
+manager's line with the voice chosen beside it.
+
+The window opens no larger than the screen; a tab that doesn't fit in it scrolls.
 
 The settings live in the install folder: settings.json (the Speed and pauses tab: "speed_percent"
 and "pauses") and voices\<voice>\voice.json

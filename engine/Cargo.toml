@@ -1,6 +1,6 @@
 [package]
 name = "modern_voices"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Modern Voices for Windows: a SAPI 5 speech engine for offline Piper voices (based on the Spoken Players voice engine)"
