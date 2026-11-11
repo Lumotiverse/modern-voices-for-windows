@@ -134,6 +134,19 @@ function Check-Added([string]$What, $Without, $With, [double]$Expected, [double]
     $added = $With.Longest - $Without.Longest
     Check ([math]::Abs($added - $Expected) -le $Slack) ("{0}: +{1:N0} ms (expected {2:N0} +/- {3:N0}; longest gap {4:N0} -> {5:N0} ms)" -f $What, $added, $Expected, $Slack, $Without.Longest, $With.Longest)
 }
+# Piper varies its timing a little each time it speaks (noise_w): off for these measurements, so that
+# each "with" and "without" differ only by the gap. (Read when a voice loads: each measurement is a
+# new process.)
+function Set-NoiseW([string]$Dir, [string]$Value) {
+    $path = Join-Path $Dir 'voice.json'
+    $text = [System.IO.File]::ReadAllText($path)
+    $m = [regex]::Match($text, '"noise_w"\s*:\s*(-?[0-9.]+)')
+    [System.IO.File]::WriteAllText($path, $text.Substring(0, $m.Groups[1].Index) + $Value + $text.Substring($m.Groups[1].Index + $m.Groups[1].Length))
+    return $m.Groups[1].Value
+}
+$maleDir = Join-Path $App 'voices\en_GB-northern_english_male-medium'
+$albaNoise = Set-NoiseW $albaDir '0'
+$maleNoise = Set-NoiseW $maleDir '0'
 $two = 'Pulling in three. Watch the patrol on the left.'
 $para = "Pulling in three.`nWatch the patrol on the left."
 $comma = 'Pulling in three, watch the patrol on the left.'
@@ -147,22 +160,24 @@ $baseComma = Measure-Speech $albaName $comma
 $baseOne = Measure-Speech $albaName $one
 $baseMale = Measure-Speech $maleName $two
 Set-GlobalPauses $settingsFile 1000 0 2000
-Check-Added 'sentence gap 1000 ms, rate 0' $base (Measure-Speech $albaName $two) 1000 80
-Check-Added 'sentence gap 1000 ms, rate +5 (1.73x as fast: 577 ms)' $baseFast (Measure-Speech $albaName $two 5) 577 80
-Check-Added 'paragraph gap 2000 ms at a line break' $basePara (Measure-Speech $albaName $para) 2000 80
+Check-Added 'sentence gap 1000 ms, rate 0' $base (Measure-Speech $albaName $two) 1000 30
+Check-Added 'sentence gap 1000 ms, rate +5 (1.73x as fast: 577 ms)' $baseFast (Measure-Speech $albaName $two 5) 577 30
+Check-Added 'paragraph gap 2000 ms at a line break' $basePara (Measure-Speech $albaName $para) 2000 30
 $withOne = Measure-Speech $albaName $one
 # (Not by total length: Piper varies its timing a little each time it speaks.)
 Check ($withOne.Tail -lt $baseOne.Tail + 150) ("no gap after the last sentence: silence at the end {0:N0} ms with a 1000 ms sentence gap, {1:N0} ms without" -f $withOne.Tail, $baseOne.Tail)
 Set-GlobalPauses $settingsFile 0 600 0
-Check-Added 'comma gap 600 ms (each part said separately)' $baseComma (Measure-Speech $albaName $comma) 600 200
+Check-Added 'comma gap 600 ms (each part said separately)' $baseComma (Measure-Speech $albaName $comma) 600 150
 # A voice's own pauses: Alba 300 ms while every other voice has 1000.
 Set-GlobalPauses $settingsFile 1000 0 2000
 Set-VoicePauses $albaDir $true 300 0 600
-Check-Added "Alba's own sentence gap 300 ms" $base (Measure-Speech $albaName $two) 300 80
-Check-Added 'Northern English Male still the global 1000 ms' $baseMale (Measure-Speech $maleName $two) 1000 80
+Check-Added "Alba's own sentence gap 300 ms" $base (Measure-Speech $albaName $two) 300 30
+Check-Added 'Northern English Male still the global 1000 ms' $baseMale (Measure-Speech $maleName $two) 1000 30
 Set-VoicePauses $albaDir $false 300 0 600
-Check-Added 'Alba back on the global 1000 ms' $base (Measure-Speech $albaName $two) 1000 80
+Check-Added 'Alba back on the global 1000 ms' $base (Measure-Speech $albaName $two) 1000 30
 Set-GlobalPauses $settingsFile 600 0 1200
+[void](Set-NoiseW $albaDir $albaNoise)
+[void](Set-NoiseW $maleDir $maleNoise)
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest | Out-Host
 Check ($LASTEXITCODE -eq 0) 'window: pause sliders save (Pauses tab and a voice of its own)'
 
