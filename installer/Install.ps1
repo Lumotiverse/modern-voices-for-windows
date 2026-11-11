@@ -132,6 +132,7 @@ function Get-PrettyName([string]$Name) {
 # Speakers (name -> id, in id order), the model's and config's paths, sizes and MD5s.
 function Get-Catalogue {
     $cache = if ($isAdmin) { Join-Path $App 'catalogue.json' } else { Join-Path $env:TEMP 'modernvoices_catalogue.json' }
+    New-Item (Split-Path $cache -Parent) -ItemType Directory -Force | Out-Null
     try {
         Get-Download "$Base/voices.json" $cache
     } catch {
@@ -540,7 +541,7 @@ function Register-Program {
 # Runs Test.ps1 -Quiet in 64-bit (and 32-bit) PowerShell; returns its results.
 function Invoke-SelfTest([bool]$With32) {
     $results = @()
-    $runs = @(@($PS64, 64))
+    $runs = @(,@($PS64, 64))   # (the comma keeps it a list of pairs)
     if ($With32 -and (Test-Path $PS32)) { $runs += ,@($PS32, 32) }
     foreach ($r in $runs) {
         $lines = & $r[0] -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Quiet 2>&1

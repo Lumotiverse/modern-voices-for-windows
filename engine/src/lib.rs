@@ -455,20 +455,26 @@ impl Output<'_> {
         self.interest & (1u64 << id.0) != 0
     }
 
-    /// Writes 16-bit samples to SAPI, all of them. False when SAPI will take no more.
+    /// Writes 16-bit samples to SAPI. False when SAPI will take no more (the write failed).
+    ///
+    /// A successful write took all of it, as in Microsoft's sample engine, which never reads the
+    /// count written: not every site fills it in (System.Speech's says 0 and has taken the lot),
+    /// and treating that 0 as "full" stopped speech after its first piece.
     fn write(&mut self, samples: &[i16]) -> bool {
-        let mut bytes: &[u8] = unsafe { std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 2) };
-        while !bytes.is_empty() {
-            match unsafe { self.site.Write(bytes.as_ptr() as *const c_void, bytes.len() as u32) } {
-                Ok(0) | Err(_) => return false,
-                Ok(written) => {
-                    let written = (written as usize).min(bytes.len());
-                    self.written += written as u64;
-                    bytes = &bytes[written..];
-                }
+        if samples.is_empty() {
+            return true;
+        }
+        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 2) };
+        match unsafe { self.site.Write(bytes.as_ptr() as *const c_void, bytes.len() as u32) } {
+            Ok(_) => {
+                self.written += bytes.len() as u64;
+                true
+            }
+            Err(e) => {
+                log::write(&format!("SAPI refused {} bytes of audio: {e}", bytes.len()));
+                false
             }
         }
-        true
     }
 
     fn aborted(&self) -> bool {

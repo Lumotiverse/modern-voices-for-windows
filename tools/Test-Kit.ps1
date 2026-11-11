@@ -50,6 +50,11 @@ function Test-Speech([string]$PowerShell, [int]$Bits, [int]$Expected) {
     }
 }
 
+# The engine's verbose log (every call, fragment and sentence), shown at the end.
+$logFolder = Join-Path $env:LOCALAPPDATA 'ModernVoices'
+New-Item $logFolder -ItemType Directory -Force | Out-Null
+New-Item (Join-Path $logFolder 'verbose') -ItemType File -Force | Out-Null
+
 Step 'Voice list window'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest
 Check ($LASTEXITCODE -eq 0) 'the window builds from the real catalogue'
@@ -89,6 +94,12 @@ Step 'Uninstall'
 Check ((Get-OurTokens $Tokens64).Count -eq 0 -and (Get-OurTokens $Tokens32).Count -eq 0) 'no voices left'
 Check (-not (Test-Path $App)) 'program folder gone'
 Check (-not (Test-Path 'HKLM:\SOFTWARE\Classes\CLSID\{F9857585-FF01-467B-84C0-D6CA4E0572D2}')) 'engine registration gone'
+
+Step 'Engine log (last 150 lines)'
+Get-ChildItem $logFolder -Filter '*.log' -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Host "--- $($_.FullName)"
+    Get-Content $_.FullName -Tail 150 | ForEach-Object { Write-Host "  $_" }
+}
 
 Write-Host ''
 if ($failures.Count -gt 0) {
