@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.6.0
+Modern Voices for Windows 0.6.1
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -22,13 +22,14 @@ Install
    voices", tick the voices you want. Select one and press Play sample to hear it first. Voices with
    several speakers (VCTK, LibriTTS, ...) list their speakers to tick; each becomes a voice.
 3. Press Apply changes. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices,
-   version 1.0.0), prepares them, and tests each one through Windows' speech API. Then the window
-   opens again.
+   version 1.0.0), prepares them, and tests each one through Windows' speech API, with the progress
+   shown at the bottom of the window.
 
 Restart programs that were open to see the new voices. This folder can then be deleted.
 
 Afterwards, from the Start menu (Modern Voices for Windows):
-  Modern Voices   the window: installed voices and how they sound, add or remove voices
+  Modern Voices   the window: Voice manager (installed voices, how they sound, Windows' default
+                  voice) and Add or remove voices
   Test voices     hear each voice, with each word shown as the engine reports it
   Repair          registers everything again (if a voice went missing from programs)
   Uninstall       removes everything (also in Windows' Installed apps)
@@ -36,7 +37,7 @@ Afterwards, from the Start menu (Modern Voices for Windows):
 
 How each voice sounds
 ---------------------
-In the Modern Voices window, on "Installed voices", select a voice:
+In the Modern Voices window, on "Voice manager", select a voice:
 
   Volume   how loud each sentence's loudest moment is: 95% = just under full volume. 0 = as Piper
            made it (quieter: the model's own level).
@@ -48,6 +49,12 @@ Changes are saved as you move a slider and take effect straight away, also in pr
 using the voice (from the next thing they say): no restarting, no repair. Preview says a line with the
 voice as it now is; Reset puts back 95%, 1.5x, 100%. A voice's speakers share its settings. A program's
 own volume and speed still adjust from there.
+
+Make default voice sets the selected voice as Windows' default speech voice: the one programs speak
+with when they don't choose a voice (what Windows' Speech control panel, sapi.cpl, sets; Windows
+speech settings opens that). It is per Windows user, for 64- and 32-bit programs alike. Windows 10's
+Settings app has its own voice choice, for Microsoft's newer voice system: these voices can't appear
+there, and it doesn't affect programs that use these.
 
 The settings live in C:\Program Files\Modern Voices for Windows\voices\<voice>\voice.json
 ("loudness": peak and boost; "inference": length_scale, higher = slower), if you'd rather edit them.

@@ -52,7 +52,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.6.0'
+$Version = '0.6.1'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $App = Join-Path $env:ProgramFiles $AppName
@@ -107,12 +107,41 @@ function Read-Json([string]$Text) {
     return $serializer.DeserializeObject($Text)
 }
 
-function Get-Download([string]$Url, [string]$Path) {
+# A line of progress: to the console, and to the window's status line while it is applying changes.
+function Write-Status([string]$Text, [string]$Color = 'Gray') {
+    Write-Host $Text -ForegroundColor $Color
+    if ($script:Ui -and $script:Ui.Busy) {
+        $script:Ui.Status.Text = $Text.Trim()
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+}
+
+# Downloads to $Path (through a .part file). While the window is applying changes, in the background
+# with its progress shown ($Bytes: the size to expect, when known), so the window keeps responding.
+function Get-Download([string]$Url, [string]$Path, [double]$Bytes = 0) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $part = "$Path.part"
     $client = New-Object Net.WebClient
     $client.Headers.Add('User-Agent', "ModernVoicesForWindows/$Version")
-    try { $client.DownloadFile($Url, $part) } finally { $client.Dispose() }
+    try {
+        if ($script:Ui -and $script:Ui.Busy) {
+            $client.DownloadFileAsync([uri]$Url, $part)
+            while ($client.IsBusy) {
+                [System.Windows.Forms.Application]::DoEvents()
+                Start-Sleep -Milliseconds 50
+                if ($Bytes -gt 0 -and (Test-Path $part)) {
+                    $done = (Get-Item $part).Length
+                    $script:Ui.Progress.Value = [int][math]::Min(100, 100 * $done / $Bytes)
+                }
+            }
+            $got = if (Test-Path $part) { (Get-Item $part).Length } else { 0 }
+            if ($got -eq 0 -or ($Bytes -gt 0 -and $got -ne $Bytes)) { throw "The download of $Url stopped part way (check the internet connection)." }
+        } else {
+            $client.DownloadFile($Url, $part)
+        }
+    } finally {
+        $client.Dispose()
+    }
     Move-Item $part $Path -Force
 }
 
@@ -172,6 +201,7 @@ function Get-Catalogue {
             Speakers = $speakers; Onnx = $onnx; Config = $config
             OnnxMd5 = [string](Get-Value $onnxInfo 'md5_digest'); ConfigMd5 = [string](Get-Value $configInfo 'md5_digest')
             SizeMb = [math]::Round([double](Get-Value $onnxInfo 'size_bytes') / 1MB)
+            OnnxBytes = [double](Get-Value $onnxInfo 'size_bytes'); ConfigBytes = [double](Get-Value $configInfo 'size_bytes')
         })
     }
     return ,($list | Sort-Object Accent, Display)
@@ -199,10 +229,11 @@ function Get-InstalledIds {
 }
 
 # --- the manager window ------------------------------------------------------------------------------
-# Two tabs: Installed voices (how each sounds: sliders saved to its voice.json as they move, which the
-# engine reads while speaking; Preview) and Add or remove voices (the catalogue to tick, with samples,
-# sizes and a warning about duplicate qualities). The window's controls and state live in $script:Ui:
-# its event handlers run later (while it is shown), in the script's scope.
+# Two tabs: Voice manager (the installed voices: how each sounds, sliders saved to its voice.json as
+# they move, which the engine reads while speaking; Preview; Windows' default voice) and Add or remove
+# voices (the catalogue to tick, with samples, sizes and a warning about duplicate qualities; changes
+# applied in the window, with progress). The window's controls and state live in $script:Ui: its event
+# handlers run later (while it is shown), in the script's scope.
 
 $PreviewText = 'Pulling in three. Watch the patrol on the left, it has a skull!'
 
@@ -226,6 +257,21 @@ function New-Control([string]$Type, $Parent, [int]$X, [int]$Y, [int]$Width, [int
     return $c
 }
 
+# SAPI's default voice (what sapi.cpl sets): a token id under the current user. The same id serves 64-
+# and 32-bit programs (each reads it in its own view of the registry, where this program registers the
+# voice under the same name).
+$DefaultVoiceKey = 'HKCU:\Software\Microsoft\Speech\Voices'
+function Get-DefaultVoiceToken {
+    if (-not (Test-Path $DefaultVoiceKey)) { return '' }
+    $id = (Get-ItemProperty $DefaultVoiceKey -ErrorAction SilentlyContinue).DefaultTokenId
+    if (-not $id) { return '' }
+    return ($id -split '\\')[-1]
+}
+function Set-DefaultVoiceToken([string]$TokenName) {
+    New-Item $DefaultVoiceKey -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty $DefaultVoiceKey -Name 'DefaultTokenId' -Value "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\$TokenName"
+}
+
 function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey) {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -233,8 +279,8 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "$AppName $Version"
-    $form.Size = New-Object System.Drawing.Size(880, 730)
-    $form.MinimumSize = New-Object System.Drawing.Size(760, 650)
+    $form.Size = New-Object System.Drawing.Size(880, 770)
+    $form.MinimumSize = New-Object System.Drawing.Size(760, 690)
     $form.StartPosition = 'CenterScreen'
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
     # In front of the console it was started from (else it can open behind it, unseen).
@@ -243,43 +289,35 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $bold = New-Object System.Drawing.Font($form.Font, [System.Drawing.FontStyle]::Bold)
     $grey = [System.Drawing.Color]::DimGray
 
-    $tabs = New-Control 'TabControl' $form 12 12 840 610 '' 'Top, Bottom, Left, Right'
-    $tabInstalled = New-Object System.Windows.Forms.TabPage 'Installed voices'
+    $tabs = New-Control 'TabControl' $form 12 12 840 640 '' 'Top, Bottom, Left, Right'
+    $tabInstalled = New-Object System.Windows.Forms.TabPage 'Voice manager'
     $tabAdd = New-Object System.Windows.Forms.TabPage 'Add or remove voices'
     $tabs.TabPages.Add($tabInstalled); $tabs.TabPages.Add($tabAdd)
 
-    # ---- Installed voices
-    $installedList = New-Control 'ListView' $tabInstalled 10 10 810 230 '' 'Top, Left, Right'
+    # ---- Voice manager
+    $installedList = New-Control 'ListView' $tabInstalled 10 10 810 200 '' 'Top, Left, Right'
     $installedList.View = 'Details'; $installedList.FullRowSelect = $true; $installedList.HideSelection = $false
     $installedList.MultiSelect = $false
     [void]$installedList.Columns.Add('Voice', 230)
-    [void]$installedList.Columns.Add('Speakers installed', 300)
-    [void]$installedList.Columns.Add('On disk', 80)
-    [void]$installedList.Columns.Add('Folder', 180)
+    [void]$installedList.Columns.Add('Speakers installed', 270)
+    [void]$installedList.Columns.Add('On disk', 70)
+    [void]$installedList.Columns.Add('Windows default', 110)
+    [void]$installedList.Columns.Add('Folder', 120)
+    $defaultLabel = New-Control 'Label' $tabInstalled 10 220 470 20 '' 'Top, Left, Right'
+    $defaultButton = New-Control 'Button' $tabInstalled 490 216 160 27 'Make default voice' 'Top, Right'
+    $defaultButton.Enabled = $false
+    $sapiButton = New-Control 'Button' $tabInstalled 660 216 160 27 'Windows speech settings' 'Top, Right'
     $speakersOf = [ordered]@{}
     foreach ($id in $Installed) {
         $idParts = Split-VoiceId $id
         if (-not $speakersOf.Contains($idParts[0])) { $speakersOf[$idParts[0]] = @() }
         if ($null -ne $idParts[1]) { $speakersOf[$idParts[0]] += $idParts[1] }
     }
-    foreach ($key in $speakersOf.Keys) {
-        $entry = if ($ByKey.ContainsKey($key)) { $ByKey[$key] } else { $null }
-        $title = if ($entry) { "$($entry.Display) ($($entry.Accent))" } else { $key }
-        $names = @($speakersOf[$key])
-        $voiceName = if ($entry) { Get-DisplayName $entry $(if ($names.Count) { $names[0] } else { $null }) } else { $key }
-        $dir = Join-Path $VoiceRoot $key
-        $item = New-Object System.Windows.Forms.ListViewItem($title)
-        [void]$item.SubItems.Add($(if ($names.Count) { $names -join ', ' } else { '1' }))
-        [void]$item.SubItems.Add("$(Get-FolderMb $dir) MB")
-        [void]$item.SubItems.Add($key)
-        $item.Tag = @{ Key = $key; Dir = $dir; Title = $title; Voice = $voiceName; Shared = ($names.Count -gt 1) }
-        [void]$installedList.Items.Add($item)
-    }
 
-    $soundLabel = New-Control 'Label' $tabInstalled 10 252 810 20 'Select a voice above to set how it sounds.' 'Top, Left, Right'
+    $soundLabel = New-Control 'Label' $tabInstalled 10 256 810 20 'Select a voice above to set how it sounds.' 'Top, Left, Right'
     $soundLabel.Font = $bold
     $sliders = @{}
-    $y = 282
+    $y = 284
     foreach ($spec in @(@('Volume', 0, 100, 10), @('Boost', 10, 40, 5), @('Speed', 50, 200, 10))) {
         [void](New-Control 'Label' $tabInstalled 10 ($y + 6) 80 20 $spec[0] '')
         $bar = New-Control 'TrackBar' $tabInstalled 90 $y 560 45 '' 'Top, Left, Right'
@@ -302,14 +340,11 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $live = New-Control 'Label' $tabInstalled 10 ($y + 34) 810 36 ("Changes are saved as you move a slider and take effect straight away, also in programs already " +
         "using the voice (from the next thing they say). A voice's speakers share its settings.") 'Top, Left, Right'
     $live.ForeColor = $grey
-    if ($installedList.Items.Count -eq 0) {
-        $soundLabel.Text = 'No voices installed yet: add some on the Add or remove voices tab.'
-    }
 
     # ---- Add or remove voices
     $intro = New-Control 'Label' $tabAdd 10 8 810 32 ("Tick the voices to install; untick one to remove it. Select a voice and press Play sample to hear it. " +
-        "Then press Apply changes.") 'Top, Left, Right'
-    $list = New-Control 'ListView' $tabAdd 10 42 810 260 '' 'Top, Bottom, Left, Right'
+        "Then press Apply changes: the window shows the progress below.") 'Top, Left, Right'
+    $list = New-Control 'ListView' $tabAdd 10 42 810 290 '' 'Top, Bottom, Left, Right'
     $list.View = 'Details'; $list.CheckBoxes = $true; $list.FullRowSelect = $true; $list.HideSelection = $false
     $list.MultiSelect = $false
     [void]$list.Columns.Add('Voice', 220)
@@ -332,30 +367,31 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         if ($item.Checked) { $item.Font = $bold }
         [void]$list.Items.Add($item)
     }
-    $speakerLabel = New-Control 'Label' $tabAdd 10 310 810 18 'Select a voice with several speakers to choose which of them to install (each becomes a voice).' 'Bottom, Left, Right'
+    $speakerLabel = New-Control 'Label' $tabAdd 10 340 810 18 'Select a voice with several speakers to choose which of them to install (each becomes a voice).' 'Bottom, Left, Right'
     $speakerLabel.AutoEllipsis = $true
-    $speakerList = New-Control 'CheckedListBox' $tabAdd 10 330 700 104 '' 'Bottom, Left, Right'
+    $speakerList = New-Control 'CheckedListBox' $tabAdd 10 360 700 104 '' 'Bottom, Left, Right'
     $speakerList.MultiColumn = $true; $speakerList.ColumnWidth = 90; $speakerList.CheckOnClick = $true
     $speakerList.IntegralHeight = $false; $speakerList.Enabled = $false
-    $play = New-Control 'Button' $tabAdd 720 330 100 27 'Play sample' 'Bottom, Right'
-    $playHint = New-Control 'Label' $tabAdd 720 360 100 60 'plays the voice, or the speaker selected in this list' 'Bottom, Right'
+    $play = New-Control 'Button' $tabAdd 720 360 100 27 'Play sample' 'Bottom, Right'
+    $playHint = New-Control 'Label' $tabAdd 720 390 100 60 'plays the voice, or the speaker selected in this list' 'Bottom, Right'
     $playHint.ForeColor = $grey
-    $sizeLabel = New-Control 'Label' $tabAdd 10 440 810 20 '' 'Bottom, Left, Right'
-    $warnLabel = New-Control 'Label' $tabAdd 10 462 810 36 '' 'Bottom, Left, Right'
+    $sizeLabel = New-Control 'Label' $tabAdd 10 470 810 20 '' 'Bottom, Left, Right'
+    $warnLabel = New-Control 'Label' $tabAdd 10 492 810 36 '' 'Bottom, Left, Right'
     $warnLabel.ForeColor = [System.Drawing.Color]::Firebrick
-    $usBox = New-Control 'CheckBox' $tabAdd 10 500 810 22 'Also list British voices as US English (only if a program does not show them)' 'Bottom, Left, Right'
+    $usBox = New-Control 'CheckBox' $tabAdd 10 530 810 22 'Also list British voices as US English (only if a program does not show them)' 'Bottom, Left, Right'
     $usBox.Checked = $UsTags
-    $sizeNote = New-Control 'Label' $tabAdd 10 524 810 34 ("Speakers of one voice share its model, so extra speakers take no extra space. Two qualities of the same voice " +
-        "(medium and high) are separate models: each takes its full size.") 'Bottom, Left, Right'
+    $sizeNote = New-Control 'Label' $tabAdd 10 554 810 50 ("Speakers of one voice share its model, so extra speakers take no extra space. Two qualities of the same voice " +
+        "(medium and high) are separate models: each takes its full size. Some programs (World of Warcraft, for one) take longer to " +
+        "start the more voices Windows has: keep the list to the ones you use.") 'Bottom, Left, Right'
     $sizeNote.ForeColor = $grey
 
-    # ---- bottom of the window
-    $note = New-Control 'Label' $form 12 634 600 34 ('Some programs (World of Warcraft, for one) take longer to start the more voices Windows has: ' +
-        'keep the list to the ones you use.') 'Bottom, Left, Right'
-    $note.ForeColor = $grey
-    $apply = New-Control 'Button' $form 632 640 110 30 'Apply changes' 'Bottom, Right'
-    $apply.DialogResult = 'OK'
-    $close = New-Control 'Button' $form 752 640 100 30 'Close' 'Bottom, Right'
+    # ---- bottom of the window: progress while applying changes
+    $progress = New-Control 'ProgressBar' $form 12 664 600 14 '' 'Bottom, Left, Right'
+    $progress.Visible = $false
+    $status = New-Control 'Label' $form 12 682 600 36 '' 'Bottom, Left, Right'
+    $status.ForeColor = $grey
+    $apply = New-Control 'Button' $form 632 670 110 30 'Apply changes' 'Bottom, Right'
+    $close = New-Control 'Button' $form 752 670 100 30 'Close' 'Bottom, Right'
     $close.DialogResult = 'Cancel'
     $form.CancelButton = $close
 
@@ -367,7 +403,9 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         Speakers = $chosenSpeakers; Current = $null; Player = $null; Filling = $false; InstalledKeys = @($speakersOf.Keys)
         InstalledList = $installedList; SoundLabel = $soundLabel; Sliders = $sliders; PreviewBox = $previewBox
         PreviewButton = $previewButton; ResetButton = $resetButton; CurrentInstalled = $null; SaveTimer = $timer
-        PreviewProcess = $null; SizeLabel = $sizeLabel; WarnLabel = $warnLabel }
+        PreviewProcess = $null; SizeLabel = $sizeLabel; WarnLabel = $warnLabel; Catalogue = $Catalogue; ByKey = $ByKey
+        DefaultLabel = $defaultLabel; DefaultButton = $defaultButton; Progress = $progress; Status = $status; Apply = $apply
+        Close = $close; Busy = $false; UsTags = $UsTags; Installed = @($Installed); Bold = $bold; Plain = $form.Font; Changed = $false }
     $list.add_SelectedIndexChanged({ Update-UiSelection })
     $list.add_ItemChecked({ if (-not $script:Ui.Filling) { Update-UiSummary } })
     $speakerList.add_ItemCheck({
@@ -378,16 +416,21 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $play.add_Click({ Invoke-UiSample })
     $installedList.add_SelectedIndexChanged({ Update-UiInstalled })
     $previewButton.add_Click({ Invoke-UiPreview })
+    $defaultButton.add_Click({ Set-UiDefaultVoice })
+    $sapiButton.add_Click({ Start-Process "$env:SystemRoot\System32\Speech\SpeechUX\sapi.cpl" })
+    $apply.add_Click({ Invoke-UiApply })
     $resetButton.add_Click({ Reset-UiSettings })
     $form.add_FormClosing({
+        param($sender, $e)
+        if ($script:Ui.Busy) { $e.Cancel = $true; return }   # not while changes are being applied
         Save-UiSpeakers
         if ($script:Ui.SaveTimer.Enabled) { $script:Ui.SaveTimer.Stop(); Save-UiSettings }
         if ($script:Ui.Player) { $script:Ui.Player.Stop() }
         Stop-UiPreview
     })
+    Update-UiInstalledList
     Update-UiSummary
-    if ($installedList.Items.Count -gt 0) { $installedList.Items[0].Selected = $true; Update-UiInstalled }
-    else { $tabs.SelectedTab = $tabAdd }
+    if ($installedList.Items.Count -eq 0) { $tabs.SelectedTab = $tabAdd }
     return $script:Ui
 }
 
@@ -400,13 +443,117 @@ function Update-UiSliderLabels {
     $s.Speed.Value.Text = "$($s.Speed.Bar.Value)%"
 }
 
+# The Voice manager's list, from what is installed now (one row per model), the default voice marked.
+function Update-UiInstalledList {
+    $ui = $script:Ui
+    $speakersOf = [ordered]@{}
+    foreach ($id in $ui.Installed) {
+        $idParts = Split-VoiceId $id
+        if (-not $speakersOf.Contains($idParts[0])) { $speakersOf[$idParts[0]] = @() }
+        if ($null -ne $idParts[1]) { $speakersOf[$idParts[0]] += $idParts[1] }
+    }
+    $ui.InstalledKeys = @($speakersOf.Keys)
+    $default = Get-DefaultVoiceToken
+    $defaultName = ''
+    $ui.InstalledList.BeginUpdate()
+    $ui.InstalledList.Items.Clear()
+    foreach ($key in $speakersOf.Keys) {
+        $entry = if ($ui.ByKey.ContainsKey($key)) { $ui.ByKey[$key] } else { $null }
+        $title = if ($entry) { "$($entry.Display) ($($entry.Accent))" } else { $key }
+        $names = @($speakersOf[$key])
+        $first = if ($names.Count) { $names[0] } else { $null }
+        $voiceName = if ($entry) { Get-DisplayName $entry $first } else { $key }
+        $tokens = @(if ($names.Count) { $names | ForEach-Object { Get-TokenName "$key#$_" } } else { Get-TokenName $key })
+        $isDefault = @($tokens | Where-Object { $_ -eq $default }).Count -gt 0
+        if ($isDefault) {
+            $which = @($names | Where-Object { (Get-TokenName "$key#$_") -eq $default })
+            $defaultName = if ($entry) { Get-DisplayName $entry $(if ($which.Count) { $which[0] } else { $null }) } else { $key }
+        }
+        $dir = Join-Path $VoiceRoot $key
+        $item = New-Object System.Windows.Forms.ListViewItem($title)
+        [void]$item.SubItems.Add($(if ($names.Count) { $names -join ', ' } else { '1' }))
+        [void]$item.SubItems.Add("$(Get-FolderMb $dir) MB")
+        [void]$item.SubItems.Add($(if ($isDefault) { 'yes' } else { '' }))
+        [void]$item.SubItems.Add($key)
+        $item.Tag = @{ Key = $key; Dir = $dir; Title = $title; Voice = $voiceName; Shared = ($names.Count -gt 1); Token = $tokens[0] }
+        [void]$ui.InstalledList.Items.Add($item)
+    }
+    $ui.InstalledList.EndUpdate()
+    $ui.DefaultLabel.Text = if ($defaultName) { "Windows default voice: $defaultName" }
+        elseif ($default) { "Windows default voice: $default (not one of these)" } else { 'Windows default voice: not set' }
+    if ($ui.InstalledList.Items.Count -gt 0) { $ui.InstalledList.Items[0].Selected = $true; Update-UiInstalled }
+    else {
+        $ui.SoundLabel.Text = 'No voices installed yet: add some on the Add or remove voices tab.'
+        Update-UiInstalled
+    }
+}
+
+# Makes the selected voice SAPI's default: what programs that don't choose a voice speak with (the
+# setting in sapi.cpl, Windows' Speech control panel).
+function Set-UiDefaultVoice {
+    $tag = $script:Ui.CurrentInstalled
+    if (-not $tag) { return }
+    Set-DefaultVoiceToken $tag.Token
+    $selected = $script:Ui.InstalledList.SelectedIndices
+    $index = if ($selected.Count) { $selected[0] } else { 0 }
+    Update-UiInstalledList
+    if ($script:Ui.InstalledList.Items.Count -gt $index) { $script:Ui.InstalledList.Items[$index].Selected = $true; Update-UiInstalled }
+}
+
+# Applies the Add or remove tab's ticks in the window: downloads, removals, registration and tests, with
+# progress below; then the window shows the new state.
+function Invoke-UiApply {
+    $ui = $script:Ui
+    Save-UiSpeakers
+    $wanted = @(Get-PickedIds $ui)
+    $usTags = [bool]$ui.UsBox.Checked
+    $same = ((@($wanted | Sort-Object) -join '|') -eq (@($ui.Installed | Sort-Object) -join '|')) -and ($usTags -eq $ui.UsTags)
+    if ($same) { $ui.Status.Text = 'Nothing to change.'; return }
+    $ui.Busy = $true
+    $ui.Tabs.Enabled = $false; $ui.Apply.Enabled = $false; $ui.Close.Enabled = $false
+    $ui.Progress.Value = 0; $ui.Progress.Visible = $true
+    $ui.Form.Cursor = 'WaitCursor'
+    $ok = $false
+    try {
+        $ok = Set-InstalledVoices $wanted $usTags $ui.ByKey
+        $ui.Installed = @(Get-InstalledIds)
+        $ui.UsTags = $usTags
+        $ui.Changed = $true
+    } catch {
+        $ui.Status.Text = "Stopped: $($_.Exception.Message)"
+        [void][System.Windows.Forms.MessageBox]::Show("Stopped: $($_.Exception.Message)", $AppName)
+        $ui.Installed = @(Get-InstalledIds)
+    } finally {
+        $ui.Busy = $false
+        $ui.Progress.Visible = $false
+        $ui.Tabs.Enabled = $true; $ui.Apply.Enabled = $true; $ui.Close.Enabled = $true
+        $ui.Form.Cursor = 'Default'
+    }
+    # The new state: ticks and bold for what is installed, the manager's list.
+    $ui.Filling = $true
+    foreach ($item in $ui.List.Items) {
+        $isIn = @($ui.Installed | Where-Object { (Split-VoiceId $_)[0] -eq $item.Tag.Key }).Count -gt 0
+        $item.Checked = $isIn
+        $item.Font = if ($isIn) { $ui.Bold } else { $ui.Plain }
+    }
+    $ui.Filling = $false
+    Update-UiInstalledList
+    Update-UiSummary
+    if ($ok) {
+        $ui.Status.Text = 'Done: every voice passed its test. Restart programs that were open to see new voices.'
+        if ($ui.InstalledList.Items.Count -gt 0) { $ui.Tabs.SelectedIndex = 0 }
+    } elseif ($ui.Status.Text -notlike 'Stopped*') {
+        $ui.Status.Text = "A voice failed its test. The engine's log says why: $env:LOCALAPPDATA\ModernVoices\engine.log"
+    }
+}
+
 function Update-UiInstalled {
     $ui = $script:Ui
     if ($ui.SaveTimer.Enabled) { $ui.SaveTimer.Stop(); Save-UiSettings }
     $ui.CurrentInstalled = $null
     $on = $ui.InstalledList.SelectedItems.Count -gt 0
     foreach ($k in 'Volume', 'Boost', 'Speed') { $ui.Sliders[$k].Bar.Enabled = $on }
-    $ui.PreviewButton.Enabled = $on; $ui.ResetButton.Enabled = $on
+    $ui.PreviewButton.Enabled = $on; $ui.ResetButton.Enabled = $on; $ui.DefaultButton.Enabled = $on
     if (-not $on) { return }
     $tag = $ui.InstalledList.SelectedItems[0].Tag
     $settings = Get-VoiceSettings $tag.Dir
@@ -622,15 +769,16 @@ function Install-Voice($Entry) {
     New-Item $temp -ItemType Directory -Force | Out-Null
     $onnx = Join-Path $temp ($Entry.Key + '.onnx')
     $config = "$onnx.json"
-    foreach ($pair in @(@($Entry.Onnx, $onnx, $Entry.OnnxMd5), @($Entry.Config, $config, $Entry.ConfigMd5))) {
-        Write-Host "  downloading $($pair[0]) ..."
-        Get-Download "$Base/$($pair[0])" $pair[1]
+    foreach ($pair in @(@($Entry.Onnx, $onnx, $Entry.OnnxMd5, $Entry.OnnxBytes), @($Entry.Config, $config, $Entry.ConfigMd5, $Entry.ConfigBytes))) {
+        Write-Status "    downloading $($Entry.Display) ($($Entry.Accent)): $(Split-Path $pair[0] -Leaf) ..."
+        Get-Download "$Base/$($pair[0])" $pair[1] $pair[3]
         $md5 = (Get-FileHash $pair[1] -Algorithm MD5).Hash.ToLower()
         if ($pair[2] -and $md5 -ne $pair[2].ToLower()) {
             Remove-Item $pair[1] -ErrorAction SilentlyContinue
             throw "$($pair[0]) did not download correctly (its MD5 is $md5, not $($pair[2])). Run this again."
         }
     }
+    Write-Status "    preparing $($Entry.Display) ($($Entry.Accent)) ..."
     Convert-PiperVoice -Onnx $onnx -Config $config -OutDir $folder -Name $Entry.Key -Label $Entry.Display `
         -Peak $DefaultPeak -Boost $DefaultBoost
     Remove-Item $onnx, $config -ErrorAction SilentlyContinue
@@ -717,13 +865,29 @@ function Register-Program {
     New-Shortcut (Join-Path $StartMenu 'Uninstall.lnk') ($common + 'Uninstall.ps1"') "Uninstall $AppName"
 }
 
+# Runs a program with no window and returns what it printed; the manager window keeps responding meanwhile.
+function Invoke-Hidden([string]$Exe, [string[]]$Arguments) {
+    $out = [System.IO.Path]::GetTempFileName()
+    $err = [System.IO.Path]::GetTempFileName()
+    try {
+        $p = Start-Process $Exe -ArgumentList $Arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+        while (-not $p.HasExited) {
+            if ($script:Ui -and $script:Ui.Busy) { [System.Windows.Forms.Application]::DoEvents() }
+            Start-Sleep -Milliseconds 100
+        }
+        return @(Get-Content $out) + @(Get-Content $err)
+    } finally {
+        Remove-Item $out, $err -ErrorAction SilentlyContinue
+    }
+}
+
 # Runs Test.ps1 -Quiet in 64-bit (and 32-bit) PowerShell; returns its results.
 function Invoke-SelfTest([bool]$With32) {
     $results = @()
     $runs = @(,@($PS64, 64))   # (the comma keeps it a list of pairs)
     if ($With32 -and (Test-Path $PS32)) { $runs += ,@($PS32, 32) }
     foreach ($r in $runs) {
-        $lines = & $r[0] -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Quiet 2>&1
+        $lines = Invoke-Hidden $r[0] @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$(Join-Path $App 'installer\Test.ps1')`"", '-Quiet')
         foreach ($line in $lines) {
             $text = [string]$line
             if ($text.StartsWith('{')) {
@@ -772,27 +936,27 @@ function Set-InstalledVoices([string[]]$Wanted, [bool]$UsTags, $ByKey) {
     }
     $has32 = Test-Path $Dll32
 
-    Write-Host "`n  voice files"
+    Write-Status "`n  voice files"
     New-Item $VoiceRoot -ItemType Directory -Force | Out-Null
     $keys = @($Wanted | ForEach-Object { (Split-VoiceId $_)[0] } | Select-Object -Unique)
     foreach ($folder in Get-ChildItem $VoiceRoot -Directory) {
         if ($keys -notcontains $folder.Name) {
             try {
                 Remove-Item $folder.FullName -Recurse -Force
-                Write-Host "    removed $($folder.Name)"
+                Write-Status "    removed $($folder.Name)"
             } catch {
-                Write-Host "    could not remove $($folder.Name) (a program is using it): it goes next time" -ForegroundColor Yellow
+                Write-Status "    could not remove $($folder.Name) (a program is using it): it goes next time" 'Yellow'
             }
         }
     }
     foreach ($key in $keys) {
         $folder = Join-Path $VoiceRoot $key
-        if (Test-VoiceFolder $folder) { Write-Host "    $key (installed)"; continue }
+        if (Test-VoiceFolder $folder) { Write-Status "    $key (installed)"; continue }
         Install-Voice $ByKey[$key]
-        Write-Host "    $key ready"
+        Write-Status "    $key ready"
     }
 
-    Write-Host "`n  registering"
+    Write-Status "`n  registering"
     Remove-OurTokens $Tokens64
     Remove-OurTokens $Tokens32
     foreach ($id in $Wanted) {
@@ -801,7 +965,7 @@ function Set-InstalledVoices([string[]]$Wanted, [bool]$UsTags, $ByKey) {
         $speakerId = if ($null -ne $idParts[1]) { [int]$entry.Speakers[$idParts[1]] } else { 0 }
         $display = Register-Voice $Tokens64 $id $entry $idParts[1] $speakerId $UsTags
         if ($has32) { [void](Register-Voice $Tokens32 $id $entry $idParts[1] $speakerId $UsTags) }
-        Write-Host "    $display"
+        Write-Status "    $display"
     }
     New-Item $Settings -Force | Out-Null
     Set-ItemProperty $Settings -Name 'UsEnglishTags' -Value ([int]$UsTags) -Type DWord
@@ -809,17 +973,31 @@ function Set-InstalledVoices([string[]]$Wanted, [bool]$UsTags, $ByKey) {
 
     $allGood = $true
     if ($Wanted.Count -gt 0) {
-        Write-Host "`n  testing each voice through Windows' speech API"
+        Write-Status "`n  testing each voice through Windows' speech API"
         foreach ($r in (Invoke-SelfTest $has32)) {
             $ok = -not $r['error'] -and [double]$r['seconds'] -gt 0.5 -and [int]$r['words'] -ge 5 -and [string]$r['bookmark'] -eq '7'
             if ($r['none']) { $ok = $false; $r['name'] = '(no voices found)'; $r['error'] = "none listed for $($r['bits'])-bit programs" }
             $line = "    {0,-44} {1}-bit  {2,5:N1} s  {3} words  bookmark {4}" -f $r['name'], $r['bits'], [double]$r['seconds'], $r['words'], $(if ($r['bookmark']) { 'ok' } else { 'missing' })
             if ($r['error']) { $line += "  ERROR: $($r['error'])" }
-            Write-Host $line -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
+            Write-Status $line $(if ($ok) { 'Green' } else { 'Red' })
             if (-not $ok) { $allGood = $false }
         }
     }
     return $allGood
+}
+
+# Hides or shows this PowerShell's console window.
+function Set-ConsoleShown([bool]$Shown) {
+    try {
+        if (-not ('ModernVoices.Console' -as [type])) {
+            Add-Type -Namespace ModernVoices -Name Console -MemberDefinition @'
+[DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
+[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr window, int show);
+'@
+        }
+        $window = [ModernVoices.Console]::GetConsoleWindow()
+        if ($window -ne [System.IntPtr]::Zero) { [void][ModernVoices.Console]::ShowWindow($window, $(if ($Shown) { 5 } else { 0 })) }
+    } catch { }
 }
 
 # --- the steps --------------------------------------------------------------------------------------
@@ -869,6 +1047,34 @@ try {
             if ($now.Peak -ne 0.6 -or $now.Boost -ne 2 -or $now.LengthScale -ne 1.25 -or -not $now.Engine) { $bad += 'sliders' }
             Set-VoiceSettings $dir $was.Peak $was.Boost $was.LengthScale
         }
+        # Apply with nothing changed: says so, changes nothing.
+        foreach ($item in $ui.List.Items) { if ($item.Tag.Name -eq 'lessac') { $item.Checked = $false } }
+        $ui.Speakers = @{}; foreach ($id in $ids) { $idParts = Split-VoiceId $id; if ($null -ne $idParts[1]) { $ui.Speakers[$idParts[0]] = $idParts[1] } }
+        $ui.Current = $null
+        Invoke-UiApply
+        Write-Output "apply, nothing changed: $($ui.Status.Text)"
+        if ($ui.Status.Text -ne 'Nothing to change.') { $bad += 'apply with no changes' }
+        # Windows' default voice, set from the Voice manager (put back afterwards).
+        if ($real.Count -and $ui.InstalledList.Items.Count) {
+            $before = (Get-ItemProperty $DefaultVoiceKey -ErrorAction SilentlyContinue).DefaultTokenId
+            $ui.InstalledList.Items[0].Selected = $true
+            Update-UiInstalled
+            $token = $ui.CurrentInstalled.Token
+            Set-UiDefaultVoice
+            $now = (Get-ItemProperty $DefaultVoiceKey).DefaultTokenId
+            $marked = $ui.InstalledList.Items[0].SubItems[3].Text
+            Write-Output "default voice: $now (marked '$marked'); $($ui.DefaultLabel.Text)"
+            if ($now -ne "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\$token" -or $marked -ne 'yes') { $bad += 'default voice' }
+            if ($before) { Set-ItemProperty $DefaultVoiceKey -Name 'DefaultTokenId' -Value $before } else { Remove-ItemProperty $DefaultVoiceKey -Name 'DefaultTokenId' }
+        }
+        # A download in the background with progress, as when applying changes.
+        $ui.Busy = $true
+        $sample = Join-Path $env:TEMP 'modernvoices_selftest.mp3'
+        Remove-Item $sample -ErrorAction SilentlyContinue
+        Get-Download "$Base/en/en_GB/alba/medium/samples/speaker_0.mp3" $sample
+        $ui.Busy = $false
+        Write-Output ("background download: {0} bytes, progress bar at {1}" -f (Get-Item $sample).Length, $ui.Progress.Value)
+        if ((Get-Item $sample).Length -lt 1000) { $bad += 'background download' }
         $ui.Form.Dispose()
         if ($bad.Count) { Write-Output "window: FAILED ($($bad -join ', '))"; exit 3 }
         Write-Output 'window: ok'
@@ -895,35 +1101,25 @@ try {
 
     $interactive = -not ($Repair -or $Voices.Count -gt 0 -or $Unattended)
     $allGood = $true
-    while ($true) {
-        $installed = @(Get-InstalledIds)
-        if ($Repair) {
-            $wanted = $installed
-        } elseif ($Voices.Count -gt 0) {
-            $wanted = $Voices
-        } elseif ($Unattended) {
-            $wanted = if ($installed.Count -gt 0) { $installed } else { @('en_GB-alba-medium', 'en_GB-northern_english_male-medium') }
-        } else {
-            $ui = New-ManagerForm $catalogue $installed $usTags $byKey
-            Write-Host "`nThe Modern Voices window is open (if you can't see it, it's on the taskbar)."
-            $answer = $ui.Form.ShowDialog()
-            $wanted = @(Get-PickedIds $ui)
-            $newTags = $ui.UsBox.Checked
-            $ui.Form.Dispose()
-            if ($answer -ne 'OK') { break }
-            $same = ((@($wanted | Sort-Object) -join '|') -eq (@($installed | Sort-Object) -join '|')) -and ($newTags -eq $usTags)
-            $usTags = $newTags
-            if ($same) { continue }
-        }
-        Write-Host "`nApplying"
-        $allGood = Set-InstalledVoices @($wanted | Select-Object -Unique) $usTags $byKey
-        if (-not $interactive) { break }
-        if (-not $allGood) {
-            Add-Type -AssemblyName System.Windows.Forms
-            [void][System.Windows.Forms.MessageBox]::Show("A voice failed its test: see the window behind this one. The engine's log says why: " +
-                "$env:LOCALAPPDATA\ModernVoices\engine.log", $AppName)
-        }
+    if ($interactive) {
+        # The window is the program: the console behind it is hidden while it is open.
+        $ui = New-ManagerForm $catalogue @(Get-InstalledIds) $usTags $byKey
+        Write-Host "`nThe Modern Voices window is open (if you can't see it, it's on the taskbar)."
+        Set-ConsoleShown $false
+        try { [void]$ui.Form.ShowDialog() } finally { Set-ConsoleShown $true }
+        $ui.Form.Dispose()
+        exit 0
     }
+    $installed = @(Get-InstalledIds)
+    if ($Repair) {
+        $wanted = $installed
+    } elseif ($Voices.Count -gt 0) {
+        $wanted = $Voices
+    } else {
+        $wanted = if ($installed.Count -gt 0) { $installed } else { @('en_GB-alba-medium', 'en_GB-northern_english_male-medium') }
+    }
+    Write-Host "`nApplying"
+    $allGood = Set-InstalledVoices @($wanted | Select-Object -Unique) $usTags $byKey
 
     Write-Host ''
     if (-not $allGood) {
@@ -931,10 +1127,8 @@ try {
         if ($Unattended) { exit 2 }
     } else {
         Write-Host "Done. Installed in $App" -ForegroundColor Green
-        if (-not $interactive) {
-            Write-Host 'The voices are in every program that uses Windows'' installed voices (restart programs that were open).'
-            Write-Host 'Start menu > Modern Voices for Windows: Modern Voices, Test voices, Repair, Uninstall.'
-        }
+        Write-Host 'The voices are in every program that uses Windows'' installed voices (restart programs that were open).'
+        Write-Host 'Start menu > Modern Voices for Windows: Modern Voices, Test voices, Repair, Uninstall.'
         $signature = (Get-AuthenticodeSignature $Dll64).Status
         if ($signature -ne 'Valid') {
             Write-Host "Note: the engine's signature is '$signature': programs that insist on signed engines (WoW) will not use it." -ForegroundColor Yellow
@@ -944,4 +1138,4 @@ try {
     if ($Unattended) { Write-Host "Stopped: $($_.Exception.Message)`n$($_.ScriptStackTrace)" -ForegroundColor Red; exit 1 }
     Stop-Here "Stopped: $($_.Exception.Message)"
 }
-if (-not $NoPause -and -not $Unattended -and -not $interactive) { Read-Host 'Press Enter to close' | Out-Null }
+if (-not $NoPause -and -not $Unattended) { Read-Host 'Press Enter to close' | Out-Null }
