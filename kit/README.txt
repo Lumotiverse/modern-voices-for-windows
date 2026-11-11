@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.6.2
+Modern Voices for Windows 0.7.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -18,14 +18,19 @@ which has no way in for voices from anyone but Microsoft.
 Install
 -------
 1. Double-click Install.cmd and say yes to the administrator prompt.
-2. The Modern Voices window opens (if you can't see it, it's on the taskbar). On "Add or remove
+2. Choose where to install (C:\Program Files\Modern Voices for Windows unless you change it; a folder
+   named Modern Voices for Windows is made in the folder you choose) and press Install.
+3. The Modern Voices window opens (if you can't see it, it's on the taskbar). On "Add or remove
    voices", tick the voices you want. Select one and press Play sample to hear it first. Voices with
    several speakers (VCTK, LibriTTS, ...) list their speakers to tick; each becomes a voice.
-3. Press Apply changes. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices,
+4. Press Apply changes. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices,
    version 1.0.0), prepares them, and tests each one through Windows' speech API, with the progress
    shown at the bottom of the window.
 
 Restart programs that were open to see the new voices. This folder can then be deleted.
+
+Installed outside Program Files, the folder is set up as Program Files is: only administrators can
+change its files (every program that speaks loads the engine from it).
 
 Afterwards, from the Start menu (Modern Voices for Windows):
   Modern Voices   the window: Voice manager (installed voices, how they sound, Windows' default
@@ -56,8 +61,28 @@ speech settings opens that). It is per Windows user, for 64- and 32-bit programs
 Settings app has its own voice choice, for Microsoft's newer voice system: these voices can't appear
 there, and it doesn't affect programs that use these.
 
-The settings live in C:\Program Files\Modern Voices for Windows\voices\<voice>\voice.json
-("loudness": peak and boost; "inference": length_scale, higher = slower), if you'd rather edit them.
+Pauses
+------
+On the Pauses tab, for every voice:
+
+  Sentence gap    added after a sentence when another follows (never after the last, so short bits
+                  of speech, such as a screen reader's, don't gain dead air). Default 600 ms.
+  Paragraph gap   at a line break, in place of the sentence gap. Default 1200 ms.
+  Comma gap       at each , ; or : (default 0: commas as the voice says them). Above 0 the voice says
+                  each part of a sentence separately so the gap can go between them, which can make
+                  the intonation a little more broken up.
+
+Each is silence added to the voice's own pause, in milliseconds at a program's speech rate 0 and the
+voice's own speed. Faster speech uses a smaller share of it and slower a larger share, in step with
+the speech: a 600 ms gap is 482 ms at rate +2 (TTS Enhanced's default in World of Warcraft: set
+750 ms there for 0.6 s) and 747 ms at -2.
+
+A voice can have its own: in the Voice manager, untick "Use the pauses for every voice" and set its
+three gaps. Changes apply straight away, like volume.
+
+The settings live in the install folder: settings.json (the Pauses tab) and voices\<voice>\voice.json
+("loudness": peak and boost; "inference": length_scale, higher = slower; "pauses": its own), if you'd
+rather edit them.
 
 
 Disk space

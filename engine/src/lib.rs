@@ -160,6 +160,8 @@ struct Settings {
     peak: f32,
     boost: f32,
     length_scale: f32,
+    /// The voice's own pauses (`"own_pauses": 1` in its voice.json), else the global ones.
+    own_pauses: Option<Pauses>,
 }
 
 impl Settings {
@@ -169,8 +171,29 @@ impl Settings {
             peak: number(info, "peak", 0.0).min(1.0),
             boost: number(info, "boost", 1.0).clamp(1.0, 5.0),
             length_scale: number(info, "length_scale", 1.0).clamp(0.3, 3.0),
+            own_pauses: (number(info, "own_pauses", 0.0) >= 1.0).then(|| Pauses::read(info)),
         }
     }
+}
+
+/// The pauses for every voice that has none of its own: the settings file the voice token names
+/// (`SettingsFile`), read again whenever it changes. The defaults without one.
+fn global_pauses(path: Option<&str>) -> Pauses {
+    let Some(path) = path else { return DEFAULT_PAUSES };
+    static CACHE: OnceLock<Mutex<HashMap<String, (Option<SystemTime>, Pauses)>>> = OnceLock::new();
+    let changed = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let Ok(mut cache) = CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock() else { return DEFAULT_PAUSES };
+    if let Some((when, pauses)) = cache.get(path) {
+        if *when == changed {
+            return *pauses;
+        }
+    }
+    let pauses = Pauses::read(&std::fs::read_to_string(path).unwrap_or_default());
+    if cache.contains_key(path) || log::enabled() {
+        log::write(&format!("pauses for every voice: {pauses:?} ({path})"));
+    }
+    cache.insert(path.to_string(), (changed, pauses));
+    pauses
 }
 
 impl Model {
@@ -330,6 +353,8 @@ struct Voice {
     model: Arc<Model>,
     speaker: i32,
     name: String,
+    /// The program's settings file (pauses for every voice), from the token's `SettingsFile`.
+    settings_file: Option<String>,
 }
 
 #[implement(ISpTTSEngine, ISpObjectWithToken)]
@@ -367,11 +392,12 @@ impl ISpObjectWithToken_Impl for Engine_Impl {
                 return None;
             };
             let speaker = token_dword(&token, w!("SpeakerId")).unwrap_or(0) as i32;
+            let settings_file = token_string(&token, w!("SettingsFile"));
             let model = load_model(&model_dir, &data_dir)?;
             if log::enabled() {
                 log::write(&format!("voice #{number} {name}: {:?} (from {})", started.elapsed(), caller()));
             }
-            Some(Voice { model, speaker, name })
+            Some(Voice { model, speaker, name, settings_file })
         }));
         match result {
             Ok(Some(voice)) => {
@@ -471,6 +497,9 @@ struct Output<'a> {
     site: &'a ISpTTSEngineSite,
     written: u64,
     interest: u64,
+    /// A sentence has ended and nothing since: the next one starts with the pause between them.
+    /// (Written then, not after the sentence, so speech never ends on an added pause.)
+    after_sentence: bool,
 }
 
 fn event(id: SPEVENTENUM, kind: SPEVENTLPARAMTYPE, offset: u64, wparam: usize, lparam: isize) -> SPEVENT {
@@ -509,6 +538,23 @@ impl Output<'_> {
                 false
             }
         }
+    }
+
+    /// Silence, written in pieces of about 50 ms so that stopping cuts it short at once. False when
+    /// stopped or SAPI took no more.
+    fn silence(&mut self, mut count: usize) -> bool {
+        let piece = [0i16; 1024];
+        while count > 0 {
+            if self.aborted() {
+                return false;
+            }
+            let n = count.min(piece.len());
+            if !self.write(&piece[..n]) {
+                return false;
+            }
+            count -= n;
+        }
+        true
     }
 
     fn aborted(&self) -> bool {
@@ -550,8 +596,10 @@ impl Engine_Impl {
             }
             match part {
                 Part::Silence(ms) => {
+                    // The program's own pause, in place of the one between sentences.
+                    out.after_sentence = false;
                     let count = (voice.model.sample_rate as u64 * ms as u64 / 1000) as usize;
-                    if !out.write(&vec![0i16; count]) {
+                    if !out.silence(count) {
                         return Ok(());
                     }
                 }
@@ -566,8 +614,10 @@ impl Engine_Impl {
         Ok(())
     }
 
-    /// One run, sentence by sentence, each sentence word by word. False when it was stopped or SAPI
-    /// took no more.
+    /// One run, sentence by sentence, each sentence word by word. Between sentences, the voice's
+    /// pause plus the set gap (a paragraph's at a line break); within one, when commas have a gap, a
+    /// clause at a time with that gap between. Gaps shrink as speech speeds up: at rate 0 and the
+    /// voice's own speed, the full gap. False when it was stopped or SAPI took no more.
     fn say(&self, voice: &Voice, run: &Run, base_rate: i32, base_volume: f32, out: &mut Output) -> bool {
         // SAPI's rate is -10 to 10, a third to three times as fast; its pitch is taken as
         // semitones, a few at most, by which the speech is shifted.
@@ -577,56 +627,81 @@ impl Engine_Impl {
         let shift = 2f32.powf(semitones / 12.0);
         let gain = base_volume * (run.volume.min(100) as f32 / 100.0);
         let settings = voice.model.settings();
+        let pauses = settings.own_pauses.unwrap_or_else(|| global_pauses(voice.settings_file.as_deref()));
+        let pace = speed / settings.length_scale;
+        let rate_hz = voice.model.sample_rate;
         let config = GenerationConfig { speed: speed / shift / settings.length_scale, sid: voice.speaker, ..Default::default() };
 
-        for (from, to) in sentences(&run.text) {
+        let found = sentences(&run.text);
+        for (i, &(from, to)) in found.iter().enumerate() {
             if out.aborted() {
                 return false;
             }
-            let text = String::from_utf16_lossy(&run.text[from..to]);
-            let started = Instant::now();
-            let made = {
-                let _turn = voice.model.busy.lock();
-                voice.model.tts.generate_with_config(&text, &config, None::<fn(&[f32], f32) -> bool>)
-            };
-            let audio = match made {
-                Some(made) => {
-                    let mut raw = made.samples().to_vec();
-                    apply_loudness(&mut raw, settings.peak, settings.boost);
-                    resample(&raw, shift)
-                }
-                None => {
-                    log::write(&format!("{}: nothing made for {text:?}", voice.name));
-                    Vec::new()
-                }
-            };
-            if log::enabled() {
-                log::write(&format!("{} (speaker {}): {text:?}, {} samples in {:?} (speed {speed:.2}, shift {semitones})",
-                    voice.name, voice.speaker, audio.len(), started.elapsed()));
-            }
-            if out.aborted() {
-                return false;
-            }
-            let pcm: Vec<i16> = audio.iter().map(|s| (s * gain * 32767.0).clamp(-32768.0, 32767.0) as i16).collect();
-            let spoken = words(&run.text, from, to);
-            let weights: Vec<f32> = spoken.iter().map(|&(a, b)| weight(&run.text[a..b])).collect();
-            let starts = word_starts(&audio, &weights);
-
-            out.boundary(SPEI_SENTENCE_BOUNDARY, &run.offsets, from, to);
-            let mut at = 0usize;
-            for (k, &(a, b)) in spoken.iter().enumerate() {
-                let next = starts[k].max(at);
-                if !out.write(&pcm[at..next]) || out.aborted() {
+            if out.after_sentence {
+                let before = if i > 0 { found[i - 1].1 } else { 0 };
+                let ms = if line_break_between(&run.text, before, from) { pauses.paragraph_ms } else { pauses.sentence_ms };
+                if !out.silence(gap_samples(ms, pace, rate_hz)) {
                     return false;
                 }
-                at = next;
-                out.boundary(SPEI_WORD_BOUNDARY, &run.offsets, a, b);
+                out.after_sentence = false;
             }
-            if !out.write(&pcm[at..]) {
-                return false;
+            out.boundary(SPEI_SENTENCE_BOUNDARY, &run.offsets, from, to);
+            let pieces = if pauses.comma_ms > 0.0 { clauses(&run.text, from, to) } else { vec![(from, to)] };
+            for (k, &(a, b)) in pieces.iter().enumerate() {
+                if k > 0 && !out.silence(gap_samples(pauses.comma_ms, pace, rate_hz)) {
+                    return false;
+                }
+                if !self.say_piece(voice, run, a, b, &config, &settings, shift, gain, out) {
+                    return false;
+                }
             }
+            out.after_sentence = true;
         }
         true
+    }
+
+    /// Makes text[from..to) of a run and writes it word by word, each word's event just before it.
+    #[allow(clippy::too_many_arguments)]
+    fn say_piece(&self, voice: &Voice, run: &Run, from: usize, to: usize, config: &GenerationConfig, settings: &Settings,
+                 shift: f32, gain: f32, out: &mut Output) -> bool {
+        let text = String::from_utf16_lossy(&run.text[from..to]);
+        let started = Instant::now();
+        let made = {
+            let _turn = voice.model.busy.lock();
+            voice.model.tts.generate_with_config(&text, config, None::<fn(&[f32], f32) -> bool>)
+        };
+        let audio = match made {
+            Some(made) => {
+                let mut raw = made.samples().to_vec();
+                apply_loudness(&mut raw, settings.peak, settings.boost);
+                resample(&raw, shift)
+            }
+            None => {
+                log::write(&format!("{}: nothing made for {text:?}", voice.name));
+                Vec::new()
+            }
+        };
+        if log::enabled() {
+            log::write(&format!("{} (speaker {}): {text:?}, {} samples in {:?} (speed {:.2}, shift {shift:.2})",
+                voice.name, voice.speaker, audio.len(), started.elapsed(), config.speed));
+        }
+        if out.aborted() {
+            return false;
+        }
+        let pcm: Vec<i16> = audio.iter().map(|s| (s * gain * 32767.0).clamp(-32768.0, 32767.0) as i16).collect();
+        let spoken = words(&run.text, from, to);
+        let weights: Vec<f32> = spoken.iter().map(|&(a, b)| weight(&run.text[a..b])).collect();
+        let starts = word_starts(&audio, &weights);
+        let mut at = 0usize;
+        for (k, &(a, b)) in spoken.iter().enumerate() {
+            let next = starts[k].max(at);
+            if !out.write(&pcm[at..next]) || out.aborted() {
+                return false;
+            }
+            at = next;
+            out.boundary(SPEI_WORD_BOUNDARY, &run.offsets, a, b);
+        }
+        out.write(&pcm[at..])
     }
 
     fn sample_rate(&self) -> u32 {
@@ -659,7 +734,7 @@ impl ISpTTSEngine_Impl for Engine_Impl {
         let _ = unsafe { site.GetEventInterest(&mut interest) };
         let result = match catch_unwind(AssertUnwindSafe(|| {
             let parts = unsafe { parts(fragments) };
-            let mut out = Output { site: &site, written: 0, interest };
+            let mut out = Output { site: &site, written: 0, interest, after_sentence: false };
             self.speak(parts, &mut out)
         })) {
             Ok(result) => result,
@@ -779,8 +854,10 @@ mod tests {
     fn settings_from_voice_json() {
         let set = r#"{ "inference": { "noise_scale": 0.667, "length_scale": 1.2, "noise_w": 0.8 },
             "loudness": { "peak": 0.9, "boost": 2 } }"#;
-        assert_eq!(Settings::from(set), Settings { peak: 0.9, boost: 2.0, length_scale: 1.2 });
-        assert_eq!(Settings::from(""), Settings { peak: 0.0, boost: 1.0, length_scale: 1.0 });
+        assert_eq!(Settings::from(set), Settings { peak: 0.9, boost: 2.0, length_scale: 1.2, own_pauses: None });
+        let own = r#"{ "pauses": { "own_pauses": 1, "sentence_ms": 300, "comma_ms": 0, "paragraph_ms": 900 } }"#;
+        assert_eq!(Settings::from(own).own_pauses, Some(Pauses { sentence_ms: 300.0, comma_ms: 0.0, paragraph_ms: 900.0 }));
+        assert_eq!(Settings::from(""), Settings { peak: 0.0, boost: 1.0, length_scale: 1.0, own_pauses: None });
     }
 
     #[test]

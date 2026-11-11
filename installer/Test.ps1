@@ -12,6 +12,10 @@ programs use them (System.Speech, which sits on SAPI 5).
                             the build's test of live settings: speaks with voice NAME, changes its
                             voice.json (in FOLDER) to peak 0.5, no boost, speaks again in the same
                             process, puts the settings back; prints the two peaks as JSON.
+  Test.ps1 -Measure NAME -TextBase64 TEXT [-Rate N]
+                            the build's test of pauses: speaks TEXT (base64 of UTF-16) with voice
+                            NAME at SAPI rate N into a file; prints its length and the silent gaps
+                            inside it (ms) as JSON.
 
 Only voices of this program (token names starting ModernVoices_) are tried.
 #>
@@ -20,7 +24,10 @@ param(
     [string[]]$Only,
     [switch]$NoPause,
     [string]$Live,
-    [string]$Dir
+    [string]$Dir,
+    [string]$Measure,
+    [string]$TextBase64,
+    [int]$Rate = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,6 +65,43 @@ function Get-WavPeak([string]$Path) {
 
 $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(22050,
     [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+
+# The silences inside a 16-bit mono WAV (not at its start or end): stretches of at least 60 ms below
+# 2% of full scale, in ms.
+function Get-WavGaps([string]$Path, [int]$SampleRate) {
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $count = [int](($bytes.Length - 44) / 2)
+    $samples = New-Object 'int16[]' $count
+    [Buffer]::BlockCopy($bytes, 44, $samples, 0, $count * 2)
+    $quiet = 655
+    $first = 0; while ($first -lt $count -and [math]::Abs([int]$samples[$first]) -lt $quiet) { $first++ }
+    $last = $count - 1; while ($last -gt $first -and [math]::Abs([int]$samples[$last]) -lt $quiet) { $last-- }
+    $gaps = @()
+    $run = 0
+    for ($i = $first; $i -le $last; $i++) {
+        if ([math]::Abs([int]$samples[$i]) -lt $quiet) { $run++ }
+        else {
+            if ($run -ge $SampleRate * 0.06) { $gaps += [math]::Round($run * 1000.0 / $SampleRate) }
+            $run = 0
+        }
+    }
+    return ,$gaps
+}
+
+if ($Measure) {
+    $text = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($TextBase64))
+    $synth.SelectVoice($Measure)
+    $synth.Rate = $Rate
+    $wav = Join-Path $env:TEMP ("modernvoices_measure_{0}.wav" -f [guid]::NewGuid().ToString('N'))
+    $synth.SetOutputToWaveFile($wav, $format)
+    $synth.Speak($text)
+    $synth.SetOutputToNull()
+    $gaps = Get-WavGaps $wav 22050
+    $seconds = [math]::Round(((Get-Item $wav).Length - 44) / 44100.0, 3)
+    Remove-Item $wav -ErrorAction SilentlyContinue
+    ('{"seconds":' + $seconds.ToString([Globalization.CultureInfo]::InvariantCulture) + ',"gaps":[' + ($gaps -join ',') + ']}')
+    exit 0
+}
 
 if ($Live) {
     . (Join-Path $PSScriptRoot 'VoiceConvert.ps1')

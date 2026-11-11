@@ -21,6 +21,7 @@ param(
     [switch]$Unattended,
     [switch]$NoPause,
     [switch]$UsEnglishTags,
+    [string]$InstallDir,      # where to install (a folder named Modern Voices for Windows is made in it); else asked
     [switch]$PickerSelfTest,  # builds the voice list window without showing it (for the build's tests)
     [switch]$FunctionsOnly    # defines the functions and stops (for tests)
 )
@@ -43,6 +44,7 @@ if (-not $isAdmin -and -not $PickerSelfTest -and -not $FunctionsOnly) {
     if ($Unattended) { $forward += '-Unattended' }
     if ($NoPause) { $forward += '-NoPause' }
     if ($UsEnglishTags) { $forward += '-UsEnglishTags' }
+    if ($InstallDir) { $forward += '-InstallDir'; $forward += "`"$InstallDir`"" }
     Start-Process powershell.exe -Verb RunAs -ArgumentList $forward
     exit
 }
@@ -52,16 +54,40 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.6.2'
+$Version = '0.7.0'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
-$App = Join-Path $env:ProgramFiles $AppName
-$Engine = Join-Path $App 'engine'
-$Dll64 = Join-Path $Engine 'x64\modern_voices.dll'
-$Dll32 = Join-Path $Engine 'x86\modern_voices.dll'
-$Cer = Join-Path $Engine 'modern_voices.cer'
-$Data = Join-Path $Engine 'espeak-ng-data'
-$VoiceRoot = Join-Path $App 'voices'
+$DefaultApp = Join-Path $env:ProgramFiles $AppName
+
+# Where the program is, and everything in it. Set again once the install folder is chosen.
+function Set-AppPaths([string]$Path) {
+    $script:App = $Path.TrimEnd('\')
+    $script:Engine = Join-Path $script:App 'engine'
+    $script:Dll64 = Join-Path $script:Engine 'x64\modern_voices.dll'
+    $script:Dll32 = Join-Path $script:Engine 'x86\modern_voices.dll'
+    $script:Cer = Join-Path $script:Engine 'modern_voices.cer'
+    $script:Data = Join-Path $script:Engine 'espeak-ng-data'
+    $script:VoiceRoot = Join-Path $script:App 'voices'
+    $script:SettingsFile = Join-Path $script:App 'settings.json'
+}
+
+# The folder the installer puts the program in, for the folder chosen: a folder named
+# Modern Voices for Windows inside it (unless that is the one chosen), so that uninstalling only ever
+# deletes the program's own folder.
+function Resolve-AppFolder([string]$Chosen) {
+    $full = [System.IO.Path]::GetFullPath($Chosen.Trim().Trim('"'))
+    if ((Split-Path $full -Leaf) -eq $AppName) { return $full.TrimEnd('\') }
+    return (Join-Path $full $AppName)
+}
+
+# Where it is installed now (Installed apps' entry), or '' when it is not.
+function Get-InstalledFolder {
+    if (-not (Test-Path $OurKey)) { return '' }
+    $location = (Get-ItemProperty $OurKey -ErrorAction SilentlyContinue).InstallLocation
+    if ($location -and (Test-Path (Join-Path $location 'engine'))) { return $location.TrimEnd('\') }
+    return ''
+}
+
 $Settings = 'HKLM:\SOFTWARE\Modern Voices for Windows'
 $OurKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows'
 $Tokens64 = 'HKLM:\SOFTWARE\Microsoft\Speech\Voices\Tokens'
@@ -74,7 +100,8 @@ $PS32 = "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
 $Base = 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0'   # v1.0.0: the voices as tested
 $DefaultPeak = 0.95
 $DefaultBoost = 1.5
-$InPlace = ($Root.TrimEnd('\') -eq $App.TrimEnd('\'))
+Set-AppPaths $DefaultApp
+$InPlace = $false
 
 # Names for the catalogue's voices (else its own name, in capitals), and the voices known to be
 # male or female (SAPI's Gender attribute; left out where not known or several speakers).
@@ -228,6 +255,102 @@ function Get-InstalledIds {
     return $ids
 }
 
+# --- where to install -------------------------------------------------------------------------------
+
+# The first screen of a fresh install: where the program goes, with Change... to choose another folder.
+# Returns the program's folder, or '' when cancelled.
+function New-LocationForm([string]$Default) {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    [System.Windows.Forms.Application]::EnableVisualStyles()
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "$AppName $Version - install"
+    $form.Size = New-Object System.Drawing.Size(640, 300)
+    $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false; $form.MinimizeBox = $false
+    $form.StartPosition = 'CenterScreen'
+    $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $form.TopMost = $true
+    $form.add_Shown({ $script:Where.Form.Activate(); $script:Where.Form.TopMost = $false })
+    $title = New-Control 'Label' $form 16 14 600 24 "Install $AppName" ''
+    $title.Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
+    [void](New-Control 'Label' $form 16 50 600 20 'Install to:' '')
+    $path = New-Control 'TextBox' $form 16 72 480 24 $Default ''
+    $change = New-Control 'Button' $form 506 70 100 27 'Change...' ''
+    $note = New-Control 'Label' $form 16 106 590 90 '' ''
+    $note.ForeColor = [System.Drawing.Color]::DimGray
+    $install = New-Control 'Button' $form 400 216 100 30 'Install' ''
+    $cancel = New-Control 'Button' $form 506 216 100 30 'Cancel' ''
+    $install.DialogResult = 'OK'; $cancel.DialogResult = 'Cancel'
+    $form.AcceptButton = $install; $form.CancelButton = $cancel
+    $script:Where = @{ Form = $form; Path = $path; Note = $note }
+    $change.add_Click({ Select-InstallFolder })
+    $path.add_TextChanged({ Update-LocationNote })
+    Update-LocationNote
+    return $script:Where
+}
+
+function Test-UnderProgramFiles([string]$Folder) {
+    foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if ($base -and $Folder.StartsWith($base.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    }
+    return $false
+}
+
+function Update-LocationNote {
+    $text = "Everything goes in this folder: the voice engine (about 25 MB), the voices (60 to 110 MB each) and their " +
+        "settings. Uninstalling removes it."
+    try {
+        $folder = Resolve-AppFolder $script:Where.Path.Text
+        if ($folder -ne $script:Where.Path.Text.Trim().TrimEnd('\')) { $text += "`nA folder named $AppName is made in the folder you choose: $folder" }
+        if (-not (Test-UnderProgramFiles $folder)) {
+            $text += "`nOutside Program Files: only administrators will be able to change the files in it (every program that " +
+                "speaks loads the engine from there)."
+        }
+    } catch {
+        $text = 'That is not a folder path.'
+    }
+    $script:Where.Note.Text = $text
+}
+
+function Select-InstallFolder {
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = "Choose where to install $AppName (a folder named $AppName is made in it)"
+    $current = $script:Where.Path.Text.Trim()
+    $parent = if ((Split-Path $current -Leaf) -eq $AppName) { Split-Path $current -Parent } else { $current }
+    if ($parent -and (Test-Path $parent)) { $dialog.SelectedPath = $parent }
+    if ($dialog.ShowDialog($script:Where.Form) -eq 'OK') { $script:Where.Path.Text = Resolve-AppFolder $dialog.SelectedPath }
+}
+
+# Asks where to install; the program's folder, or '' when cancelled.
+function Read-InstallFolder {
+    while ($true) {
+        $where = New-LocationForm $DefaultApp
+        $answer = $where.Form.ShowDialog()
+        $text = $where.Path.Text
+        $where.Form.Dispose()
+        if ($answer -ne 'OK') { return '' }
+        try {
+            $folder = Resolve-AppFolder $text
+            $drive = [System.IO.Path]::GetPathRoot($folder)
+            if (-not $drive -or -not (Test-Path $drive)) { throw "There is no drive $drive." }
+            return $folder
+        } catch {
+            [void][System.Windows.Forms.MessageBox]::Show("Can't install there: $($_.Exception.Message)", $AppName)
+        }
+    }
+}
+
+# Outside Program Files, the folder is made as Program Files is: administrators and Windows may change
+# it, everyone else (store apps and sandboxed programs too) may only read and run it. (Every program
+# that speaks loads the engine from here, so a folder anyone could write to would let anyone put code
+# into them.)
+function Protect-AppFolder {
+    if (Test-UnderProgramFiles $App) { return }
+    & "$env:SystemRoot\System32\icacls.exe" $App /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' `
+        '*S-1-5-32-545:(OI)(CI)RX' '*S-1-5-11:(OI)(CI)RX' '*S-1-15-2-1:(OI)(CI)RX' '*S-1-15-2-2:(OI)(CI)RX' | Out-Null
+    if ($LASTEXITCODE) { throw "Could not set who may change $App (icacls: $LASTEXITCODE)." }
+}
+
 # --- the manager window ------------------------------------------------------------------------------
 # Two tabs: Voice manager (the installed voices: how each sounds, sliders saved to its voice.json as
 # they move, which the engine reads while speaking; Preview; Windows' default voice) and Add or remove
@@ -291,11 +414,12 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
 
     $tabs = New-Control 'TabControl' $form 12 12 840 640 '' 'Top, Bottom, Left, Right'
     $tabInstalled = New-Object System.Windows.Forms.TabPage 'Voice manager'
+    $tabPauses = New-Object System.Windows.Forms.TabPage 'Pauses'
     $tabAdd = New-Object System.Windows.Forms.TabPage 'Add or remove voices'
-    $tabs.TabPages.Add($tabInstalled); $tabs.TabPages.Add($tabAdd)
+    $tabs.TabPages.Add($tabInstalled); $tabs.TabPages.Add($tabPauses); $tabs.TabPages.Add($tabAdd)
 
     # ---- Voice manager
-    $installedList = New-Control 'ListView' $tabInstalled 10 10 810 200 '' 'Top, Left, Right'
+    $installedList = New-Control 'ListView' $tabInstalled 10 10 810 150 '' 'Top, Left, Right'
     $installedList.View = 'Details'; $installedList.FullRowSelect = $true; $installedList.HideSelection = $false
     $installedList.MultiSelect = $false
     [void]$installedList.Columns.Add('Voice', 230)
@@ -303,10 +427,10 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     [void]$installedList.Columns.Add('On disk', 70)
     [void]$installedList.Columns.Add('Windows default', 110)
     [void]$installedList.Columns.Add('Folder', 120)
-    $defaultLabel = New-Control 'Label' $tabInstalled 10 220 470 20 '' 'Top, Left, Right'
-    $defaultButton = New-Control 'Button' $tabInstalled 490 216 160 27 'Make default voice' 'Top, Right'
+    $defaultLabel = New-Control 'Label' $tabInstalled 10 170 470 20 '' 'Top, Left, Right'
+    $defaultButton = New-Control 'Button' $tabInstalled 490 166 160 27 'Make default voice' 'Top, Right'
     $defaultButton.Enabled = $false
-    $sapiButton = New-Control 'Button' $tabInstalled 660 216 160 27 'Windows speech settings' 'Top, Right'
+    $sapiButton = New-Control 'Button' $tabInstalled 660 166 160 27 'Windows speech settings' 'Top, Right'
     $speakersOf = [ordered]@{}
     foreach ($id in $Installed) {
         $idParts = Split-VoiceId $id
@@ -314,32 +438,69 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         if ($null -ne $idParts[1]) { $speakersOf[$idParts[0]] += $idParts[1] }
     }
 
-    $soundLabel = New-Control 'Label' $tabInstalled 10 256 810 20 'Select a voice above to set how it sounds.' 'Top, Left, Right'
+    $soundLabel = New-Control 'Label' $tabInstalled 10 204 810 20 'Select a voice above to set how it sounds.' 'Top, Left, Right'
     $soundLabel.Font = $bold
     $sliders = @{}
-    $y = 284
-    foreach ($spec in @(@('Volume', 0, 100, 10), @('Boost', 10, 40, 5), @('Speed', 50, 200, 10))) {
-        [void](New-Control 'Label' $tabInstalled 10 ($y + 6) 80 20 $spec[0] '')
-        $bar = New-Control 'TrackBar' $tabInstalled 90 $y 560 45 '' 'Top, Left, Right'
-        $bar.Minimum = $spec[1]; $bar.Maximum = $spec[2]; $bar.TickFrequency = $spec[3]
-        $bar.SmallChange = 1; $bar.LargeChange = 5; $bar.Enabled = $false
+    $y = 228
+    foreach ($spec in @(@('Volume', 0, 100, 1, 5), @('Boost', 10, 40, 1, 5), @('Speed', 50, 200, 1, 5),
+                        @('Sentence gap', 0, $PauseLimits.Sentence, 50, 250), @('Comma gap', 0, $PauseLimits.Comma, 50, 250),
+                        @('Paragraph gap', 0, $PauseLimits.Paragraph, 50, 250))) {
+        if ($spec[0] -eq 'Sentence gap') {
+            $ownBox = New-Control 'CheckBox' $tabInstalled 10 ($y + 2) 810 22 'Use the pauses for every voice (Pauses tab); untick to give this voice its own' 'Top, Left, Right'
+            $ownBox.Enabled = $false
+            $y += 28
+        }
+        [void](New-Control 'Label' $tabInstalled 10 ($y + 6) 100 20 $spec[0] '')
+        $bar = New-Control 'TrackBar' $tabInstalled 110 $y 540 30 '' 'Top, Left, Right'
+        $bar.AutoSize = $false; $bar.TickStyle = 'None'
+        $bar.Minimum = $spec[1]; $bar.Maximum = $spec[2]; $bar.SmallChange = $spec[3]; $bar.LargeChange = $spec[4]
+        $bar.Enabled = $false
         $value = New-Control 'Label' $tabInstalled 660 ($y + 6) 160 20 '' 'Top, Right'
         $sliders[$spec[0]] = @{ Bar = $bar; Value = $value }
         $bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.SaveTimer.Stop(); $script:Ui.SaveTimer.Start() } })
-        $y += 50
+        $y += 33
     }
-    $explain = New-Control 'Label' $tabInstalled 90 ($y - 2) 730 48 ("Volume: how loud each sentence's loudest moment is (0 = as Piper made it, quieter). " +
-        "Boost: lifts the quieter parts more than the loud ones, so the voice sounds louder overall without clipping (higher sounds more " +
-        "compressed). Speed: 100% is the voice's own pace.") 'Top, Left, Right'
+    $explain = New-Control 'Label' $tabInstalled 10 ($y + 2) 810 34 ("Volume: each sentence's loudest moment (0 = as Piper made it). Boost: lifts quiet parts more than " +
+        "loud ones (higher sounds more compressed). Speed: 100% is the voice's own pace. Gaps: added to the voice's own pause, at rate 0.") 'Top, Left, Right'
     $explain.ForeColor = $grey
-    $y += 52
+    $y += 40
     $previewBox = New-Control 'TextBox' $tabInstalled 10 $y 600 24 $PreviewText 'Top, Left, Right'
     $previewButton = New-Control 'Button' $tabInstalled 620 ($y - 1) 95 27 'Preview' 'Top, Right'
     $resetButton = New-Control 'Button' $tabInstalled 725 ($y - 1) 95 27 'Reset' 'Top, Right'
     $previewButton.Enabled = $false; $resetButton.Enabled = $false
-    $live = New-Control 'Label' $tabInstalled 10 ($y + 34) 810 36 ("Changes are saved as you move a slider and take effect straight away, also in programs already " +
+    $live = New-Control 'Label' $tabInstalled 10 ($y + 32) 810 34 ("Changes are saved as you move a slider and take effect straight away, also in programs already " +
         "using the voice (from the next thing they say). A voice's speakers share its settings.") 'Top, Left, Right'
     $live.ForeColor = $grey
+
+    # ---- Pauses (every voice without its own)
+    $pausesTitle = New-Control 'Label' $tabPauses 10 12 810 20 'Pauses for every voice (a voice can have its own: Voice manager)' 'Top, Left, Right'
+    $pausesTitle.Font = $bold
+    $globalBars = @{}
+    $y = 44
+    foreach ($spec in @(@('Sentence gap', $PauseLimits.Sentence, 'after each sentence, when another follows (none after the last)'),
+                        @('Comma gap', $PauseLimits.Comma, 'at each , ; or : (0 = commas left as the voice says them)'),
+                        @('Paragraph gap', $PauseLimits.Paragraph, 'at a line break, in place of the sentence gap'))) {
+        [void](New-Control 'Label' $tabPauses 10 ($y + 8) 100 20 $spec[0] '')
+        $bar = New-Control 'TrackBar' $tabPauses 110 $y 540 45 '' 'Top, Left, Right'
+        $bar.Minimum = 0; $bar.Maximum = $spec[1]; $bar.SmallChange = 50; $bar.LargeChange = 250; $bar.TickFrequency = 250
+        $value = New-Control 'Label' $tabPauses 660 ($y + 8) 160 20 '' 'Top, Right'
+        $value.Font = $bold
+        $what = New-Control 'Label' $tabPauses 110 ($y + 44) 710 20 $spec[2] 'Top, Left, Right'
+        $what.ForeColor = $grey
+        $example = New-Control 'Label' $tabPauses 110 ($y + 62) 710 20 '' 'Top, Left, Right'
+        $globalBars[$spec[0]] = @{ Bar = $bar; Value = $value; Example = $example }
+        $bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.GlobalTimer.Stop(); $script:Ui.GlobalTimer.Start() } })
+        $y += 100
+    }
+    $pausesExplain = New-Control 'Label' $tabPauses 10 ($y + 4) 810 110 ("Each gap is silence added to the voice's own pause, in milliseconds at a program's speech rate 0 and the " +
+        "voice's own speed. A program speaking faster uses a smaller share of it, and slower a larger share, in step with the speech: at rate +2 " +
+        "(TTS Enhanced's default in World of Warcraft) a 600 ms gap is 482 ms; at -2 it is 747 ms.`n`nA comma gap above 0 has the voice say " +
+        "each part of a sentence separately, so that the gap can go between them: the intonation can sound a little more broken up.") 'Top, Left, Right'
+    $pausesExplain.ForeColor = $grey
+    $pausesReset = New-Control 'Button' $tabPauses 10 ($y + 120) 140 27 'Reset to defaults' 'Top, Left'
+    $pausesNote = New-Control 'Label' $tabPauses 160 ($y + 125) 660 20 ("Defaults: sentence 600 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; " +
+        "applies straight away.") 'Top, Left, Right'
+    $pausesNote.ForeColor = $grey
 
     # ---- Add or remove voices
     $intro = New-Control 'Label' $tabAdd 10 8 810 32 ("Tick the voices to install; untick one to remove it. Select a voice and press Play sample to hear it. " +
@@ -398,6 +559,9 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $timer = New-Object System.Windows.Forms.Timer
     $timer.Interval = 350
     $timer.add_Tick({ $script:Ui.SaveTimer.Stop(); Save-UiSettings })
+    $globalTimer = New-Object System.Windows.Forms.Timer
+    $globalTimer.Interval = 350
+    $globalTimer.add_Tick({ $script:Ui.GlobalTimer.Stop(); Save-UiGlobalPauses })
 
     $script:Ui = @{ Form = $form; Tabs = $tabs; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
         Speakers = $chosenSpeakers; Current = $null; Player = $null; Filling = $false; InstalledKeys = @($speakersOf.Keys)
@@ -405,7 +569,8 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         PreviewButton = $previewButton; ResetButton = $resetButton; CurrentInstalled = $null; SaveTimer = $timer
         PreviewProcess = $null; SizeLabel = $sizeLabel; WarnLabel = $warnLabel; Catalogue = $Catalogue; ByKey = $ByKey
         DefaultLabel = $defaultLabel; DefaultButton = $defaultButton; Progress = $progress; Status = $status; Apply = $apply
-        Close = $close; Busy = $false; UsTags = $UsTags; Installed = @($Installed); Bold = $bold; Plain = $form.Font; Changed = $false }
+        Close = $close; Busy = $false; UsTags = $UsTags; Installed = @($Installed); Bold = $bold; Plain = $form.Font; Changed = $false
+        OwnBox = $ownBox; GlobalBars = $globalBars; GlobalTimer = $globalTimer }
     $list.add_SelectedIndexChanged({ Update-UiSelection })
     $list.add_ItemChecked({ if (-not $script:Ui.Filling) { Update-UiSummary } })
     $speakerList.add_ItemCheck({
@@ -420,14 +585,18 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $sapiButton.add_Click({ Start-Process "$env:SystemRoot\System32\Speech\SpeechUX\sapi.cpl" })
     $apply.add_Click({ Invoke-UiApply })
     $resetButton.add_Click({ Reset-UiSettings })
+    $ownBox.add_CheckedChanged({ Update-UiOwnPauses })
+    $pausesReset.add_Click({ Reset-UiGlobalPauses })
     $form.add_FormClosing({
         param($sender, $e)
         if ($script:Ui.Busy) { $e.Cancel = $true; return }   # not while changes are being applied
         Save-UiSpeakers
         if ($script:Ui.SaveTimer.Enabled) { $script:Ui.SaveTimer.Stop(); Save-UiSettings }
+        if ($script:Ui.GlobalTimer.Enabled) { $script:Ui.GlobalTimer.Stop(); Save-UiGlobalPauses }
         if ($script:Ui.Player) { $script:Ui.Player.Stop() }
         Stop-UiPreview
     })
+    Set-UiGlobalBars (Get-Pauses $SettingsFile)
     Update-UiInstalledList
     Update-UiSummary
     if ($installedList.Items.Count -eq 0) { $tabs.SelectedTab = $tabAdd }
@@ -441,6 +610,71 @@ function Update-UiSliderLabels {
     $boost = $s.Boost.Bar.Value / 10.0
     $s.Boost.Value.Text = if ($boost -le 1.0) { 'none' } else { $boost.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture) + 'x' }
     $s.Speed.Value.Text = "$($s.Speed.Bar.Value)%"
+    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') {
+        $ms = Get-RoundedMs $s[$k].Bar.Value
+        $s[$k].Value.Text = Format-Gap $ms $k
+        $g = $script:Ui.GlobalBars[$k]
+        $gms = Get-RoundedMs $g.Bar.Value
+        $g.Value.Text = Format-Gap $gms $k
+        $g.Example.Text = if ($gms -gt 0) { "at rate +2: $([math]::Round($gms / [math]::Pow(3, 0.2))) ms   at rate -2: $([math]::Round($gms * [math]::Pow(3, 0.2))) ms" } else { '' }
+    }
+}
+
+function Get-RoundedMs([double]$Value) { return [int]([math]::Round($Value / 10) * 10) }
+function Format-Gap([int]$Ms, [string]$Kind) {
+    if ($Ms -le 0) { return $(if ($Kind -eq 'Comma gap') { 'none (as said)' } else { 'none added' }) }
+    return "+$Ms ms"
+}
+
+# The Pauses tab's sliders, from the settings file's values.
+function Set-UiGlobalBars($Pauses) {
+    $ui = $script:Ui
+    $ui.Filling = $true
+    try {
+        $ui.GlobalBars['Sentence gap'].Bar.Value = [int][math]::Min($PauseLimits.Sentence, $Pauses.Sentence)
+        $ui.GlobalBars['Comma gap'].Bar.Value = [int][math]::Min($PauseLimits.Comma, $Pauses.Comma)
+        $ui.GlobalBars['Paragraph gap'].Bar.Value = [int][math]::Min($PauseLimits.Paragraph, $Pauses.Paragraph)
+        Update-UiSliderLabels
+    } finally {
+        $ui.Filling = $false
+    }
+}
+
+function Save-UiGlobalPauses {
+    $g = $script:Ui.GlobalBars
+    try {
+        Set-GlobalPauses $SettingsFile (Get-RoundedMs $g['Sentence gap'].Bar.Value) (Get-RoundedMs $g['Comma gap'].Bar.Value) (Get-RoundedMs $g['Paragraph gap'].Bar.Value)
+    } catch {
+        [void][System.Windows.Forms.MessageBox]::Show("Could not save the pauses: $($_.Exception.Message)", $AppName)
+    }
+    # A voice that uses these shows them.
+    if ($script:Ui.CurrentInstalled -and $script:Ui.OwnBox.Checked) { Update-UiOwnPauses }
+}
+
+function Reset-UiGlobalPauses {
+    $g = $script:Ui.GlobalBars
+    $g['Sentence gap'].Bar.Value = $PauseDefaults.Sentence
+    $g['Comma gap'].Bar.Value = $PauseDefaults.Comma
+    $g['Paragraph gap'].Bar.Value = $PauseDefaults.Paragraph
+}
+
+# The selected voice's pause sliders: its own (unticked), or the Pauses tab's shown greyed (ticked).
+function Update-UiOwnPauses {
+    $ui = $script:Ui
+    $useGlobal = $ui.OwnBox.Checked
+    $s = $ui.Sliders
+    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $s[$k].Bar.Enabled = ($ui.CurrentInstalled -ne $null) -and -not $useGlobal }
+    if ($useGlobal -and -not $ui.Filling) {
+        $was = $ui.Filling
+        $ui.Filling = $true
+        try {
+            foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $s[$k].Bar.Value = $ui.GlobalBars[$k].Bar.Value }
+            Update-UiSliderLabels
+        } finally {
+            $ui.Filling = $was
+        }
+    }
+    if (-not $ui.Filling -and $ui.CurrentInstalled) { $ui.SaveTimer.Stop(); $ui.SaveTimer.Start() }
 }
 
 # The Voice manager's list, from what is installed now (one row per model), the default voice marked.
@@ -553,6 +787,8 @@ function Update-UiInstalled {
     $ui.CurrentInstalled = $null
     $on = $ui.InstalledList.SelectedItems.Count -gt 0
     foreach ($k in 'Volume', 'Boost', 'Speed') { $ui.Sliders[$k].Bar.Enabled = $on }
+    $ui.OwnBox.Enabled = $on
+    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $ui.Sliders[$k].Bar.Enabled = $false }
     $ui.PreviewButton.Enabled = $on; $ui.ResetButton.Enabled = $on; $ui.DefaultButton.Enabled = $on
     if (-not $on) { return }
     $tag = $ui.InstalledList.SelectedItems[0].Tag
@@ -563,8 +799,14 @@ function Update-UiInstalled {
         if ($null -ne $settings.Boost) { $boost = $settings.Boost }
         if ($null -ne $settings.LengthScale) { $lengthScale = $settings.LengthScale }
     }
+    $voicePauses = Get-Pauses (Join-Path $tag.Dir 'voice.json')
+    $shown = if ($voicePauses.Own -or $voicePauses.Stored) { $voicePauses } else { Get-Pauses $SettingsFile }
     $ui.Filling = $true
     try {
+        $ui.OwnBox.Checked = -not $voicePauses.Own
+        $ui.Sliders['Sentence gap'].Bar.Value = [int][math]::Min($PauseLimits.Sentence, $shown.Sentence)
+        $ui.Sliders['Comma gap'].Bar.Value = [int][math]::Min($PauseLimits.Comma, $shown.Comma)
+        $ui.Sliders['Paragraph gap'].Bar.Value = [int][math]::Min($PauseLimits.Paragraph, $shown.Paragraph)
         $ui.Sliders.Volume.Bar.Value = [int][math]::Max(0, [math]::Min(100, [math]::Round($peak * 100)))
         $ui.Sliders.Boost.Bar.Value = [int][math]::Max(10, [math]::Min(40, [math]::Round($boost * 10)))
         $ui.Sliders.Speed.Bar.Value = [int][math]::Max(50, [math]::Min(200, [math]::Round(100 / $lengthScale)))
@@ -573,6 +815,7 @@ function Update-UiInstalled {
         $ui.Filling = $false
     }
     $ui.CurrentInstalled = $tag
+    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $ui.Sliders[$k].Bar.Enabled = -not $ui.OwnBox.Checked }
     $ui.SoundLabel.Text = "How $($tag.Title) sounds" + $(if ($tag.Shared) { ' (all its speakers)' } else { '' })
 }
 
@@ -583,8 +826,11 @@ function Save-UiSettings {
     $peak = $ui.Sliders.Volume.Bar.Value / 100.0
     $boost = $ui.Sliders.Boost.Bar.Value / 10.0
     $lengthScale = [math]::Round(100.0 / $ui.Sliders.Speed.Bar.Value, 3)
+    $s = $ui.Sliders
     try {
         Set-VoiceSettings $tag.Dir $peak $boost $lengthScale
+        Set-VoicePauses $tag.Dir (-not $ui.OwnBox.Checked) (Get-RoundedMs $s['Sentence gap'].Bar.Value) `
+            (Get-RoundedMs $s['Comma gap'].Bar.Value) (Get-RoundedMs $s['Paragraph gap'].Bar.Value)
     } catch {
         [void][System.Windows.Forms.MessageBox]::Show("Could not save the settings: $($_.Exception.Message)", $AppName)
     }
@@ -808,6 +1054,7 @@ function Register-Voice([string]$TokenRoot, [string]$Id, $Entry, [string]$Speake
     Set-ItemProperty $token -Name 'CLSID' -Value $Clsid
     Set-ItemProperty $token -Name 'ModelDir' -Value (Join-Path $VoiceRoot $Entry.Key)
     Set-ItemProperty $token -Name 'DataDir' -Value $Data
+    Set-ItemProperty $token -Name 'SettingsFile' -Value $SettingsFile
     Set-ItemProperty $token -Name 'SpeakerId' -Value $SpeakerId -Type DWord
     Set-ItemProperty $token -Name 'ModernVoice' -Value 1 -Type DWord
     Set-ItemProperty $token -Name 'VoiceId' -Value $Id
@@ -993,13 +1240,24 @@ if ($FunctionsOnly) { return }
 try {
     if ($PickerSelfTest) {
         # The window built (not shown) and driven as clicks would: the build's test of it.
+        $existing = Get-InstalledFolder
+        if ($existing) { Set-AppPaths $existing }
+        $bad = @()
+        # The first screen: where to install.
+        $where = New-LocationForm $DefaultApp
+        $first = $where.Path.Text
+        $where.Path.Text = 'D:\Tools'
+        $note = $where.Note.Text
+        $where.Form.Dispose()
+        Write-Output "location: default $first; D:\Tools -> $(Resolve-AppFolder 'D:\Tools')"
+        if ($first -ne $DefaultApp -or (Resolve-AppFolder 'D:\Tools') -ne "D:\Tools\$AppName" -or $note -notmatch 'Outside Program Files' -or
+            (Resolve-AppFolder "D:\Tools\$AppName") -ne "D:\Tools\$AppName") { $bad += 'location screen' }
         $catalogue = Get-Catalogue
         $byKey = @{}; foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
         $real = @(Get-InstalledIds)
         $ids = if ($real.Count) { $real } else { @('en_GB-alba-medium', 'en_GB-vctk-medium#p239') }
         $ui = New-ManagerForm $catalogue $ids $false $byKey
         $null = $ui.Form.Handle; $null = $ui.List.Handle; $null = $ui.InstalledList.Handle
-        $bad = @()
         Write-Output ("window: {0} voices in the catalogue, {1} installed shown; {2}" -f $ui.List.Items.Count, $ui.InstalledList.Items.Count, $ui.SizeLabel.Text)
         # Speakers: select VCTK, tick a second speaker.
         $vctk = @($ui.List.Items | Where-Object { $_.Tag.Key -eq 'en_GB-vctk-medium' })[0]
@@ -1032,6 +1290,30 @@ try {
             Write-Output ("sliders: {0} -> peak {1}, boost {2}, length_scale {3}" -f $ui.CurrentInstalled.Title, $now.Peak, $now.Boost, $now.LengthScale)
             if ($now.Peak -ne 0.6 -or $now.Boost -ne 2 -or $now.LengthScale -ne 1.25) { $bad += 'sliders' }
             Set-VoiceSettings $dir $was.Peak $was.Boost $was.LengthScale
+            # The Pauses tab: saved to settings.json.
+            $before = Get-Pauses $SettingsFile
+            $ui.GlobalBars['Sentence gap'].Bar.Value = 750
+            Save-UiGlobalPauses
+            $now = Get-Pauses $SettingsFile
+            Write-Output ("pauses tab: sentence {0} -> {1} ms" -f $before.Sentence, $now.Sentence)
+            if ($now.Sentence -ne 750) { $bad += 'pauses tab' }
+            Set-GlobalPauses $SettingsFile $before.Sentence $before.Comma $before.Paragraph
+            Set-UiGlobalBars (Get-Pauses $SettingsFile)
+            # A voice of its own: untick, move its sentence gap, saved to its voice.json; tick again.
+            $ui.OwnBox.Checked = $false
+            Update-UiOwnPauses
+            $enabled = $ui.Sliders['Sentence gap'].Bar.Enabled
+            $ui.Sliders['Sentence gap'].Bar.Value = 300
+            Save-UiSettings
+            $own = Get-Pauses (Join-Path $dir 'voice.json')
+            $ui.OwnBox.Checked = $true
+            Update-UiOwnPauses
+            Save-UiSettings
+            $back = Get-Pauses (Join-Path $dir 'voice.json')
+            Write-Output ("own pauses: sliders on {0}; own {1}, sentence {2} ms; ticked again: own {3}, shows {4} ms" -f $enabled, $own.Own,
+                $own.Sentence, $back.Own, $ui.Sliders['Sentence gap'].Bar.Value)
+            if (-not $enabled -or -not $own.Own -or $own.Sentence -ne 300 -or $back.Own -or
+                $ui.Sliders['Sentence gap'].Bar.Value -ne $ui.GlobalBars['Sentence gap'].Bar.Value) { $bad += 'own pauses' }
         }
         # Apply with nothing changed: says so, changes nothing.
         foreach ($item in $ui.List.Items) { if ($item.Tag.Name -eq 'lessac') { $item.Checked = $false } }
@@ -1068,8 +1350,27 @@ try {
     }
 
     Write-Host "$AppName $Version" -ForegroundColor Cyan
+    $interactive = -not ($Repair -or $Voices.Count -gt 0 -or $Unattended)
+    # Where: the installed folder (running from it, or a kit over it), else the one given or chosen.
+    $existing = Get-InstalledFolder
+    if ($existing) {
+        Set-AppPaths $existing
+        $InPlace = ($Root.TrimEnd('\') -eq $existing)
+    } elseif ($InstallDir) {
+        Set-AppPaths (Resolve-AppFolder $InstallDir)
+    } elseif ($interactive) {
+        $chosen = Read-InstallFolder
+        if (-not $chosen) { Write-Host '  cancelled: nothing installed'; exit 0 }
+        Set-AppPaths $chosen
+    }
     if ($InPlace) { Write-Host '(from the installed folder)' }
+    Write-Host "  $App"
+    $fresh = -not (Test-Path $App)
     New-Item $App -ItemType Directory -Force | Out-Null
+    if ($fresh) { Protect-AppFolder }
+    if (-not (Test-Path $SettingsFile)) {
+        Set-GlobalPauses $SettingsFile $PauseDefaults.Sentence $PauseDefaults.Comma $PauseDefaults.Paragraph
+    }
     $usTags = [bool]$UsEnglishTags
     if (-not $UsEnglishTags -and (Test-Path $Settings)) { $usTags = ((Get-ItemProperty $Settings).UsEnglishTags -eq 1) }
 
@@ -1084,7 +1385,6 @@ try {
     $byKey = @{}
     foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
 
-    $interactive = -not ($Repair -or $Voices.Count -gt 0 -or $Unattended)
     $allGood = $true
     if ($interactive) {
         # The window is the program: the console behind it is hidden while it is open.

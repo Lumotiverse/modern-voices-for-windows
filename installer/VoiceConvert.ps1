@@ -10,6 +10,11 @@
 #     boost: above 1, the quieter parts are lifted more than the loud ones (a soft limiter, tanh), so
 #            the voice is louder overall without its peaks clipping. 1 = none, 1.5 mild, 2-3 strong.
 #   "inference": { "length_scale": 1 }   speed: higher is slower
+#   "pauses": { "own_pauses": 1, "sentence_ms": 600, "comma_ms": 0, "paragraph_ms": 1200 }
+#     this voice's own pauses (with own_pauses 1; else the program's settings.json, same keys, applies)
+#     the silence added to the voice's own pause after a sentence, at a comma (0 = commas untouched)
+#     and at a line break, in milliseconds at rate 0 and the voice's own speed: faster speech, shorter
+#     gaps, in proportion
 
 $script:PevUtf8 = New-Object System.Text.UTF8Encoding $false
 
@@ -172,6 +177,67 @@ function Set-VoiceSettings([string]$Dir, [double]$Peak, [double]$Boost, [double]
     $temp = "$path.writing"
     [System.IO.File]::WriteAllText($temp, $text, $script:PevUtf8)
     Move-Item $temp $path -Force
+}
+
+# --- pauses -------------------------------------------------------------------------------------------
+
+$script:PauseDefaults = @{ Sentence = 600; Comma = 0; Paragraph = 1200 }
+$script:PauseLimits = @{ Sentence = 2000; Comma = 1000; Paragraph = 3000 }
+
+function Test-Pauses([double]$Sentence, [double]$Comma, [double]$Paragraph) {
+    foreach ($pair in @(@('sentence', $Sentence, $script:PauseLimits.Sentence), @('comma', $Comma, $script:PauseLimits.Comma),
+                        @('paragraph', $Paragraph, $script:PauseLimits.Paragraph))) {
+        if ($pair[1] -lt 0 -or $pair[1] -gt $pair[2]) { throw "The $($pair[0]) gap must be from 0 to $($pair[2]) ms (it is $(Format-Number $pair[1]))." }
+    }
+}
+
+# The pauses a settings.json or voice.json sets: Own (its own_pauses), Stored (it has any), Sentence,
+# Comma, Paragraph (ms; the defaults where it says nothing).
+function Get-Pauses([string]$Path) {
+    $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8) } else { '' }
+    $c = [Globalization.CultureInfo]::InvariantCulture
+    $read = {
+        param($key, $default)
+        $m = [regex]::Match($text, '"' + $key + '"\s*:\s*' + $script:PevNumber)
+        if ($m.Success) { [double]::Parse($m.Groups[1].Value, $c) } else { $default }
+    }
+    return [pscustomobject]@{ Own = ((& $read 'own_pauses' 0) -ge 1); Stored = ($text -match '"pauses"\s*:')
+        Sentence = (& $read 'sentence_ms' $script:PauseDefaults.Sentence); Comma = (& $read 'comma_ms' $script:PauseDefaults.Comma)
+        Paragraph = (& $read 'paragraph_ms' $script:PauseDefaults.Paragraph) }
+}
+
+# Puts a "pauses" block in a JSON file (made if missing), in place of the one there; written to a new
+# file that then replaces the old, so the engine never reads half a file.
+function Set-PausesBlock([string]$Path, [string]$Block) {
+    $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8).Replace("`r`n", "`n") } else { "{`n}`n" }
+    $existing = [regex]::Match($text, '"pauses"\s*:\s*\{[^}]*\}')
+    if ($existing.Success) {
+        $text = $text.Substring(0, $existing.Index) + $Block + $text.Substring($existing.Index + $existing.Length)
+    } else {
+        $end = $text.LastIndexOf('}')
+        $body = $text.Substring(0, $end).TrimEnd()
+        $text = $body + $(if ($body.EndsWith('{')) { "`n  " } else { ",`n  " }) + $Block + "`n}`n"
+    }
+    $temp = "$Path.writing"
+    [System.IO.File]::WriteAllText($temp, $text, $script:PevUtf8)
+    Move-Item $temp $Path -Force
+}
+
+function Format-PausesBlock([double]$Sentence, [double]$Comma, [double]$Paragraph, $Own) {
+    $ownLine = if ($null -ne $Own) { "`n    `"own_pauses`": $([int][bool]$Own)," } else { '' }
+    return "`"pauses`": {$ownLine`n    `"sentence_ms`": $(Format-Number $Sentence),`n    `"comma_ms`": $(Format-Number $Comma),`n    `"paragraph_ms`": $(Format-Number $Paragraph)`n  }"
+}
+
+# The pauses for every voice without its own: the program's settings.json.
+function Set-GlobalPauses([string]$Path, [double]$Sentence, [double]$Comma, [double]$Paragraph) {
+    Test-Pauses $Sentence $Comma $Paragraph
+    Set-PausesBlock $Path (Format-PausesBlock $Sentence $Comma $Paragraph $null)
+}
+
+# A voice's own pauses ($Own true) or not (the global ones apply; its values are kept for next time).
+function Set-VoicePauses([string]$Dir, [bool]$Own, [double]$Sentence, [double]$Comma, [double]$Paragraph) {
+    Test-Pauses $Sentence $Comma $Paragraph
+    Set-PausesBlock (Join-Path $Dir 'voice.json') (Format-PausesBlock $Sentence $Comma $Paragraph $Own)
 }
 
 # The whole job for one voice. $Name is the voice's short id (folder name), $Label what people see.

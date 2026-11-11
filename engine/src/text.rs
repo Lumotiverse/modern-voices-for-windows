@@ -178,6 +178,72 @@ pub fn apply_loudness(audio: &mut [f32], peak: f32, boost: f32) {
     }
 }
 
+/// Pause lengths, in milliseconds at normal speed: what each gap adds to the voice's own pause.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pauses {
+    pub sentence_ms: f32,
+    pub comma_ms: f32,
+    pub paragraph_ms: f32,
+}
+
+/// Before any are set: 0.6 s after a sentence, double that at a paragraph, none added at commas.
+pub const DEFAULT_PAUSES: Pauses = Pauses { sentence_ms: 600.0, comma_ms: 0.0, paragraph_ms: 1200.0 };
+
+impl Pauses {
+    /// From a settings file's or voice.json's text (keys sentence_ms, comma_ms, paragraph_ms); the
+    /// default for any it does not set.
+    pub fn read(info: &str) -> Pauses {
+        Pauses {
+            sentence_ms: number(info, "sentence_ms", DEFAULT_PAUSES.sentence_ms).min(10_000.0),
+            comma_ms: number(info, "comma_ms", DEFAULT_PAUSES.comma_ms).min(10_000.0),
+            paragraph_ms: number(info, "paragraph_ms", DEFAULT_PAUSES.paragraph_ms).min(10_000.0),
+        }
+    }
+}
+
+/// Samples of silence for a pause of `ms` (at normal speed) when speaking `speed` times as fast:
+/// faster speech, shorter pauses, in proportion.
+pub fn gap_samples(ms: f32, speed: f32, sample_rate: u32) -> usize {
+    if ms <= 0.0 || speed <= 0.0 {
+        return 0;
+    }
+    (ms / 1000.0 * sample_rate as f32 / speed).round() as usize
+}
+
+/// Whether a line break lies in text[from..to): between two sentences, a new paragraph.
+pub fn line_break_between(text: &[u16], from: usize, to: usize) -> bool {
+    text[from.min(to)..to].iter().any(|&u| u == b'\n' as u16 || u == b'\r' as u16)
+}
+
+/// The clauses of the sentence text[from..to): it split after each , ; or : that a space follows
+/// (not "3,000" or "10:30"), each with its mark. Pieces with nothing to say join the one before.
+pub fn clauses(text: &[u16], from: usize, to: usize) -> Vec<(usize, usize)> {
+    let mut found: Vec<(usize, usize)> = Vec::new();
+    let mut start = from;
+    for i in from..to {
+        let c = char_of(text[i]);
+        if matches!(c, ',' | ';' | ':') && i + 1 < to && is_space(text[i + 1]) {
+            if text[start..=i].iter().any(|&u| is_wordy(u)) {
+                found.push((start, i + 1));
+                start = i + 1;
+            }
+        }
+    }
+    if start < to {
+        if text[start..to].iter().any(|&u| is_wordy(u)) || found.is_empty() {
+            found.push((start, to));
+        } else if let Some(last) = found.last_mut() {
+            last.1 = to;
+        }
+    }
+    // Without the spaces around them.
+    found.into_iter().map(|(mut a, mut b)| {
+        while a < b && is_space(text[a]) { a += 1; }
+        while b > a && is_space(text[b - 1]) { b -= 1; }
+        (a, b)
+    }).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +327,36 @@ mod tests {
         assert_eq!(number(j, "peak", 0.0), 0.9);
         assert_eq!(number(j, "boost", 1.5), 1.5);
         assert_eq!(number(r#"{"peak": -1}"#, "peak", 0.5), 0.5);
+    }
+
+    #[test]
+    fn pauses() {
+        assert_eq!(Pauses::read(""), DEFAULT_PAUSES);
+        let p = Pauses::read(r#"{ "pauses": { "sentence_ms": 750, "comma_ms": 200, "paragraph_ms": 1500 } }"#);
+        assert_eq!(p, Pauses { sentence_ms: 750.0, comma_ms: 200.0, paragraph_ms: 1500.0 });
+        assert_eq!(Pauses::read(r#"{"sentence_ms": 300}"#).paragraph_ms, 1200.0);
+        // 600 ms at 22050 Hz: rate 0 all of it; faster, less; slower, more.
+        assert_eq!(gap_samples(600.0, 1.0, 22050), 13230);
+        let near = |got: usize, ms: f32| (got as f32 - ms * 22.05).abs() <= 2.0;
+        assert!(near(gap_samples(600.0, 3f32.powf(0.2), 22050), 481.7));   // rate +2: 482 ms
+        assert!(near(gap_samples(600.0, 3f32.powf(-0.2), 22050), 747.4));  // rate -2: 747 ms
+        assert_eq!(gap_samples(0.0, 1.0, 22050), 0);
+    }
+
+    #[test]
+    fn paragraphs_and_clauses() {
+        let s = utf16("One. Two.\nThree.");
+        assert!(!line_break_between(&s, 4, 5));
+        assert!(line_break_between(&s, 9, 10));
+        let c = "Pulling in three, watch the patrol; it has 3,000 hit points: run.";
+        let t = utf16(c);
+        assert_eq!(texts(c, &clauses(&t, 0, t.len())),
+            ["Pulling in three,", "watch the patrol;", "it has 3,000 hit points:", "run."]);
+        let d = "Well, , then.";
+        let u = utf16(d);
+        assert_eq!(texts(d, &clauses(&u, 0, u.len())), ["Well,", ", then."]);
+        let e = "No commas here.";
+        let v = utf16(e);
+        assert_eq!(texts(e, &clauses(&v, 0, v.len())), ["No commas here."]);
     }
 }

@@ -18,7 +18,14 @@ if (-not $isAdmin) {
 
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
-$App = Join-Path $env:ProgramFiles $AppName
+# Where it is installed: Installed apps' entry says; else the folder this script is in, if it is the
+# program's. Only a folder named Modern Voices for Windows with the engine in it is ever deleted.
+$App = $null
+$entry = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows'
+if (Test-Path $entry) { $App = (Get-ItemProperty $entry).InstallLocation }
+if (-not $App) { $App = Split-Path (Split-Path $MyInvocation.MyCommand.Path -Parent) -Parent }
+$App = $App.TrimEnd('\')
+$isOurs = ((Split-Path $App -Leaf) -eq $AppName) -and (Test-Path (Join-Path $App 'engine'))
 $Cer = Join-Path $App 'engine\modern_voices.cer'
 
 Write-Host "Uninstalling $AppName" -ForegroundColor Cyan
@@ -48,7 +55,9 @@ try {
     }
     $menu = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$AppName"
     if (Test-Path $menu) { Remove-Item $menu -Recurse -Force }
-    if (Test-Path $App) {
+    if (-not $isOurs) {
+        Write-Host "Not deleting $App (it isn't the program's folder)." -ForegroundColor Yellow
+    } elseif (Test-Path $App) {
         Remove-Item $App -Recurse -Force -ErrorAction SilentlyContinue
         if (Test-Path $App) {
             Write-Host "Could not remove all of ${App}: a program still has the engine loaded. Close programs that speak (or restart), then delete the folder." -ForegroundColor Yellow

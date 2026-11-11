@@ -10,7 +10,10 @@ param([Parameter(Mandatory)][string]$Kit)
 
 $ErrorActionPreference = 'Stop'
 $Kit = (Resolve-Path $Kit).Path
-$App = Join-Path $env:ProgramFiles 'Modern Voices for Windows'
+# Installed somewhere other than Program Files, chosen as a person would choose a folder: the program
+# makes its own folder inside it.
+$InstallParent = 'C:\MV Test'
+$App = Join-Path $InstallParent 'Modern Voices for Windows'
 $Tokens64 = 'HKLM:\SOFTWARE\Microsoft\Speech\Voices\Tokens'
 $Tokens32 = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Speech\Voices\Tokens'
 $has32 = Test-Path (Join-Path $Kit 'engine\x86\modern_voices.dll')
@@ -69,7 +72,16 @@ Step 'Manager window (before installing)'
 Check ($LASTEXITCODE -eq 0) 'the window builds from the real catalogue; speakers and duplicate warning work'
 
 Step 'Install: Alba, Northern English Male, VCTK speaker p239'
-$code = Invoke-Install @('-Voices', 'en_GB-alba-medium,en_GB-northern_english_male-medium,en_GB-vctk-medium#p239', '-Unattended', '-NoPause')
+$code = Invoke-Install @('-Voices', 'en_GB-alba-medium,en_GB-northern_english_male-medium,en_GB-vctk-medium#p239', '-Unattended', '-NoPause',
+    '-InstallDir', $InstallParent)
+Check ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows').InstallLocation -eq $App) "installed in the chosen folder ($App)"
+$users = New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-545'
+$userWrite = @((Get-Acl $App).Access | Where-Object {
+    $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]) -eq $users -and
+    ($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::Write) })
+Check ($userWrite.Count -eq 0) 'outside Program Files: ordinary users cannot change the files'
+$token = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium')
+Check ($token.SettingsFile -eq (Join-Path $App 'settings.json') -and (Test-Path $token.SettingsFile)) 'voices point at the settings file'
 Check ($code -eq 0) 'installer finished without errors'
 Check ((Get-OurTokens $Tokens64).Count -eq 3) "3 voices for 64-bit programs ($((Get-OurTokens $Tokens64) -join ', '))"
 if ($has32) { Check ((Get-OurTokens $Tokens32).Count -eq 3) '3 voices for 32-bit programs' }
@@ -105,6 +117,52 @@ $lines = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'insta
 $lines | ForEach-Object { Write-Host "  $_" }
 $liveResult = ($lines | Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1) | ConvertFrom-Json
 Check ($liveResult -and [math]::Abs($liveResult.before - 0.95) -lt 0.03 -and [math]::Abs($liveResult.after - 0.5) -lt 0.03) "same process: peak $($liveResult.before), then $($liveResult.after) after the change"
+
+Step 'Pauses: measured gaps'
+$settingsFile = Join-Path $App 'settings.json'
+$maleName = 'Northern English Male (British)'
+function Measure-Speech([string]$Voice, [string]$Text, [int]$Rate = 0) {
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Text))
+    $line = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Measure $Voice -TextBase64 $b64 -Rate $Rate 2>&1 |
+        Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1
+    $r = $line | ConvertFrom-Json
+    $longest = if (@($r.gaps).Count) { (@($r.gaps) | Measure-Object -Maximum).Maximum } else { 0 }
+    return [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Gaps = @($r.gaps) }
+}
+function Check-Added([string]$What, $Without, $With, [double]$Expected, [double]$Slack) {
+    $added = $With.Longest - $Without.Longest
+    Check ([math]::Abs($added - $Expected) -le $Slack) ("{0}: +{1:N0} ms (expected {2:N0} +/- {3:N0}; longest gap {4:N0} -> {5:N0} ms)" -f $What, $added, $Expected, $Slack, $Without.Longest, $With.Longest)
+}
+$two = 'Pulling in three. Watch the patrol on the left.'
+$para = "Pulling in three.`nWatch the patrol on the left."
+$comma = 'Pulling in three, watch the patrol on the left.'
+$one = 'Watch the patrol on the left.'
+
+Set-GlobalPauses $settingsFile 0 0 0
+$base = Measure-Speech $albaName $two
+$baseFast = Measure-Speech $albaName $two 5
+$basePara = Measure-Speech $albaName $para
+$baseComma = Measure-Speech $albaName $comma
+$baseOne = Measure-Speech $albaName $one
+$baseMale = Measure-Speech $maleName $two
+Set-GlobalPauses $settingsFile 1000 0 2000
+Check-Added 'sentence gap 1000 ms, rate 0' $base (Measure-Speech $albaName $two) 1000 80
+Check-Added 'sentence gap 1000 ms, rate +5 (1.73x as fast: 577 ms)' $baseFast (Measure-Speech $albaName $two 5) 577 80
+Check-Added 'paragraph gap 2000 ms at a line break' $basePara (Measure-Speech $albaName $para) 2000 80
+$withOne = Measure-Speech $albaName $one
+Check ([math]::Abs($withOne.Seconds - $baseOne.Seconds) -lt 0.03) ("no gap after the last sentence ({0:N3} s -> {1:N3} s)" -f $baseOne.Seconds, $withOne.Seconds)
+Set-GlobalPauses $settingsFile 0 600 0
+Check-Added 'comma gap 600 ms (each part said separately)' $baseComma (Measure-Speech $albaName $comma) 600 200
+# A voice's own pauses: Alba 300 ms while every other voice has 1000.
+Set-GlobalPauses $settingsFile 1000 0 2000
+Set-VoicePauses $albaDir $true 300 0 600
+Check-Added "Alba's own sentence gap 300 ms" $base (Measure-Speech $albaName $two) 300 80
+Check-Added 'Northern English Male still the global 1000 ms' $baseMale (Measure-Speech $maleName $two) 1000 80
+Set-VoicePauses $albaDir $false 300 0 600
+Check-Added 'Alba back on the global 1000 ms' $base (Measure-Speech $albaName $two) 1000 80
+Set-GlobalPauses $settingsFile 600 0 1200
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest | Out-Host
+Check ($LASTEXITCODE -eq 0) 'window: pause sliders save (Pauses tab and a voice of its own)'
 
 Step 'Repair (registers everything again; settings kept)'
 Set-VoiceSettings $albaDir 0.8 2 1
