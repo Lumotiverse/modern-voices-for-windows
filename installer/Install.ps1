@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.7.3'
+$Version = '0.7.4'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -620,13 +620,14 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $installedList = New-Object System.Windows.Forms.ListView
     $installedList.View = 'Details'; $installedList.FullRowSelect = $true; $installedList.HideSelection = $false
     $installedList.MultiSelect = $false
-    $installedList.Dock = 'Fill'; $installedList.Height = Get-Px 120
-    $installedList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 120))
-    [void]$installedList.Columns.Add('Voice', (Get-Px 230))
-    [void]$installedList.Columns.Add('Speakers installed', (Get-Px 250))
+    $installedList.Dock = 'Fill'; $installedList.Height = Get-Px 150
+    $installedList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 150))
+    [void]$installedList.Columns.Add('Voice', (Get-Px 210))
+    [void]$installedList.Columns.Add('Speaker', (Get-Px 80))
+    [void]$installedList.Columns.Add('Nickname', (Get-Px 190))
     [void]$installedList.Columns.Add('On disk', (Get-Px 70))
     [void]$installedList.Columns.Add('Windows default', (Get-Px 110))
-    [void]$installedList.Columns.Add('Folder', (Get-Px 160))
+    [void]$installedList.Columns.Add('Folder', (Get-Px 170))
     Add-UiRow $page $installedList
     $speakersOf = [ordered]@{}
     foreach ($id in $Installed) {
@@ -635,18 +636,13 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         if ($null -ne $idParts[1]) { $speakersOf[$idParts[0]] += $idParts[1] }
     }
 
-    # The selected voice: which of its speakers, hear it, make it Windows' default.
+    # The selected voice (a row for each installed speaker): hear it, make it Windows' default.
     $voiceLine = New-UiFlow
-    $speakerBoxLabel = New-UiLabel 'Speaker'
-    $speakerBoxLabel.Dock = 'None'; $speakerBoxLabel.Anchor = 'Left'
-    $speakerBox = New-Object System.Windows.Forms.ComboBox
-    $speakerBox.DropDownStyle = 'DropDownList'; $speakerBox.Width = Get-Px 150; $speakerBox.Enabled = $false
-    $speakerBox.Anchor = 'Left'
     $previewButton = New-UiButton 'Preview'
     $defaultButton = New-UiButton 'Make default voice'
     $sapiButton = New-UiButton 'Windows speech settings'
     $previewButton.Enabled = $false; $defaultButton.Enabled = $false
-    foreach ($c in $speakerBoxLabel, $speakerBox, $previewButton, $defaultButton, $sapiButton) { $voiceLine.Controls.Add($c) }
+    foreach ($c in $previewButton, $defaultButton, $sapiButton) { $voiceLine.Controls.Add($c) }
     Add-UiRow $page $voiceLine
     $nickLine = New-UiFlow
     $nickLabel = New-UiLabel 'Nickname'
@@ -821,7 +817,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         DefaultLabel = $defaultLabel; DefaultButton = $defaultButton; Progress = $progress; Status = $status; Apply = $apply
         Close = $close; Busy = $false; UsTags = $UsTags; Installed = @($Installed); Bold = $bold; Plain = $form.Font; Changed = $false
         OwnBox = $ownBox; GlobalBars = $globalBars; GlobalTimer = $globalTimer; SpeedBar = $speedBar; SpeedValue = $speedValue
-        RateWarn = $rateWarn; RateReset = $rateReset; SpeakerBox = $speakerBox; PreviewVoiceBox = $previewVoiceBox
+        RateWarn = $rateWarn; RateReset = $rateReset; PreviewVoiceBox = $previewVoiceBox
         GlobalPreview = $globalPreview; GapGrid = $gapGrid; AddGrid = $addGrid; AddTab = $tabAdd
         NickBox = $nickBox; NickButton = $nickButton; NameClick = $false }
     $list.add_SelectedIndexChanged({ Update-UiSelection })
@@ -844,7 +840,6 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $previewButton.add_Click({ Invoke-UiPreview })
     $globalPreview.add_Click({ Invoke-UiGlobalPreview })
     $nickButton.add_Click({ Set-UiNickname })
-    $speakerBox.add_SelectedIndexChanged({ Update-UiNickBox })
     $tabAdd.add_Resize({ Update-UiAddLayout })
     $tabAdd.add_ClientSizeChanged({ Update-UiAddLayout })
     $defaultButton.add_Click({ Set-UiDefaultVoice })
@@ -997,18 +992,22 @@ function Update-UiInstalledList {
             $defaultName = if ($entry) { Get-DisplayName $entry $(if ($which.Count) { $which[0] } else { $null }) } else { $key }
         }
         $dir = Join-Path $VoiceRoot $key
-        $item = New-Object System.Windows.Forms.ListViewItem($title)
-        $shownNames = @(if ($names.Count) { $names | ForEach-Object { $nick = Get-Nickname "$key#$_"; if ($nick) { "$_ ($nick)" } else { $_ } } }
-                        else { $nick = Get-Nickname $key; if ($nick) { "1 ($nick)" } else { '1' } })
-        [void]$item.SubItems.Add($shownNames -join ', ')
-        [void]$item.SubItems.Add("$(Get-FolderMb $dir) MB")
-        [void]$item.SubItems.Add($(if ($isDefault) { 'yes' } else { '' }))
-        [void]$item.SubItems.Add($key)
-        $item.Tag = @{ Key = $key; Dir = $dir; Title = $title; Shared = ($names.Count -gt 1); Names = $names; Entry = $entry }
-        if (-not $entry) { $allVoices += $key }
-        elseif ($names.Count) { foreach ($n in $names) { $allVoices += Get-DisplayName $entry $n } }
-        else { $allVoices += Get-DisplayName $entry $null }
-        [void]$ui.InstalledList.Items.Add($item)
+        # A row for each installed speaker (one row for a voice with one); the voice named on its first.
+        $rows = @(if ($names.Count) { $names } else { '' })
+        for ($r = 0; $r -lt $rows.Count; $r++) {
+            $speaker = $rows[$r]
+            $id = if ($speaker) { "$key#$speaker" } else { $key }
+            $nick = Get-Nickname $id
+            $item = New-Object System.Windows.Forms.ListViewItem($(if ($r -eq 0) { $title } else { '' }))
+            [void]$item.SubItems.Add($speaker)
+            [void]$item.SubItems.Add($(if ($nick) { "($nick)" } else { '' }))
+            [void]$item.SubItems.Add($(if ($r -eq 0) { "$(Get-FolderMb $dir) MB" } else { '' }))
+            [void]$item.SubItems.Add($(if ((Get-TokenName $id) -eq $default) { 'yes' } else { '' }))
+            [void]$item.SubItems.Add($(if ($r -eq 0) { $key } else { '' }))
+            $item.Tag = @{ Key = $key; Dir = $dir; Title = $title; Shared = ($names.Count -gt 1); Speaker = $speaker; Entry = $entry }
+            [void]$ui.InstalledList.Items.Add($item)
+            $allVoices += $(if ($entry) { Get-DisplayName $entry $speaker } else { $key })
+        }
     }
     $ui.InstalledList.EndUpdate()
     # The Speed and pauses tab's Preview: any installed voice (Windows' default first, if it is one).
@@ -1084,23 +1083,18 @@ function Invoke-UiApply {
     }
 }
 
-# The selected voice's speaker chosen in the Voice manager (its only one, for a voice with one): its
-# token and the name programs see.
+# The voice (speaker) of the row selected in the Voice manager: its token and the name programs see.
 function Get-UiCurrentVoice {
     $ui = $script:Ui
     $tag = $ui.CurrentInstalled
     if (-not $tag) { return $null }
-    $name = $null
-    if (@($tag.Names).Count) {
-        $name = [string]$ui.SpeakerBox.SelectedItem
-        if (-not $name) { $name = $tag.Names[0] }
-    }
+    $name = if ($tag.Speaker) { [string]$tag.Speaker } else { $null }
     $id = if ($name) { "$($tag.Key)#$name" } else { $tag.Key }
     $voice = if ($tag.Entry) { Get-DisplayName $tag.Entry $name } else { $tag.Key }
     return @{ Token = (Get-TokenName $id); Voice = $voice; Id = $id; Speaker = $name }
 }
 
-# The nickname box: the chosen speaker's nickname.
+# The nickname box: the selected row's nickname.
 function Update-UiNickBox {
     $ui = $script:Ui
     $voice = Get-UiCurrentVoice
@@ -1109,7 +1103,7 @@ function Update-UiNickBox {
     $ui.NickBox.Text = if ($on) { Get-Nickname $voice.Id } else { '' }
 }
 
-# Gives the chosen speaker the nickname in the box (empty: none), renaming the voice in Windows.
+# Gives the selected row's voice the nickname in the box (empty: none), renaming the voice in Windows.
 function Set-UiNickname {
     $ui = $script:Ui
     $voice = Get-UiCurrentVoice
@@ -1131,7 +1125,6 @@ function Set-UiNickname {
     $index = if ($selected.Count) { $selected[0] } else { 0 }
     Update-UiInstalledList
     if ($ui.InstalledList.Items.Count -gt $index) { $ui.InstalledList.Items[$index].Selected = $true; Update-UiInstalled }
-    if ($voice.Speaker -and $ui.SpeakerBox.Items.Contains($voice.Speaker)) { $ui.SpeakerBox.SelectedItem = $voice.Speaker }
     $ui.Status.Text = "Now named $display. Restart programs that were open to see the new name."
 }
 
@@ -1139,7 +1132,6 @@ function Update-UiInstalled {
     $ui = $script:Ui
     if ($ui.SaveTimer.Enabled) { $ui.SaveTimer.Stop(); Save-UiSettings }
     $ui.CurrentInstalled = $null
-    $ui.SpeakerBox.Items.Clear(); $ui.SpeakerBox.Enabled = $false
     $ui.NickBox.Text = ''; $ui.NickBox.Enabled = $false; $ui.NickButton.Enabled = $false
     $on = $ui.InstalledList.SelectedItems.Count -gt 0
     foreach ($k in 'Volume', 'Boost', 'Speed') { $ui.Sliders[$k].Bar.Enabled = $on }
@@ -1173,18 +1165,6 @@ function Update-UiInstalled {
     }
     $ui.CurrentInstalled = $tag
     foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $ui.Sliders[$k].Bar.Enabled = $ui.OwnBox.Checked }
-    # Its installed speakers: the one Preview and Make default voice use (Windows' default first, if it is one).
-    $names = @($tag.Names)
-    if ($names.Count) {
-        foreach ($n in $names) { [void]$ui.SpeakerBox.Items.Add($n) }
-        $default = Get-DefaultVoiceToken
-        $isDefault = @($names | Where-Object { (Get-TokenName "$($tag.Key)#$_") -eq $default })
-        $ui.SpeakerBox.SelectedIndex = if ($isDefault.Count) { [array]::IndexOf($names, $isDefault[0]) } else { 0 }
-        $ui.SpeakerBox.Enabled = $names.Count -gt 1
-    } else {
-        [void]$ui.SpeakerBox.Items.Add('(one speaker)')
-        $ui.SpeakerBox.SelectedIndex = 0
-    }
     Update-UiNickBox
     $ui.SoundLabel.Text = "How $($tag.Title) sounds" + $(if ($tag.Shared) { ' (all its speakers)' } else { '' })
 }
@@ -1749,7 +1729,7 @@ try {
             $token = (Get-UiCurrentVoice).Token
             Set-UiDefaultVoice
             $now = (Get-ItemProperty $DefaultVoiceKey).DefaultTokenId
-            $marked = $ui.InstalledList.Items[0].SubItems[3].Text
+            $marked = $ui.InstalledList.Items[0].SubItems[4].Text
             Write-Output "default voice: $now (marked '$marked'); $($ui.DefaultLabel.Text)"
             if ($now -ne "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\$token" -or $marked -ne 'yes') { $bad += 'default voice' }
             if ($before) { Set-ItemProperty $DefaultVoiceKey -Name 'DefaultTokenId' -Value $before } else { Remove-ItemProperty $DefaultVoiceKey -Name 'DefaultTokenId' }
