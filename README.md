@@ -10,7 +10,7 @@ program that uses Windows' installed voices but can't use Narrator's natural voi
 |---|---|
 | `engine/` | the SAPI 5 engine (Rust, sherpa-onnx built in): based on the [Spoken Players voicepack](https://github.com/f-rolf/spoken-players-voicepack)'s engine, with its own class ID and the events programs follow speech by (bookmarks, sentence and word boundaries) |
 | `engine/espeak-ng-data/` | espeak-ng's data, read at run time |
-| `installer/` | `Install.ps1` (install, choose voices, repair), `VoiceConvert.ps1` (Piper model → engine folder, loudness), `Test.ps1`, `Uninstall.ps1` |
+| `installer/` | `Install.ps1` (install, the Modern Voices window, repair), `VoiceConvert.ps1` (Piper model → engine folder; voice settings), `Speak.ps1` (Preview), `Test.ps1`, `Uninstall.ps1` |
 | `kit/` | what goes at the top of the packaged kit (`Install.cmd`, `README.txt`) |
 | `tools/` | `Package.ps1` (sign and package), `Get-SherpaX86.ps1` (32-bit sherpa-onnx), `Test-Kit.ps1` (end-to-end test) |
 | `.github/workflows/build.yml` | builds 64- and 32-bit engines, signs, packages `ModernVoicesForWindows<version>.zip`, and runs the end-to-end test |

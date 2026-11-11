@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.5.2
+Modern Voices for Windows 0.6.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -18,17 +18,46 @@ which has no way in for voices from anyone but Microsoft.
 Install
 -------
 1. Double-click Install.cmd and say yes to the administrator prompt.
-2. Tick the voices you want. Select one and press Play sample to hear it first. Voices with several
-   speakers (VCTK, LibriTTS, ...) let you pick which speakers to install; each becomes a voice.
-3. Press Install. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices, version
-   1.0.0), prepares them, and tests each one through Windows' speech API.
+2. The Modern Voices window opens (if you can't see it, it's on the taskbar). On "Add or remove
+   voices", tick the voices you want. Select one and press Play sample to hear it first. Voices with
+   several speakers (VCTK, LibriTTS, ...) list their speakers to tick; each becomes a voice.
+3. Press Apply changes. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices,
+   version 1.0.0), prepares them, and tests each one through Windows' speech API. Then the window
+   opens again.
 
 Restart programs that were open to see the new voices. This folder can then be deleted.
 
 Afterwards, from the Start menu (Modern Voices for Windows):
-  Choose voices   add or remove voices (the same list, with what's installed ticked)
+  Modern Voices   the window: installed voices and how they sound, add or remove voices
   Test voices     hear each voice, with each word shown as the engine reports it
+  Repair          registers everything again (if a voice went missing from programs)
   Uninstall       removes everything (also in Windows' Installed apps)
+
+
+How each voice sounds
+---------------------
+In the Modern Voices window, on "Installed voices", select a voice:
+
+  Volume   how loud each sentence's loudest moment is: 95% = just under full volume. 0 = as Piper
+           made it (quieter: the model's own level).
+  Boost    lifts the quieter parts more than the loud ones, so the voice sounds louder overall without
+           clipping. None, 1.5x (the default), up to 4x; higher sounds more compressed, like radio.
+  Speed    100% is the voice's own pace.
+
+Changes are saved as you move a slider and take effect straight away, also in programs that are already
+using the voice (from the next thing they say): no restarting, no repair. Preview says a line with the
+voice as it now is; Reset puts back 95%, 1.5x, 100%. A voice's speakers share its settings. A program's
+own volume and speed still adjust from there.
+
+The settings live in C:\Program Files\Modern Voices for Windows\voices\<voice>\voice.json
+("loudness": peak and boost; "inference": length_scale, higher = slower), if you'd rather edit them.
+
+
+Disk space
+----------
+Each voice is one model of 60 to 110 MB (the window shows each one's size and the total ticked).
+Speakers of one voice share its model: more speakers take no more space. Two qualities of one voice
+(Lessac and Lessac HQ, say) are two separate models; the window warns when both are ticked.
 
 
 What programs get
@@ -41,29 +70,11 @@ What programs get
 * Bookmarks, for programs that mark places in their text.
 
 
-Loudness
---------
-Each voice is turned up inside its model, as Piper's own program does (it plays the model's output
-louder than the model makes it):
-
-  peak    each sentence is scaled so its loudest moment is this. 0.95 = just under full volume.
-          0 = off (the model as it was), up to 1.
-  boost   lifts the quieter parts more than the loud ones, so the voice is louder overall without
-          clipping: 1 = none, 1.5 = mild (the default), 2 = strong, 3 = very strong. Up to 5.
-
-To change it: edit "loudness" in
-  C:\Program Files\Modern Voices for Windows\voices\<voice>\voice.json
-then run Repair.cmd in C:\Program Files\Modern Voices for Windows. Each voice has its own. A
-program's own volume still turns them down from there.
-
-Speaking speed: "length_scale" in the same file (higher = slower), then restart the program.
-
-
 Good to know
 ------------
 * Language: British voices are listed as British English, American as US English. A program that
   only shows US English voices won't list the British ones; tick "Also list British voices as US
-  English" in Choose voices for it.
+  English" on the window's "Add or remove voices" tab for it.
 * Some programs take longer to start the more voices Windows has (World of Warcraft looks at every
   voice several times over when it loads). Install the ones you use.
 * The engine is signed by the build that made it, and the installer has Windows trust that signature:
@@ -81,5 +92,5 @@ with sherpa-onnx, ONNX Runtime and espeak-ng built in. GPL-3.0-or-later: see LIC
 THIRD-PARTY-NOTICES.md.
 
 Voices: Piper (https://huggingface.co/rhasspy/piper-voices). Each voice has its own licence and
-dataset, given in its MODEL_CARD there. Many are CC BY or CC BY-SA (credit the dataset; CC BY-SA
-voices keep that licence when changed, which turning them up here does).
+dataset, given in its MODEL_CARD there. Many are CC BY or CC BY-SA (credit the dataset). The models
+are installed as published; the loudness is applied by the engine as it speaks.

@@ -1,5 +1,6 @@
 //! Text and audio helpers with no Windows in them (tested on their own): where sentences and words
-//! are, about when each word is heard, bookmark numbers, and pitch shifting by resampling.
+//! are, about when each word is heard, bookmark numbers, pitch shifting by resampling, loudness, and
+//! numbers from a voice.json.
 
 pub const SPACE: u16 = b' ' as u16;
 
@@ -145,6 +146,38 @@ pub fn word_starts(audio: &[f32], weights: &[f32]) -> Vec<usize> {
     }).collect()
 }
 
+/// A number from a voice.json (`"length_scale": 1.2`, wherever it is), else `default`. The keys
+/// used are unique in that file, so a plain search does; no JSON parser for a few numbers.
+pub fn number(info: &str, key: &str, default: f32) -> f32 {
+    let Some(at) = info.find(&format!("\"{key}\"")) else { return default };
+    let rest = info[at + key.len() + 2..].trim_start().strip_prefix(':').unwrap_or("").trim_start();
+    let end = rest.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')).unwrap_or(rest.len());
+    rest[..end].parse().ok().filter(|v: &f32| v.is_finite() && *v >= 0.0).unwrap_or(default)
+}
+
+/// A sentence's audio made louder, as Piper's own program does and then some:
+///   peak:  scaled so its loudest moment is this (0.95 = just under full). 0 = left as it is.
+///   boost: above 1, the quieter parts lifted more than the loud ones (tanh, a soft limiter), so it
+///          is louder overall without its peaks clipping. 1 = none.
+/// The loudest moment is taken as at least 0.01, as Piper does, so near-silence is not blown up.
+pub fn apply_loudness(audio: &mut [f32], peak: f32, boost: f32) {
+    if peak <= 0.0 || audio.is_empty() {
+        return;
+    }
+    let loudest = audio.iter().fold(0f32, |m, s| m.max(s.abs())).max(0.01);
+    if boost > 1.0001 {
+        let level = peak / boost.tanh();
+        for s in audio.iter_mut() {
+            *s = (*s / loudest * boost).tanh() * level;
+        }
+    } else {
+        let level = peak / loudest;
+        for s in audio.iter_mut() {
+            *s *= level;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,4 +229,37 @@ mod tests {
         assert_eq!(bookmark_number(&utf16("Start")), 0);
     }
 
+    #[test]
+    fn loudness() {
+        let quiet: Vec<f32> = (0..1000).map(|i| (i as f32 * 0.05).sin() * 0.3).collect();
+        let loudest = |a: &[f32]| a.iter().fold(0f32, |m, s| m.max(s.abs()));
+        let rms = |a: &[f32]| (a.iter().map(|s| s * s).sum::<f32>() / a.len() as f32).sqrt();
+        let mut plain = quiet.clone();
+        apply_loudness(&mut plain, 0.95, 1.0);
+        assert!((loudest(&plain) - 0.95).abs() < 1e-4);
+        let mut boosted = quiet.clone();
+        apply_loudness(&mut boosted, 0.95, 1.5);
+        assert!((loudest(&boosted) - 0.95).abs() < 1e-3);
+        assert!(rms(&boosted) > rms(&plain));
+        // As the model stage it replaces computed it: tanh(n * k) * peak / tanh(k).
+        let n = 0.5f32;
+        let mut one = vec![0.3 * n, 0.3];
+        apply_loudness(&mut one, 0.8, 3.0);
+        assert!((one[0] - (n * 3.0).tanh() * 0.8 / 3f32.tanh()).abs() < 1e-5);
+        let mut off = quiet.clone();
+        apply_loudness(&mut off, 0.0, 2.0);
+        assert_eq!(off, quiet);
+        let mut silence = vec![0.001f32; 10];
+        apply_loudness(&mut silence, 0.95, 1.0);
+        assert!((silence[0] - 0.095).abs() < 1e-6);
+    }
+
+    #[test]
+    fn numbers() {
+        let j = r#"{ "inference": { "noise_scale": 0.667, "length_scale": 1.25 }, "loudness": { "peak": 0.9 } }"#;
+        assert_eq!(number(j, "length_scale", 1.0), 1.25);
+        assert_eq!(number(j, "peak", 0.0), 0.9);
+        assert_eq!(number(j, "boost", 1.5), 1.5);
+        assert_eq!(number(r#"{"peak": -1}"#, "peak", 0.5), 0.5);
+    }
 }

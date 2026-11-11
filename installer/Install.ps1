@@ -52,7 +52,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.5.2'
+$Version = '0.6.0'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $App = Join-Path $env:ProgramFiles $AppName
@@ -198,62 +198,128 @@ function Get-InstalledIds {
     return $ids
 }
 
-# --- the list to tick --------------------------------------------------------------------------------
+# --- the manager window ------------------------------------------------------------------------------
+# Two tabs: Installed voices (how each sounds: sliders saved to its voice.json as they move, which the
+# engine reads while speaking; Preview) and Add or remove voices (the catalogue to tick, with samples,
+# sizes and a warning about duplicate qualities). The window's controls and state live in $script:Ui:
+# its event handlers run later (while it is shown), in the script's scope.
 
-# The window's controls and state live in $script:Ui: its event handlers run later (while the window
-# is shown), in the script's scope, where the function's own variables are gone.
-function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
+$PreviewText = 'Pulling in three. Watch the patrol on the left, it has a skull!'
+
+function Get-DisplayName($Entry, [string]$SpeakerName) {
+    if ($SpeakerName) { return "$($Entry.Display) $SpeakerName ($($Entry.Accent))" }
+    return "$($Entry.Display) ($($Entry.Accent))"
+}
+
+function Get-FolderMb([string]$Path) {
+    if (-not (Test-Path $Path)) { return 0 }
+    return [math]::Round(((Get-ChildItem $Path -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB)
+}
+
+function New-Control([string]$Type, $Parent, [int]$X, [int]$Y, [int]$Width, [int]$Height, [string]$Text, [string]$Anchor) {
+    $c = New-Object "System.Windows.Forms.$Type"
+    $c.Location = New-Object System.Drawing.Point($X, $Y)
+    $c.Size = New-Object System.Drawing.Size($Width, $Height)
+    if ($Text) { $c.Text = $Text }
+    if ($Anchor) { $c.Anchor = $Anchor }
+    $Parent.Controls.Add($c)
+    return $c
+}
+
+function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey) {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
 
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "$AppName $Version - choose voices"
-    $form.Size = New-Object System.Drawing.Size(820, 700)
+    $form.Text = "$AppName $Version"
+    $form.Size = New-Object System.Drawing.Size(880, 730)
+    $form.MinimumSize = New-Object System.Drawing.Size(760, 650)
     $form.StartPosition = 'CenterScreen'
+    $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
     # In front of the console it was started from (else it can open behind it, unseen).
     $form.TopMost = $true
     $form.add_Shown({ $script:Ui.Form.Activate(); $script:Ui.Form.TopMost = $false })
-    $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-    $form.MinimumSize = New-Object System.Drawing.Size(700, 600)
+    $bold = New-Object System.Drawing.Font($form.Font, [System.Drawing.FontStyle]::Bold)
+    $grey = [System.Drawing.Color]::DimGray
 
-    $intro = New-Object System.Windows.Forms.Label
-    $intro.Text = "Tick the voices to install; untick an installed one to remove it. They are offline neural voices " +
-        "(Piper) that any program using Windows' installed voices can speak with. Select a voice and press " +
-        "Play sample to hear it. Each voice is about 60 to 110 MB."
-    $intro.Location = New-Object System.Drawing.Point(12, 10)
-    $intro.Size = New-Object System.Drawing.Size(780, 36)
-    $intro.Anchor = 'Top, Left, Right'
-    $form.Controls.Add($intro)
+    $tabs = New-Control 'TabControl' $form 12 12 840 610 '' 'Top, Bottom, Left, Right'
+    $tabInstalled = New-Object System.Windows.Forms.TabPage 'Installed voices'
+    $tabAdd = New-Object System.Windows.Forms.TabPage 'Add or remove voices'
+    $tabs.TabPages.Add($tabInstalled); $tabs.TabPages.Add($tabAdd)
 
-    $list = New-Object System.Windows.Forms.ListView
-    $list.View = 'Details'
-    $list.CheckBoxes = $true
-    $list.FullRowSelect = $true
-    $list.HideSelection = $false
+    # ---- Installed voices
+    $installedList = New-Control 'ListView' $tabInstalled 10 10 810 230 '' 'Top, Left, Right'
+    $installedList.View = 'Details'; $installedList.FullRowSelect = $true; $installedList.HideSelection = $false
+    $installedList.MultiSelect = $false
+    [void]$installedList.Columns.Add('Voice', 230)
+    [void]$installedList.Columns.Add('Speakers installed', 300)
+    [void]$installedList.Columns.Add('On disk', 80)
+    [void]$installedList.Columns.Add('Folder', 180)
+    $speakersOf = [ordered]@{}
+    foreach ($id in $Installed) {
+        $idParts = Split-VoiceId $id
+        if (-not $speakersOf.Contains($idParts[0])) { $speakersOf[$idParts[0]] = @() }
+        if ($null -ne $idParts[1]) { $speakersOf[$idParts[0]] += $idParts[1] }
+    }
+    foreach ($key in $speakersOf.Keys) {
+        $entry = if ($ByKey.ContainsKey($key)) { $ByKey[$key] } else { $null }
+        $title = if ($entry) { "$($entry.Display) ($($entry.Accent))" } else { $key }
+        $names = @($speakersOf[$key])
+        $voiceName = if ($entry) { Get-DisplayName $entry $(if ($names.Count) { $names[0] } else { $null }) } else { $key }
+        $dir = Join-Path $VoiceRoot $key
+        $item = New-Object System.Windows.Forms.ListViewItem($title)
+        [void]$item.SubItems.Add($(if ($names.Count) { $names -join ', ' } else { '1' }))
+        [void]$item.SubItems.Add("$(Get-FolderMb $dir) MB")
+        [void]$item.SubItems.Add($key)
+        $item.Tag = @{ Key = $key; Dir = $dir; Title = $title; Voice = $voiceName; Shared = ($names.Count -gt 1) }
+        [void]$installedList.Items.Add($item)
+    }
+
+    $soundLabel = New-Control 'Label' $tabInstalled 10 252 810 20 'Select a voice above to set how it sounds.' 'Top, Left, Right'
+    $soundLabel.Font = $bold
+    $sliders = @{}
+    $y = 282
+    foreach ($spec in @(@('Volume', 0, 100, 10), @('Boost', 10, 40, 5), @('Speed', 50, 200, 10))) {
+        [void](New-Control 'Label' $tabInstalled 10 ($y + 6) 80 20 $spec[0] '')
+        $bar = New-Control 'TrackBar' $tabInstalled 90 $y 560 45 '' 'Top, Left, Right'
+        $bar.Minimum = $spec[1]; $bar.Maximum = $spec[2]; $bar.TickFrequency = $spec[3]
+        $bar.SmallChange = 1; $bar.LargeChange = 5; $bar.Enabled = $false
+        $value = New-Control 'Label' $tabInstalled 660 ($y + 6) 160 20 '' 'Top, Right'
+        $sliders[$spec[0]] = @{ Bar = $bar; Value = $value }
+        $bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.SaveTimer.Stop(); $script:Ui.SaveTimer.Start() } })
+        $y += 50
+    }
+    $explain = New-Control 'Label' $tabInstalled 90 ($y - 2) 730 48 ("Volume: how loud each sentence's loudest moment is (0 = as Piper made it, quieter). " +
+        "Boost: lifts the quieter parts more than the loud ones, so the voice sounds louder overall without clipping (higher sounds more " +
+        "compressed). Speed: 100% is the voice's own pace.") 'Top, Left, Right'
+    $explain.ForeColor = $grey
+    $y += 52
+    $previewBox = New-Control 'TextBox' $tabInstalled 10 $y 600 24 $PreviewText 'Top, Left, Right'
+    $previewButton = New-Control 'Button' $tabInstalled 620 ($y - 1) 95 27 'Preview' 'Top, Right'
+    $resetButton = New-Control 'Button' $tabInstalled 725 ($y - 1) 95 27 'Reset' 'Top, Right'
+    $previewButton.Enabled = $false; $resetButton.Enabled = $false
+    $live = New-Control 'Label' $tabInstalled 10 ($y + 34) 810 36 ("Changes are saved as you move a slider and take effect straight away, also in programs already " +
+        "using the voice (from the next thing they say). A voice's speakers share its settings.") 'Top, Left, Right'
+    $live.ForeColor = $grey
+    if ($installedList.Items.Count -eq 0) {
+        $soundLabel.Text = 'No voices installed yet: add some on the Add or remove voices tab.'
+    }
+
+    # ---- Add or remove voices
+    $intro = New-Control 'Label' $tabAdd 10 8 810 32 ("Tick the voices to install; untick one to remove it. Select a voice and press Play sample to hear it. " +
+        "Then press Apply changes.") 'Top, Left, Right'
+    $list = New-Control 'ListView' $tabAdd 10 42 810 260 '' 'Top, Bottom, Left, Right'
+    $list.View = 'Details'; $list.CheckBoxes = $true; $list.FullRowSelect = $true; $list.HideSelection = $false
     $list.MultiSelect = $false
-    $list.Location = New-Object System.Drawing.Point(12, 52)
-    $list.Size = New-Object System.Drawing.Size(780, 300)
-    $list.Anchor = 'Top, Bottom, Left, Right'
     [void]$list.Columns.Add('Voice', 220)
     [void]$list.Columns.Add('Accent', 90)
     [void]$list.Columns.Add('Quality', 70)
     [void]$list.Columns.Add('Speakers', 90)
     [void]$list.Columns.Add('Download', 80)
-    [void]$list.Columns.Add('Catalogue key', 200)
-
-    # Speakers chosen for each multi-speaker voice: key -> "name1, name2"
+    [void]$list.Columns.Add('Catalogue key', 220)
     $chosenSpeakers = @{}
-    $installedKeys = @{}
-    foreach ($id in $Installed) {
-        $idParts = Split-VoiceId $id
-        if ($null -ne $idParts[1]) {
-            if ($chosenSpeakers.ContainsKey($idParts[0])) { $chosenSpeakers[$idParts[0]] += ", $($idParts[1])" }
-            else { $chosenSpeakers[$idParts[0]] = $idParts[1] }
-        }
-        $installedKeys[$idParts[0]] = $true
-    }
-    $bold = New-Object System.Drawing.Font($form.Font, [System.Drawing.FontStyle]::Bold)
+    foreach ($key in $speakersOf.Keys) { if (@($speakersOf[$key]).Count) { $chosenSpeakers[$key] = @($speakersOf[$key]) -join ', ' } }
     foreach ($v in $Catalogue) {
         $item = New-Object System.Windows.Forms.ListViewItem($v.Display)
         [void]$item.SubItems.Add($v.Accent)
@@ -262,93 +328,168 @@ function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
         [void]$item.SubItems.Add("$($v.SizeMb) MB")
         [void]$item.SubItems.Add($v.Key)
         $item.Tag = $v
-        $item.Checked = $installedKeys.ContainsKey($v.Key)
+        $item.Checked = $speakersOf.Contains($v.Key)
         if ($item.Checked) { $item.Font = $bold }
         [void]$list.Items.Add($item)
     }
-    $form.Controls.Add($list)
-
-    $speakerLabel = New-Object System.Windows.Forms.Label
-    $speakerLabel.Location = New-Object System.Drawing.Point(12, 362)
-    $speakerLabel.Size = New-Object System.Drawing.Size(780, 18)
-    $speakerLabel.Anchor = 'Bottom, Left, Right'
+    $speakerLabel = New-Control 'Label' $tabAdd 10 310 810 18 'Select a voice with several speakers to choose which of them to install (each becomes a voice).' 'Bottom, Left, Right'
     $speakerLabel.AutoEllipsis = $true
-    $speakerLabel.Text = 'Select a voice with several speakers to choose which of them to install (each becomes a voice).'
-    $form.Controls.Add($speakerLabel)
-
-    # Every speaker of the selected voice, to tick (scrolls sideways when there are many).
-    $speakerList = New-Object System.Windows.Forms.CheckedListBox
-    $speakerList.Location = New-Object System.Drawing.Point(12, 382)
-    $speakerList.Size = New-Object System.Drawing.Size(670, 112)
-    $speakerList.Anchor = 'Bottom, Left, Right'
-    $speakerList.MultiColumn = $true
-    $speakerList.ColumnWidth = 90
-    $speakerList.CheckOnClick = $true
-    $speakerList.IntegralHeight = $false
-    $speakerList.Enabled = $false
-    $form.Controls.Add($speakerList)
-
-    $play = New-Object System.Windows.Forms.Button
-    $play.Text = 'Play sample'
-    $play.Location = New-Object System.Drawing.Point(692, 382)
-    $play.Size = New-Object System.Drawing.Size(100, 26)
-    $play.Anchor = 'Bottom, Right'
-    $form.Controls.Add($play)
-
-    $playHint = New-Object System.Windows.Forms.Label
-    $playHint.Text = 'plays the voice, or the speaker selected in this list'
-    $playHint.Location = New-Object System.Drawing.Point(692, 412)
-    $playHint.Size = New-Object System.Drawing.Size(100, 60)
-    $playHint.Anchor = 'Bottom, Right'
-    $playHint.ForeColor = [System.Drawing.Color]::DimGray
-    $form.Controls.Add($playHint)
-
-    $usBox = New-Object System.Windows.Forms.CheckBox
-    $usBox.Text = 'Also list British voices as US English (only if a program does not show them)'
-    $usBox.Location = New-Object System.Drawing.Point(12, 504)
-    $usBox.Size = New-Object System.Drawing.Size(780, 22)
-    $usBox.Anchor = 'Bottom, Left, Right'
+    $speakerList = New-Control 'CheckedListBox' $tabAdd 10 330 700 104 '' 'Bottom, Left, Right'
+    $speakerList.MultiColumn = $true; $speakerList.ColumnWidth = 90; $speakerList.CheckOnClick = $true
+    $speakerList.IntegralHeight = $false; $speakerList.Enabled = $false
+    $play = New-Control 'Button' $tabAdd 720 330 100 27 'Play sample' 'Bottom, Right'
+    $playHint = New-Control 'Label' $tabAdd 720 360 100 60 'plays the voice, or the speaker selected in this list' 'Bottom, Right'
+    $playHint.ForeColor = $grey
+    $sizeLabel = New-Control 'Label' $tabAdd 10 440 810 20 '' 'Bottom, Left, Right'
+    $warnLabel = New-Control 'Label' $tabAdd 10 462 810 36 '' 'Bottom, Left, Right'
+    $warnLabel.ForeColor = [System.Drawing.Color]::Firebrick
+    $usBox = New-Control 'CheckBox' $tabAdd 10 500 810 22 'Also list British voices as US English (only if a program does not show them)' 'Bottom, Left, Right'
     $usBox.Checked = $UsTags
-    $form.Controls.Add($usBox)
+    $sizeNote = New-Control 'Label' $tabAdd 10 524 810 34 ("Speakers of one voice share its model, so extra speakers take no extra space. Two qualities of the same voice " +
+        "(medium and high) are separate models: each takes its full size.") 'Bottom, Left, Right'
+    $sizeNote.ForeColor = $grey
 
-    $note = New-Object System.Windows.Forms.Label
-    $note.Text = 'Some programs (World of Warcraft, for one) take longer to start the more voices Windows has installed: keep the list to the ones you use.'
-    $note.Location = New-Object System.Drawing.Point(12, 530)
-    $note.Size = New-Object System.Drawing.Size(560, 34)
-    $note.Anchor = 'Bottom, Left, Right'
-    $note.ForeColor = [System.Drawing.Color]::DimGray
-    $form.Controls.Add($note)
+    # ---- bottom of the window
+    $note = New-Control 'Label' $form 12 634 600 34 ('Some programs (World of Warcraft, for one) take longer to start the more voices Windows has: ' +
+        'keep the list to the ones you use.') 'Bottom, Left, Right'
+    $note.ForeColor = $grey
+    $apply = New-Control 'Button' $form 632 640 110 30 'Apply changes' 'Bottom, Right'
+    $apply.DialogResult = 'OK'
+    $close = New-Control 'Button' $form 752 640 100 30 'Close' 'Bottom, Right'
+    $close.DialogResult = 'Cancel'
+    $form.CancelButton = $close
 
-    $ok = New-Object System.Windows.Forms.Button
-    $ok.Text = 'Install'
-    $ok.Location = New-Object System.Drawing.Point(582, 610)
-    $ok.Size = New-Object System.Drawing.Size(100, 30)
-    $ok.Anchor = 'Bottom, Right'
-    $ok.DialogResult = 'OK'
-    $form.Controls.Add($ok)
-    $form.AcceptButton = $ok
+    $timer = New-Object System.Windows.Forms.Timer
+    $timer.Interval = 350
+    $timer.add_Tick({ $script:Ui.SaveTimer.Stop(); Save-UiSettings })
 
-    $cancel = New-Object System.Windows.Forms.Button
-    $cancel.Text = 'Cancel'
-    $cancel.Location = New-Object System.Drawing.Point(692, 610)
-    $cancel.Size = New-Object System.Drawing.Size(100, 30)
-    $cancel.Anchor = 'Bottom, Right'
-    $cancel.DialogResult = 'Cancel'
-    $form.Controls.Add($cancel)
-    $form.CancelButton = $cancel
-
-    $script:Ui = @{ Form = $form; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
-                    Speakers = $chosenSpeakers; Current = $null; Player = $null; Filling = $false }
+    $script:Ui = @{ Form = $form; Tabs = $tabs; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
+        Speakers = $chosenSpeakers; Current = $null; Player = $null; Filling = $false; InstalledKeys = @($speakersOf.Keys)
+        InstalledList = $installedList; SoundLabel = $soundLabel; Sliders = $sliders; PreviewBox = $previewBox
+        PreviewButton = $previewButton; ResetButton = $resetButton; CurrentInstalled = $null; SaveTimer = $timer
+        PreviewProcess = $null; SizeLabel = $sizeLabel; WarnLabel = $warnLabel }
     $list.add_SelectedIndexChanged({ Update-UiSelection })
-    # Ticking a speaker ticks its voice too.
+    $list.add_ItemChecked({ if (-not $script:Ui.Filling) { Update-UiSummary } })
     $speakerList.add_ItemCheck({
         param($sender, $e)
         if (-not $script:Ui.Filling -and $e.NewValue -eq [System.Windows.Forms.CheckState]::Checked -and
             $script:Ui.List.SelectedItems.Count -gt 0) { $script:Ui.List.SelectedItems[0].Checked = $true }
     })
     $play.add_Click({ Invoke-UiSample })
-    $form.add_FormClosing({ Save-UiSpeakers; if ($script:Ui.Player) { $script:Ui.Player.Stop() } })
+    $installedList.add_SelectedIndexChanged({ Update-UiInstalled })
+    $previewButton.add_Click({ Invoke-UiPreview })
+    $resetButton.add_Click({ Reset-UiSettings })
+    $form.add_FormClosing({
+        Save-UiSpeakers
+        if ($script:Ui.SaveTimer.Enabled) { $script:Ui.SaveTimer.Stop(); Save-UiSettings }
+        if ($script:Ui.Player) { $script:Ui.Player.Stop() }
+        Stop-UiPreview
+    })
+    Update-UiSummary
+    if ($installedList.Items.Count -gt 0) { $installedList.Items[0].Selected = $true; Update-UiInstalled }
+    else { $tabs.SelectedTab = $tabAdd }
     return $script:Ui
+}
+
+function Update-UiSliderLabels {
+    $s = $script:Ui.Sliders
+    $volume = $s.Volume.Bar.Value
+    $s.Volume.Value.Text = if ($volume -eq 0) { 'off (as Piper made it)' } else { "$volume%" }
+    $boost = $s.Boost.Bar.Value / 10.0
+    $s.Boost.Value.Text = if ($boost -le 1.0) { 'none' } else { $boost.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture) + 'x' }
+    $s.Speed.Value.Text = "$($s.Speed.Bar.Value)%"
+}
+
+function Update-UiInstalled {
+    $ui = $script:Ui
+    if ($ui.SaveTimer.Enabled) { $ui.SaveTimer.Stop(); Save-UiSettings }
+    $ui.CurrentInstalled = $null
+    $on = $ui.InstalledList.SelectedItems.Count -gt 0
+    foreach ($k in 'Volume', 'Boost', 'Speed') { $ui.Sliders[$k].Bar.Enabled = $on }
+    $ui.PreviewButton.Enabled = $on; $ui.ResetButton.Enabled = $on
+    if (-not $on) { return }
+    $tag = $ui.InstalledList.SelectedItems[0].Tag
+    $settings = Get-VoiceSettings $tag.Dir
+    $peak = $DefaultPeak; $boost = $DefaultBoost; $lengthScale = 1.0
+    if ($settings) {
+        if ($null -ne $settings.Peak) { $peak = $settings.Peak }
+        if ($null -ne $settings.Boost) { $boost = $settings.Boost }
+        if ($null -ne $settings.LengthScale) { $lengthScale = $settings.LengthScale }
+    }
+    $ui.Filling = $true
+    try {
+        $ui.Sliders.Volume.Bar.Value = [int][math]::Max(0, [math]::Min(100, [math]::Round($peak * 100)))
+        $ui.Sliders.Boost.Bar.Value = [int][math]::Max(10, [math]::Min(40, [math]::Round($boost * 10)))
+        $ui.Sliders.Speed.Bar.Value = [int][math]::Max(50, [math]::Min(200, [math]::Round(100 / $lengthScale)))
+        Update-UiSliderLabels
+    } finally {
+        $ui.Filling = $false
+    }
+    $ui.CurrentInstalled = $tag
+    $ui.SoundLabel.Text = "How $($tag.Title) sounds" + $(if ($tag.Shared) { ' (all its speakers)' } else { '' })
+}
+
+function Save-UiSettings {
+    $ui = $script:Ui
+    $tag = $ui.CurrentInstalled
+    if (-not $tag -or -not (Test-Path (Join-Path $tag.Dir 'voice.json'))) { return }
+    $peak = $ui.Sliders.Volume.Bar.Value / 100.0
+    $boost = $ui.Sliders.Boost.Bar.Value / 10.0
+    $lengthScale = [math]::Round(100.0 / $ui.Sliders.Speed.Bar.Value, 3)
+    try {
+        Set-VoiceSettings $tag.Dir $peak $boost $lengthScale
+    } catch {
+        [void][System.Windows.Forms.MessageBox]::Show("Could not save the settings: $($_.Exception.Message)", $AppName)
+    }
+}
+
+function Reset-UiSettings {
+    $ui = $script:Ui
+    if (-not $ui.CurrentInstalled) { return }
+    $ui.Sliders.Volume.Bar.Value = [int]($DefaultPeak * 100)
+    $ui.Sliders.Boost.Bar.Value = [int]($DefaultBoost * 10)
+    $ui.Sliders.Speed.Bar.Value = 100
+}
+
+function Stop-UiPreview {
+    $p = $script:Ui.PreviewProcess
+    if ($p -and -not $p.HasExited) { try { $p.Kill() } catch { } }
+    $script:Ui.PreviewProcess = $null
+}
+
+# Speaks the line with the selected voice in a separate PowerShell, as any program would (the engine
+# is never loaded into this one, so nothing here holds its files).
+function Invoke-UiPreview {
+    $ui = $script:Ui
+    $tag = $ui.CurrentInstalled
+    if (-not $tag) { return }
+    if ($ui.SaveTimer.Enabled) { $ui.SaveTimer.Stop(); Save-UiSettings }
+    Stop-UiPreview
+    $text = if ($ui.PreviewBox.Text.Trim()) { $ui.PreviewBox.Text } else { $PreviewText }
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($text))
+    $ui.PreviewProcess = Start-Process $PS64 -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', "`"$(Join-Path $Here 'Speak.ps1')`"", '-Voice', "`"$($tag.Voice)`"", '-TextBase64', $encoded)
+}
+
+function Update-UiSummary {
+    $ui = $script:Ui
+    $ticked = @($ui.List.Items | Where-Object { $_.Checked } | ForEach-Object { $_.Tag })
+    $total = ($ticked | Measure-Object SizeMb -Sum).Sum
+    $new = @($ticked | Where-Object { $ui.InstalledKeys -notcontains $_.Key })
+    $download = ($new | Measure-Object SizeMb -Sum).Sum
+    $gone = @($ui.InstalledKeys | Where-Object { @($ticked | ForEach-Object { $_.Key }) -notcontains $_ })
+    $text = "Ticked: $($ticked.Count) voice(s), about $([int]$total) MB on disk."
+    if ($new.Count) { $text += " To download: $($new.Count), $([int]$download) MB." }
+    if ($gone.Count) { $text += " To remove: $($gone.Count)." }
+    if (-not $new.Count -and -not $gone.Count) { $text += ' No changes to apply.' }
+    $ui.SizeLabel.Text = $text
+    $warnings = @()
+    foreach ($group in ($ticked | Group-Object { "$($_.Name)|$($_.Code)" } | Where-Object { $_.Count -gt 1 })) {
+        $g = @($group.Group)
+        $warnings += "$((Get-PrettyName $g[0].Name)) ($($g[0].Accent)) is ticked in $($g.Count) qualities ($(@($g | ForEach-Object Quality) -join ' and ')): " +
+            "each is a separate model, $(@($g | ForEach-Object { "$($_.SizeMb) MB" }) -join ' + ')."
+    }
+    $ui.WarnLabel.Text = $warnings -join ' '
 }
 
 function Save-UiSpeakers {
@@ -511,7 +652,7 @@ function Register-Class([string]$ClassKey, [string]$DllPath) {
 
 function Register-Voice([string]$TokenRoot, [string]$Id, $Entry, [string]$SpeakerName, [int]$SpeakerId, [bool]$UsTags) {
     $token = Join-Path $TokenRoot (Get-TokenName $Id)
-    $display = if ($SpeakerName) { "$($Entry.Display) $SpeakerName ($($Entry.Accent))" } else { "$($Entry.Display) ($($Entry.Accent))" }
+    $display = Get-DisplayName $Entry $SpeakerName
     $lcid = if ($UsTags) { '409' } elseif ($Lcids.ContainsKey($Entry.Code)) { $Lcids[$Entry.Code] } else { '409' }
     if (Test-Path $token) { Remove-Item $token -Recurse -Force }
     New-Item "$token\Attributes" -Force | Out-Null
@@ -550,7 +691,10 @@ function Write-Launcher([string]$Destination, [string]$Script, [string]$Extra, [
 }
 
 function Register-Program {
-    Write-Launcher (Join-Path $App 'Choose voices.cmd') 'Install.ps1' ''
+    foreach ($old in (Join-Path $App 'Choose voices.cmd'), (Join-Path $StartMenu 'Choose voices.lnk')) {   # 0.5's names
+        if (Test-Path $old) { Remove-Item $old -Force }
+    }
+    Write-Launcher (Join-Path $App 'Modern Voices.cmd') 'Install.ps1' ''
     Write-Launcher (Join-Path $App 'Repair.cmd') 'Install.ps1' '-Repair'
     Write-Launcher (Join-Path $App 'Test voices.cmd') 'Test.ps1' ''
     Write-Launcher (Join-Path $App 'Uninstall.cmd') 'Uninstall.ps1' '' -LeaveFolder
@@ -567,7 +711,8 @@ function Register-Program {
     Set-ItemProperty $OurKey -Name 'EstimatedSize' -Value $sizeKb -Type DWord
     New-Item $StartMenu -ItemType Directory -Force | Out-Null
     $common = "-NoProfile -ExecutionPolicy Bypass -File `"$App\installer\"
-    New-Shortcut (Join-Path $StartMenu 'Choose voices.lnk') ($common + 'Install.ps1"') 'Choose which Modern Voices are installed'
+    New-Shortcut (Join-Path $StartMenu 'Modern Voices.lnk') ($common + 'Install.ps1"') 'Voices installed, how they sound, add or remove voices'
+    New-Shortcut (Join-Path $StartMenu 'Repair.lnk') ($common + 'Install.ps1" -Repair') 'Register the voices again'
     New-Shortcut (Join-Path $StartMenu 'Test voices.lnk') ($common + 'Test.ps1"') 'Hear each Modern Voice'
     New-Shortcut (Join-Path $StartMenu 'Uninstall.lnk') ($common + 'Uninstall.ps1"') "Uninstall $AppName"
 }
@@ -593,146 +738,190 @@ function Invoke-SelfTest([bool]$With32) {
     return $results
 }
 
+# The engine copied in and registered for 64- and 32-bit programs, with its certificate trusted.
+function Install-AndRegisterEngine {
+    Install-Engine
+    Register-Class $Class64 $Dll64
+    if (Test-Path $Dll32) { Register-Class $Class32 $Dll32 } elseif (Test-Path $Class32) { Remove-Item $Class32 -Recurse -Force }
+    # Programs that only load signed engines (World of Warcraft, for one) need the build's certificate trusted.
+    foreach ($store in 'Root', 'TrustedPublisher') {
+        & "$env:SystemRoot\System32\certutil.exe" -f -addstore $store $Cer | Out-Null
+    }
+}
+
+# Voices installed before 0.6 have their loudness inside their models: the engine applies it now.
+function Update-OldVoices {
+    if (-not (Test-Path $VoiceRoot)) { return }
+    foreach ($folder in Get-ChildItem $VoiceRoot -Directory) {
+        if (-not (Test-VoiceFolder $folder.FullName)) { continue }
+        if (Convert-ToEngineLoudness $folder.FullName $DefaultPeak $DefaultBoost) {
+            Write-Host "  $($folder.Name): its loudness is applied by the engine now (done once)"
+        }
+    }
+}
+
+# Makes the installed voices exactly $Wanted: files downloaded or removed, voices registered, tested.
+# True when every voice passed its test.
+function Set-InstalledVoices([string[]]$Wanted, [bool]$UsTags, $ByKey) {
+    foreach ($id in $Wanted) {
+        $idParts = Split-VoiceId $id
+        if (-not $ByKey.ContainsKey($idParts[0])) { throw "Unknown voice '$id' (not an English medium or high voice in the catalogue)." }
+        $entry = $ByKey[$idParts[0]]
+        if ($null -ne $idParts[1] -and -not $entry.Speakers.Contains($idParts[1])) { throw "Voice '$($idParts[0])' has no speaker '$($idParts[1])'." }
+        if ($null -eq $idParts[1] -and $entry.Speakers.Count -gt 1) { throw "Voice '$id' has several speakers: give one as $id#name." }
+    }
+    $has32 = Test-Path $Dll32
+
+    Write-Host "`n  voice files"
+    New-Item $VoiceRoot -ItemType Directory -Force | Out-Null
+    $keys = @($Wanted | ForEach-Object { (Split-VoiceId $_)[0] } | Select-Object -Unique)
+    foreach ($folder in Get-ChildItem $VoiceRoot -Directory) {
+        if ($keys -notcontains $folder.Name) {
+            try {
+                Remove-Item $folder.FullName -Recurse -Force
+                Write-Host "    removed $($folder.Name)"
+            } catch {
+                Write-Host "    could not remove $($folder.Name) (a program is using it): it goes next time" -ForegroundColor Yellow
+            }
+        }
+    }
+    foreach ($key in $keys) {
+        $folder = Join-Path $VoiceRoot $key
+        if (Test-VoiceFolder $folder) { Write-Host "    $key (installed)"; continue }
+        Install-Voice $ByKey[$key]
+        Write-Host "    $key ready"
+    }
+
+    Write-Host "`n  registering"
+    Remove-OurTokens $Tokens64
+    Remove-OurTokens $Tokens32
+    foreach ($id in $Wanted) {
+        $idParts = Split-VoiceId $id
+        $entry = $ByKey[$idParts[0]]
+        $speakerId = if ($null -ne $idParts[1]) { [int]$entry.Speakers[$idParts[1]] } else { 0 }
+        $display = Register-Voice $Tokens64 $id $entry $idParts[1] $speakerId $UsTags
+        if ($has32) { [void](Register-Voice $Tokens32 $id $entry $idParts[1] $speakerId $UsTags) }
+        Write-Host "    $display"
+    }
+    New-Item $Settings -Force | Out-Null
+    Set-ItemProperty $Settings -Name 'UsEnglishTags' -Value ([int]$UsTags) -Type DWord
+    Register-Program
+
+    $allGood = $true
+    if ($Wanted.Count -gt 0) {
+        Write-Host "`n  testing each voice through Windows' speech API"
+        foreach ($r in (Invoke-SelfTest $has32)) {
+            $ok = -not $r['error'] -and [double]$r['seconds'] -gt 0.5 -and [int]$r['words'] -ge 5 -and [string]$r['bookmark'] -eq '7'
+            if ($r['none']) { $ok = $false; $r['name'] = '(no voices found)'; $r['error'] = "none listed for $($r['bits'])-bit programs" }
+            $line = "    {0,-44} {1}-bit  {2,5:N1} s  {3} words  bookmark {4}" -f $r['name'], $r['bits'], [double]$r['seconds'], $r['words'], $(if ($r['bookmark']) { 'ok' } else { 'missing' })
+            if ($r['error']) { $line += "  ERROR: $($r['error'])" }
+            Write-Host $line -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
+            if (-not $ok) { $allGood = $false }
+        }
+    }
+    return $allGood
+}
+
 # --- the steps --------------------------------------------------------------------------------------
 
 if ($FunctionsOnly) { return }
 
 try {
     if ($PickerSelfTest) {
+        # The window built (not shown) and driven as clicks would: the build's test of it.
         $catalogue = Get-Catalogue
-        $picker = New-PickerForm $catalogue @('en_GB-alba-medium', 'en_GB-vctk-medium#p239') $false
-        $picked = @(Get-PickedIds $picker)
-        Write-Output ("picker: {0} voices listed, {1} ticked: {2}" -f $picker.List.Items.Count, $picked.Count, ($picked -join ' '))
-        # The speaker list, driven as a click would: select VCTK, tick a second speaker.
-        $null = $picker.Form.Handle; $null = $picker.List.Handle
-        $vctk = @($picker.List.Items | Where-Object { $_.Tag.Key -eq 'en_GB-vctk-medium' })[0]
+        $byKey = @{}; foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
+        $real = @(Get-InstalledIds)
+        $ids = if ($real.Count) { $real } else { @('en_GB-alba-medium', 'en_GB-vctk-medium#p239') }
+        $ui = New-ManagerForm $catalogue $ids $false $byKey
+        $null = $ui.Form.Handle; $null = $ui.List.Handle; $null = $ui.InstalledList.Handle
+        $bad = @()
+        Write-Output ("window: {0} voices in the catalogue, {1} installed shown; {2}" -f $ui.List.Items.Count, $ui.InstalledList.Items.Count, $ui.SizeLabel.Text)
+        # Speakers: select VCTK, tick a second speaker.
+        $vctk = @($ui.List.Items | Where-Object { $_.Tag.Key -eq 'en_GB-vctk-medium' })[0]
         $vctk.Selected = $true
         Update-UiSelection
-        $speakerCount = $picker.SpeakerList.Items.Count
-        $ticked = @($picker.SpeakerList.CheckedItems | ForEach-Object { [string]$_ })
-        $other = [string]$picker.SpeakerList.Items[0]
-        $picker.SpeakerList.SetItemChecked(0, $true)
+        $count = $ui.SpeakerList.Items.Count
+        $before = @($ui.SpeakerList.CheckedItems | ForEach-Object { [string]$_ })
+        $index = 0; while ($before -contains [string]$ui.SpeakerList.Items[$index]) { $index++ }
+        $other = [string]$ui.SpeakerList.Items[$index]
+        $ui.SpeakerList.SetItemChecked($index, $true)
         Save-UiSpeakers
-        $picked = @(Get-PickedIds $picker)
-        Write-Output ("speakers: {0} listed for VCTK ({1} in the catalogue), ticked {2}; after ticking {3}: {4}" -f
-            $speakerCount, $vctk.Tag.Speakers.Count, ($ticked -join ','), $other, ($picked -join ' '))
-        $good = $speakerCount -eq $vctk.Tag.Speakers.Count -and ($ticked -join ',') -eq 'p239' -and
-            $picked -contains 'en_GB-vctk-medium#p239' -and $picked -contains "en_GB-vctk-medium#$other"
-        $picker.Form.Dispose()
-        if (-not $good) { Write-Output 'picker: speaker list FAILED'; exit 3 }
+        $picked = @(Get-PickedIds $ui)
+        Write-Output ("speakers: {0} listed for VCTK, ticked {1}; after ticking {2}: {3}" -f $count, ($before -join ','), $other, ($picked -join ' '))
+        if ($count -ne $vctk.Tag.Speakers.Count -or $picked -notcontains "en_GB-vctk-medium#$other") { $bad += 'speaker list' }
+        foreach ($b in $before) { if ($picked -notcontains "en_GB-vctk-medium#$b") { $bad += "speaker $b dropped" } }
+        # Two qualities of one voice: the warning.
+        foreach ($item in $ui.List.Items) { if ($item.Tag.Name -eq 'lessac') { $item.Checked = $true } }
+        Update-UiSummary
+        Write-Output "warning: $($ui.WarnLabel.Text)"
+        if ($ui.WarnLabel.Text -notmatch 'Lessac') { $bad += 'duplicate warning' }
+        # Sliders, on a real installed voice: saved to its voice.json.
+        if ($real.Count -and $ui.InstalledList.Items.Count) {
+            $ui.InstalledList.Items[0].Selected = $true
+            Update-UiInstalled
+            $dir = $ui.CurrentInstalled.Dir
+            $was = Get-VoiceSettings $dir
+            $ui.Sliders.Volume.Bar.Value = 60; $ui.Sliders.Boost.Bar.Value = 20; $ui.Sliders.Speed.Bar.Value = 80
+            Save-UiSettings
+            $now = Get-VoiceSettings $dir
+            Write-Output ("sliders: {0} -> peak {1}, boost {2}, length_scale {3}" -f $ui.CurrentInstalled.Title, $now.Peak, $now.Boost, $now.LengthScale)
+            if ($now.Peak -ne 0.6 -or $now.Boost -ne 2 -or $now.LengthScale -ne 1.25 -or -not $now.Engine) { $bad += 'sliders' }
+            Set-VoiceSettings $dir $was.Peak $was.Boost $was.LengthScale
+        }
+        $ui.Form.Dispose()
+        if ($bad.Count) { Write-Output "window: FAILED ($($bad -join ', '))"; exit 3 }
+        Write-Output 'window: ok'
         exit 0
     }
 
     Write-Host "$AppName $Version" -ForegroundColor Cyan
     if ($InPlace) { Write-Host '(from the installed folder)' }
     New-Item $App -ItemType Directory -Force | Out-Null
-
-    # 1. Which voices.
-    $installed = @(Get-InstalledIds)
     $usTags = [bool]$UsEnglishTags
     if (-not $UsEnglishTags -and (Test-Path $Settings)) { $usTags = ((Get-ItemProperty $Settings).UsEnglishTags -eq 1) }
-    Write-Host "`n[1/5] Voices"
-    Write-Host '  getting the voice list ...'
+
+    Write-Host "`nEngine"
+    Install-AndRegisterEngine
+    Register-Program
+    Write-Host ("  {0}{1}" -f $Dll64, $(if (Test-Path $Dll32) { ' and 32-bit' } else { ' (no 32-bit engine in this build)' }))
+    Update-OldVoices
+
+    Write-Host "`nVoice list"
     $catalogue = Get-Catalogue
     Write-Host "  $($catalogue.Count) English voices"
     $byKey = @{}
     foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
-    if ($Repair) {
-        $wanted = $installed
-    } elseif ($Voices.Count -gt 0) {
-        $wanted = $Voices
-    } elseif ($Unattended) {
-        $wanted = if ($installed.Count -gt 0) { $installed } else { @('en_GB-alba-medium', 'en_GB-northern_english_male-medium') }
-    } else {
-        $picker = New-PickerForm $catalogue $installed $usTags
-        Write-Host '  choose voices in the window that opened (it may be behind this one: see the taskbar)'
-        $answer = $picker.Form.ShowDialog()
-        if ($answer -ne 'OK') { Write-Host '  cancelled: nothing changed'; if (-not $NoPause) { Read-Host 'Press Enter to close' | Out-Null }; exit 0 }
-        $wanted = @(Get-PickedIds $picker)
-        $usTags = $picker.UsBox.Checked
-        $picker.Form.Dispose()
-    }
-    $wanted = @($wanted | Select-Object -Unique)
-    foreach ($id in $wanted) {
-        $parts = Split-VoiceId $id
-        if (-not $byKey.ContainsKey($parts[0])) { throw "Unknown voice '$id' (not an English medium or high voice in the catalogue)." }
-        $v = $byKey[$parts[0]]
-        if ($null -ne $parts[1] -and -not $v.Speakers.Contains($parts[1])) { throw "Voice '$($parts[0])' has no speaker '$($parts[1])'." }
-        if ($null -eq $parts[1] -and $v.Speakers.Count -gt 1) { throw "Voice '$id' has several speakers: give one as $id#name." }
-    }
-    if ($wanted.Count -eq 0) { Write-Host '  no voices chosen: the engine stays installed with none (run Choose voices to add some)' -ForegroundColor Yellow }
 
-    # 2. The engine.
-    Write-Host "`n[2/5] Engine"
-    Install-Engine
-    $has32 = Test-Path $Dll32
-    Write-Host ("  {0}{1}" -f $Dll64, $(if ($has32) { " and 32-bit" } else { ' (no 32-bit engine in this build)' }))
-
-    # 3. The voices' files: new ones downloaded, ones no longer wanted removed, loudness applied on repair.
-    Write-Host "`n[3/5] Voice files"
-    New-Item $VoiceRoot -ItemType Directory -Force | Out-Null
-    $keys = @($wanted | ForEach-Object { (Split-VoiceId $_)[0] } | Select-Object -Unique)
-    foreach ($folder in Get-ChildItem $VoiceRoot -Directory) {
-        if ($keys -notcontains $folder.Name) {
-            try {
-                Remove-Item $folder.FullName -Recurse -Force
-                Write-Host "  removed $($folder.Name)"
-            } catch {
-                Write-Host "  could not remove $($folder.Name) (a program is using it): it goes next time" -ForegroundColor Yellow
-            }
-        }
-    }
-    foreach ($key in $keys) {
-        $folder = Join-Path $VoiceRoot $key
-        if (Test-VoiceFolder $folder) {
-            if ($Repair) {
-                $loud = Get-PiperLoudness $folder
-                if (-not $loud) { $loud = @($DefaultPeak, $DefaultBoost) }
-                Set-PiperLoudness $folder $loud[0] $loud[1]
-                Write-Host "  $key (loudness: peak $(Format-Number $loud[0]), boost $(Format-Number $loud[1]))"
-            } else {
-                Write-Host "  $key (installed)"
-            }
-            continue
-        }
-        Install-Voice $byKey[$key]
-        Write-Host "  $key ready"
-    }
-
-    # 4. Registration: the engine for 64- and 32-bit programs, its certificate, the voices.
-    Write-Host "`n[4/5] Registering"
-    Register-Class $Class64 $Dll64
-    if ($has32) { Register-Class $Class32 $Dll32 } elseif (Test-Path $Class32) { Remove-Item $Class32 -Recurse -Force }
-    # Programs that only load signed engines (World of Warcraft, for one) need the build's certificate trusted.
-    foreach ($store in 'Root', 'TrustedPublisher') {
-        & "$env:SystemRoot\System32\certutil.exe" -f -addstore $store $Cer | Out-Null
-    }
-    Remove-OurTokens $Tokens64
-    Remove-OurTokens $Tokens32
-    foreach ($id in $wanted) {
-        $parts = Split-VoiceId $id
-        $v = $byKey[$parts[0]]
-        $speakerId = if ($null -ne $parts[1]) { [int]$v.Speakers[$parts[1]] } else { 0 }
-        $display = Register-Voice $Tokens64 $id $v $parts[1] $speakerId $usTags
-        if ($has32) { [void](Register-Voice $Tokens32 $id $v $parts[1] $speakerId $usTags) }
-        Write-Host "  $display"
-    }
-    New-Item $Settings -Force | Out-Null
-    Set-ItemProperty $Settings -Name 'UsEnglishTags' -Value ([int]$usTags) -Type DWord
-    Register-Program
-    $signature = (Get-AuthenticodeSignature $Dll64).Status
-
-    # 5. Each voice, through Windows' speech API, as programs use it.
-    Write-Host "`n[5/5] Testing"
+    $interactive = -not ($Repair -or $Voices.Count -gt 0 -or $Unattended)
     $allGood = $true
-    if ($wanted.Count -gt 0) {
-        foreach ($r in (Invoke-SelfTest $has32)) {
-            $ok = -not $r['error'] -and [double]$r['seconds'] -gt 0.5 -and [int]$r['words'] -ge 5 -and [string]$r['bookmark'] -eq '7'
-            if ($r['none']) { $ok = $false; $r['name'] = '(no voices found)'; $r['error'] = "none listed for $($r['bits'])-bit programs" }
-            $text = "  {0,-44} {1}-bit  {2,5:N1} s  {3} words  bookmark {4}" -f $r['name'], $r['bits'], [double]$r['seconds'], $r['words'], $(if ($r['bookmark']) { 'ok' } else { 'missing' })
-            if ($r['error']) { $text += "  ERROR: $($r['error'])" }
-            Write-Host $text -ForegroundColor $(if ($ok) { 'Green' } else { 'Red' })
-            if (-not $ok) { $allGood = $false }
+    while ($true) {
+        $installed = @(Get-InstalledIds)
+        if ($Repair) {
+            $wanted = $installed
+        } elseif ($Voices.Count -gt 0) {
+            $wanted = $Voices
+        } elseif ($Unattended) {
+            $wanted = if ($installed.Count -gt 0) { $installed } else { @('en_GB-alba-medium', 'en_GB-northern_english_male-medium') }
+        } else {
+            $ui = New-ManagerForm $catalogue $installed $usTags $byKey
+            Write-Host "`nThe Modern Voices window is open (if you can't see it, it's on the taskbar)."
+            $answer = $ui.Form.ShowDialog()
+            $wanted = @(Get-PickedIds $ui)
+            $newTags = $ui.UsBox.Checked
+            $ui.Form.Dispose()
+            if ($answer -ne 'OK') { break }
+            $same = ((@($wanted | Sort-Object) -join '|') -eq (@($installed | Sort-Object) -join '|')) -and ($newTags -eq $usTags)
+            $usTags = $newTags
+            if ($same) { continue }
+        }
+        Write-Host "`nApplying"
+        $allGood = Set-InstalledVoices @($wanted | Select-Object -Unique) $usTags $byKey
+        if (-not $interactive) { break }
+        if (-not $allGood) {
+            Add-Type -AssemblyName System.Windows.Forms
+            [void][System.Windows.Forms.MessageBox]::Show("A voice failed its test: see the window behind this one. The engine's log says why: " +
+                "$env:LOCALAPPDATA\ModernVoices\engine.log", $AppName)
         }
     }
 
@@ -742,8 +931,11 @@ try {
         if ($Unattended) { exit 2 }
     } else {
         Write-Host "Done. Installed in $App" -ForegroundColor Green
-        Write-Host 'The voices are in every program that uses Windows'' installed voices (restart programs that were open).'
-        Write-Host 'Start menu > Modern Voices for Windows: Choose voices, Test voices, Uninstall.'
+        if (-not $interactive) {
+            Write-Host 'The voices are in every program that uses Windows'' installed voices (restart programs that were open).'
+            Write-Host 'Start menu > Modern Voices for Windows: Modern Voices, Test voices, Repair, Uninstall.'
+        }
+        $signature = (Get-AuthenticodeSignature $Dll64).Status
         if ($signature -ne 'Valid') {
             Write-Host "Note: the engine's signature is '$signature': programs that insist on signed engines (WoW) will not use it." -ForegroundColor Yellow
         }
@@ -752,4 +944,4 @@ try {
     if ($Unattended) { Write-Host "Stopped: $($_.Exception.Message)`n$($_.ScriptStackTrace)" -ForegroundColor Red; exit 1 }
     Stop-Here "Stopped: $($_.Exception.Message)"
 }
-if (-not $NoPause -and -not $Unattended) { Read-Host 'Press Enter to close' | Out-Null }
+if (-not $NoPause -and -not $Unattended -and -not $interactive) { Read-Host 'Press Enter to close' | Out-Null }

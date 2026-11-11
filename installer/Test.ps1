@@ -5,15 +5,22 @@ programs use them (System.Speech, which sits on SAPI 5).
   Test.ps1                  says a line aloud with each voice, showing each word as the engine
                             reports it (what programs use to highlight the word being said)
   Test.ps1 -Quiet           speaks into a file instead, and prints one line of JSON per voice: how
-                            much audio came out, how many words and bookmarks were reported. Used by
-                            the installer, which also runs it in 32-bit PowerShell for 32-bit programs.
+                            much audio came out, how loud (its peak, 0 to 1), how many words and
+                            bookmarks were reported. Used by the installer, which also runs it in
+                            32-bit PowerShell for 32-bit programs.
+  Test.ps1 -Live NAME -Dir FOLDER
+                            the build's test of live settings: speaks with voice NAME, changes its
+                            voice.json (in FOLDER) to peak 0.5, no boost, speaks again in the same
+                            process, puts the settings back; prints the two peaks as JSON.
 
 Only voices of this program (token names starting ModernVoices_) are tried.
 #>
 param(
     [switch]$Quiet,
     [string[]]$Only,
-    [switch]$NoPause
+    [switch]$NoPause,
+    [string]$Live,
+    [string]$Dir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,15 +44,47 @@ function Get-Ssml([string]$Culture, [string]$Body) {
     return "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='$lang'>$Body</speak>"
 }
 
+# The loudest sample of a 16-bit mono WAV file, from 0 to 1.
+function Get-WavPeak([string]$Path) {
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $count = [int](($bytes.Length - 44) / 2)
+    if ($count -le 0) { return 0 }
+    $samples = New-Object 'int16[]' $count
+    [Buffer]::BlockCopy($bytes, 44, $samples, 0, $count * 2)
+    $max = 0
+    foreach ($v in $samples) { $a = [math]::Abs([int]$v); if ($a -gt $max) { $max = $a } }
+    return [math]::Round($max / 32768.0, 3)
+}
+
+$format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(22050,
+    [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+
+if ($Live) {
+    . (Join-Path $PSScriptRoot 'VoiceConvert.ps1')
+    $was = Get-VoiceSettings $Dir
+    $synth.SelectVoice($Live)
+    $peaks = @()
+    foreach ($round in 1, 2) {
+        $wav = Join-Path $env:TEMP ("modernvoices_live_{0}.wav" -f [guid]::NewGuid().ToString('N'))
+        $synth.SetOutputToWaveFile($wav, $format)
+        $synth.Speak('Pulling in three. Watch the patrol on the left.')
+        $synth.SetOutputToNull()
+        $peaks += Get-WavPeak $wav
+        Remove-Item $wav -ErrorAction SilentlyContinue
+        if ($round -eq 1) { Set-VoiceSettings $Dir 0.5 1 $was.LengthScale; Start-Sleep -Milliseconds 1200 }
+    }
+    Set-VoiceSettings $Dir $was.Peak $was.Boost $was.LengthScale
+    ('{"before":' + $peaks[0] + ',"after":' + $peaks[1] + '}')
+    exit 0
+}
+
 if ($Quiet) {
     # 9 words, and a bookmark between the two sentences.
     $body = "Pulling in three. <mark name='7'/>Watch the patrol on the left."
-    $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(22050,
-        [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
     foreach ($v in $ours) {
         $info = $v.VoiceInfo
         $wav = Join-Path $env:TEMP ("modernvoices_test_{0}_{1}.wav" -f $bits, [guid]::NewGuid().ToString('N'))
-        $result = [ordered]@{ name = $info.Name; bits = $bits; seconds = 0; words = 0; bookmark = ''; ms = 0; error = '' }
+        $result = [ordered]@{ name = $info.Name; bits = $bits; seconds = 0; peak = 0; words = 0; bookmark = ''; ms = 0; error = '' }
         $words = 'mvw_words'; $marks = 'mvw_marks'
         try {
             Register-ObjectEvent -InputObject $synth -EventName SpeakProgress -SourceIdentifier $words | Out-Null
@@ -61,6 +100,7 @@ if ($Quiet) {
             $mark = @(Get-Event -SourceIdentifier $marks -ErrorAction SilentlyContinue)
             if ($mark.Count -gt 0) { $result.bookmark = [string]$mark[0].SourceEventArgs.Bookmark }
             $result.seconds = [math]::Round(((Get-Item $wav).Length - 44) / 44100.0, 2)
+            $result.peak = Get-WavPeak $wav
         } catch {
             $result.error = $_.Exception.Message
         } finally {

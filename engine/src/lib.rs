@@ -28,7 +28,7 @@ use std::ffi::c_void;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 
 use sherpa_onnx::{GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsModelConfig, OfflineTtsVitsModelConfig};
 use windows::Win32::Foundation::{CLASS_E_CLASSNOTAVAILABLE, CLASS_E_NOAGGREGATION, E_FAIL, E_POINTER, HMODULE, LPARAM,
@@ -146,6 +146,52 @@ struct Model {
     tts: OfflineTts,
     sample_rate: u32,
     busy: Mutex<()>,
+    /// The model's folder, for its voice.json.
+    dir: String,
+    /// The voice's settings, and when its voice.json was last changed when they were read.
+    settings: Mutex<(Option<SystemTime>, Settings)>,
+}
+
+/// What a voice's voice.json sets for how it sounds, read while speaking (so a change takes effect
+/// from the next thing said, in programs that are already using the voice): its loudness (see
+/// text::apply_loudness) and its speed (`length_scale`, Piper's: higher is slower).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Settings {
+    peak: f32,
+    boost: f32,
+    length_scale: f32,
+}
+
+impl Settings {
+    /// From voice.json's text. Loudness only where the file says the engine applies it
+    /// (`"engine_loudness": 1`): models from before 0.6 have it inside them, and are fixed when the
+    /// installer next runs.
+    fn from(info: &str) -> Settings {
+        let engine_loudness = number(info, "engine_loudness", 0.0) >= 1.0;
+        Settings {
+            peak: if engine_loudness { number(info, "peak", 0.0).min(1.0) } else { 0.0 },
+            boost: number(info, "boost", 1.0).clamp(1.0, 5.0),
+            length_scale: number(info, "length_scale", 1.0).clamp(0.3, 3.0),
+        }
+    }
+}
+
+impl Model {
+    /// The voice's settings now: read again when its voice.json has changed since last time.
+    fn settings(&self) -> Settings {
+        let path = format!("{}\\voice.json", self.dir);
+        let changed = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        let Ok(mut cached) = self.settings.lock() else { return Settings::from("") };
+        if cached.0 != changed {
+            let info = std::fs::read_to_string(&path).unwrap_or_default();
+            let settings = Settings::from(&info);
+            if cached.0.is_some() || log::enabled() {
+                log::write(&format!("{}: settings {settings:?}", self.dir));
+            }
+            *cached = (changed, settings);
+        }
+        cached.1
+    }
 }
 
 /// One model's place in the cache: the model once loaded (None before, or after it was unloaded to
@@ -226,17 +272,6 @@ fn make_room(keep: &str) {
 /// (`noise_scale`) and of each sound's length (`noise_w`), below Piper's own 0.667 and 0.8.
 const NOISE_SCALE: f32 = 0.6;
 const NOISE_W: f32 = 0.65;
-const LENGTH_SCALE: f32 = 1.0;
-
-/// A number from the model's voice.json (`"inference": {"noise_scale": 0.6, ...}`), else `default`.
-/// The keys are unique in that file, so a plain search does; no JSON parser for three numbers.
-fn inference(info: &str, key: &str, default: f32) -> f32 {
-    let Some(at) = info.find(&format!("\"{key}\"")) else { return default };
-    let rest = info[at + key.len() + 2..].trim_start().strip_prefix(':').unwrap_or("").trim_start();
-    let end = rest.find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')).unwrap_or(rest.len());
-    rest[..end].parse().ok().filter(|v: &f32| v.is_finite() && *v >= 0.0).unwrap_or(default)
-}
-
 fn load_model(model_dir: &str, data_dir: &str) -> Option<Arc<Model>> {
     let key = format!("{model_dir}|{data_dir}");
     let slot = slots().lock().ok()?.entry(key.clone())
@@ -253,8 +288,7 @@ fn load_model(model_dir: &str, data_dir: &str) -> Option<Arc<Model>> {
     log::write(&format!("loading {model_dir} ..."));
     let started = Instant::now();
     let info = std::fs::read_to_string(format!("{model_dir}\\voice.json")).unwrap_or_default();
-    let (noise_scale, noise_w, length_scale) = (inference(&info, "noise_scale", NOISE_SCALE),
-        inference(&info, "noise_w", NOISE_W), inference(&info, "length_scale", LENGTH_SCALE));
+    let (noise_scale, noise_w) = (number(&info, "noise_scale", NOISE_SCALE), number(&info, "noise_w", NOISE_W));
     let config = OfflineTtsConfig {
         model: OfflineTtsModelConfig {
             vits: OfflineTtsVitsModelConfig {
@@ -263,7 +297,8 @@ fn load_model(model_dir: &str, data_dir: &str) -> Option<Arc<Model>> {
                 data_dir: Some(data_dir.to_string()),
                 noise_scale,
                 noise_scale_w: noise_w,
-                length_scale,
+                // Speed is applied per line instead, from the voice's settings as they are then.
+                length_scale: 1.0,
                 ..Default::default()
             },
             num_threads: 2,
@@ -281,7 +316,9 @@ fn load_model(model_dir: &str, data_dir: &str) -> Option<Arc<Model>> {
     };
     let sample_rate = u32::try_from(tts.sample_rate()).unwrap_or(DEFAULT_RATE);
     let speakers = tts.num_speakers().max(1);
-    let model = Arc::new(Model { tts, sample_rate, busy: Mutex::new(()) });
+    let changed = std::fs::metadata(format!("{model_dir}\\voice.json")).and_then(|m| m.modified()).ok();
+    let model = Arc::new(Model { tts, sample_rate, busy: Mutex::new(()), dir: model_dir.to_string(),
+        settings: Mutex::new((changed, Settings::from(&info))) });
     *cell = Some(model.clone());
     drop(cell);
     log::write(&format!("loaded {model_dir}: {sample_rate} Hz, {speakers} speaker(s), noise {noise_scale}/{noise_w}, {:?} ({})",
@@ -542,7 +579,8 @@ impl Engine_Impl {
         let semitones = run.pitch.clamp(-6, 6) as f32;
         let shift = 2f32.powf(semitones / 12.0);
         let gain = base_volume * (run.volume.min(100) as f32 / 100.0);
-        let config = GenerationConfig { speed: speed / shift, sid: voice.speaker, ..Default::default() };
+        let settings = voice.model.settings();
+        let config = GenerationConfig { speed: speed / shift / settings.length_scale, sid: voice.speaker, ..Default::default() };
 
         for (from, to) in sentences(&run.text) {
             if out.aborted() {
@@ -555,7 +593,11 @@ impl Engine_Impl {
                 voice.model.tts.generate_with_config(&text, &config, None::<fn(&[f32], f32) -> bool>)
             };
             let audio = match made {
-                Some(made) => resample(made.samples(), shift),
+                Some(made) => {
+                    let mut raw = made.samples().to_vec();
+                    apply_loudness(&mut raw, settings.peak, settings.boost);
+                    resample(&raw, shift)
+                }
                 None => {
                     log::write(&format!("{}: nothing made for {text:?}", voice.name));
                     Vec::new()
@@ -735,6 +777,17 @@ pub extern "system" fn DllCanUnloadNow() -> HRESULT {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_from_voice_json() {
+        let new = r#"{ "inference": { "noise_scale": 0.667, "length_scale": 1.2, "noise_w": 0.8 },
+            "loudness": { "peak": 0.9, "boost": 2 }, "engine_loudness": 1 }"#;
+        assert_eq!(Settings::from(new), Settings { peak: 0.9, boost: 2.0, length_scale: 1.2 });
+        // Before 0.6 the loudness was inside the model: not applied twice.
+        let old = r#"{ "inference": { "length_scale": 1 }, "loudness": { "peak": 0.95, "boost": 1.5 } }"#;
+        assert_eq!(Settings::from(old).peak, 0.0);
+        assert_eq!(Settings::from(""), Settings { peak: 0.0, boost: 1.0, length_scale: 1.0 });
+    }
 
     #[test]
     fn event_bitfield() {

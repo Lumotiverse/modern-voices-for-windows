@@ -1,15 +1,19 @@
-# Turns a stock Piper voice (NAME.onnx + NAME.onnx.json) into the folder the Spoken Players engine
-# reads: model.onnx (with the metadata sherpa-onnx wants, and a loudness stage on its output),
-# tokens.txt and voice.json. Dot-sourced by Install.ps1. Plain ASCII, Windows PowerShell 5.1 and 7.
+# Turns a stock Piper voice (NAME.onnx + NAME.onnx.json) into the folder the engine reads:
+# model.onnx (the model as Piper made it, with the metadata sherpa-onnx wants added), tokens.txt and
+# voice.json. Dot-sourced by Install.ps1. Plain ASCII, Windows PowerShell 5.1 and 7.
 #
-# Loudness. Piper's own program scales every sentence it makes up to full volume; the engine plays the
-# model's output as it is, which is quieter. So a few nodes are added at the end of the model:
-#   peak:  each sentence is scaled so its loudest moment is this (0.95 = just under full; 0 = off,
-#          the model as Piper made it)
-#   boost: above 1, the quieter parts are lifted more than the loud ones (a soft limiter, tanh), so the
-#          voice is louder overall without its peaks clipping. 1 = none, 1.5 mild, 2-3 strong.
-# The added nodes are named pev_*: changing the loudness takes them out and puts new ones in, so it
-# can be changed any number of times (Set-PiperLoudness, from voice.json, via Repair.cmd).
+# How a voice sounds is set in its voice.json, which the engine reads while speaking (a change takes
+# effect from the next thing said, in programs already using the voice):
+#   "loudness": { "peak": 0.95, "boost": 1.5 }
+#     peak:  each sentence is scaled so its loudest moment is this (0.95 = just under full; 0 = off,
+#            as Piper made it)
+#     boost: above 1, the quieter parts are lifted more than the loud ones (a soft limiter, tanh), so
+#            the voice is louder overall without its peaks clipping. 1 = none, 1.5 mild, 2-3 strong.
+#   "inference": { "length_scale": 1 }   speed: higher is slower
+#   "engine_loudness": 1                 the engine applies the loudness (since 0.6)
+#
+# Up to 0.5 the loudness was put inside the model, as a few nodes named pev_* at its end. The code for
+# that stays, to take them out again (Convert-ToEngineLoudness), and is tested both ways.
 
 $script:PevUtf8 = New-Object System.Text.UTF8Encoding $false
 $script:PevMark = 'pev_'
@@ -232,32 +236,37 @@ function Get-PiperSetting {
 
 $script:PevNumber = '(-?\d+(?:\.\d+)?)'
 
-# The loudness a voice folder's voice.json asks for: @(peak, boost), or $null when it says nothing.
-function Get-PiperLoudness([string]$Dir) {
+function Format-Number([double]$Number) { return $Number.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) }
+
+function Test-VoiceSettings([double]$Peak, [double]$Boost, [double]$LengthScale) {
+    if ($Peak -lt 0 -or $Peak -gt 1) { throw "peak must be from 0 to 1 (it is $(Format-Number $Peak))." }
+    if ($Boost -lt 1 -or $Boost -gt 5) { throw "boost must be from 1 to 5 (it is $(Format-Number $Boost))." }
+    if ($LengthScale -lt 0.3 -or $LengthScale -gt 3) { throw "length_scale must be from 0.3 to 3 (it is $(Format-Number $LengthScale))." }
+}
+
+# What a voice folder's voice.json sets: Peak, Boost, LengthScale ($null where it says nothing) and
+# Engine (whether the engine applies the loudness). $null when there is no voice.json.
+function Get-VoiceSettings([string]$Dir) {
     $path = Join-Path $Dir 'voice.json'
     if (-not (Test-Path $path)) { return $null }
     $text = [System.IO.File]::ReadAllText($path, $script:PevUtf8)
-    $peak = [regex]::Match($text, '"peak"\s*:\s*' + $script:PevNumber)
-    $boost = [regex]::Match($text, '"boost"\s*:\s*' + $script:PevNumber)
-    if (-not ($peak.Success -and $boost.Success)) { return $null }
     $c = [Globalization.CultureInfo]::InvariantCulture
-    return @([double]::Parse($peak.Groups[1].Value, $c), [double]::Parse($boost.Groups[1].Value, $c))
+    $read = {
+        param($key)
+        $m = [regex]::Match($text, '"' + $key + '"\s*:\s*' + $script:PevNumber)
+        if ($m.Success) { [double]::Parse($m.Groups[1].Value, $c) } else { $null }
+    }
+    $engineMark = & $read 'engine_loudness'
+    return [pscustomobject]@{ Peak = (& $read 'peak'); Boost = (& $read 'boost'); LengthScale = (& $read 'length_scale')
+                              Engine = ($null -ne $engineMark -and $engineMark -ge 1) }
 }
 
-function Format-Number([double]$Number) { return $Number.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) }
-
-function Test-Loudness([double]$Peak, [double]$Boost) {
-    if ($Peak -lt 0 -or $Peak -gt 1) { throw "peak must be from 0 to 1 (it is $(Format-Number $Peak))." }
-    if ($Boost -lt 1 -or $Boost -gt 5) { throw "boost must be from 1 to 5 (it is $(Format-Number $Boost))." }
-}
-
-# Applies a loudness to a voice folder that is ready already (model.onnx, voice.json), and records it
-# in voice.json.
-function Set-PiperLoudness([string]$Dir, [double]$Peak, [double]$Boost) {
-    Test-Loudness $Peak $Boost
-    Write-PiperModel -InPath (Join-Path $Dir 'model.onnx') -OutPath (Join-Path $Dir 'model.onnx') -Meta $null -Peak $Peak -Boost $Boost
+# Records a voice's loudness and speed in its voice.json, for the engine. Written to a new file that
+# then replaces the old, so the engine never reads half a file.
+function Set-VoiceSettings([string]$Dir, [double]$Peak, [double]$Boost, [double]$LengthScale) {
+    Test-VoiceSettings $Peak $Boost $LengthScale
     $path = Join-Path $Dir 'voice.json'
-    $text = [System.IO.File]::ReadAllText($path, $script:PevUtf8)
+    $text = [System.IO.File]::ReadAllText($path, $script:PevUtf8).Replace("`r`n", "`n")
     $block = "`"loudness`": {`n    `"peak`": $(Format-Number $Peak),`n    `"boost`": $(Format-Number $Boost)`n  }"
     $existing = [regex]::Match($text, '"loudness"\s*:\s*\{[^}]*\}')
     if ($existing.Success) {
@@ -266,13 +275,42 @@ function Set-PiperLoudness([string]$Dir, [double]$Peak, [double]$Boost) {
         $end = $text.LastIndexOf('}')
         $text = $text.Substring(0, $end).TrimEnd() + ",`n  $block`n}`n"
     }
-    [System.IO.File]::WriteAllText($path, $text, $script:PevUtf8)
+    $speed = [regex]::Match($text, '"length_scale"\s*:\s*' + $script:PevNumber)
+    if ($speed.Success) {
+        $g = $speed.Groups[1]
+        $text = $text.Substring(0, $g.Index) + (Format-Number $LengthScale) + $text.Substring($g.Index + $g.Length)
+    } else {
+        $end = $text.LastIndexOf('}')
+        $text = $text.Substring(0, $end).TrimEnd() + ",`n  `"inference`": {`n    `"length_scale`": $(Format-Number $LengthScale)`n  }`n}`n"
+    }
+    if ($text -notmatch '"engine_loudness"\s*:') {
+        $end = $text.LastIndexOf('}')
+        $text = $text.Substring(0, $end).TrimEnd() + ",`n  `"engine_loudness`": 1`n}`n"
+    }
+    $temp = "$path.writing"
+    [System.IO.File]::WriteAllText($temp, $text, $script:PevUtf8)
+    Move-Item $temp $path -Force
+}
+
+# A voice installed before 0.6 has its loudness inside its model: takes it out (the model becomes
+# Piper's own again) and has the engine apply the same loudness instead. False when there was nothing
+# to do. Takes a few seconds per voice, once.
+function Convert-ToEngineLoudness([string]$Dir, [double]$DefaultPeak, [double]$DefaultBoost) {
+    $settings = Get-VoiceSettings $Dir
+    if ($null -eq $settings -or $settings.Engine) { return $false }
+    $model = Join-Path $Dir 'model.onnx'
+    Write-PiperModel -InPath $model -OutPath $model -Meta $null -Peak 0 -Boost 1
+    $peak = if ($null -ne $settings.Peak) { $settings.Peak } else { $DefaultPeak }
+    $boost = if ($null -ne $settings.Boost) { $settings.Boost } else { $DefaultBoost }
+    $speed = if ($null -ne $settings.LengthScale) { $settings.LengthScale } else { 1 }
+    Set-VoiceSettings $Dir $peak $boost $speed
+    return $true
 }
 
 # The whole job for one voice. $Name is the voice's short id (folder name), $Label what people see.
 function Convert-PiperVoice {
     param([string]$Onnx, [string]$Config, [string]$OutDir, [string]$Name, [string]$Label, [double]$Peak, [double]$Boost)
-    Test-Loudness $Peak $Boost
+    Test-VoiceSettings $Peak $Boost 1
     $json = [System.IO.File]::ReadAllText($Config, $script:PevUtf8)
     $num = $script:PevNumber
     $rate = Get-PiperSetting $json '"sample_rate"\s*:\s*(\d+)' $null
@@ -287,7 +325,8 @@ function Convert-PiperVoice {
     if (-not (Test-Path $OutDir)) { New-Item $OutDir -ItemType Directory -Force | Out-Null }
     $meta = [ordered]@{ model_type = 'vits'; comment = 'piper'; language = $language; voice = $espeak
                         has_espeak = '1'; n_speakers = $speakers; sample_rate = $rate }
-    Write-PiperModel -InPath $Onnx -OutPath (Join-Path $OutDir 'model.onnx') -Meta $meta -Peak $Peak -Boost $Boost
+    # The model as Piper made it (no loudness stage: the engine applies the loudness).
+    Write-PiperModel -InPath $Onnx -OutPath (Join-Path $OutDir 'model.onnx') -Meta $meta -Peak 0 -Boost 1
     [System.IO.File]::WriteAllText((Join-Path $OutDir 'tokens.txt'), $tokens, $script:PevUtf8)
     $voiceJson = @"
 {
@@ -309,7 +348,8 @@ function Convert-PiperVoice {
   "loudness": {
     "peak": $(Format-Number $Peak),
     "boost": $(Format-Number $Boost)
-  }
+  },
+  "engine_loudness": 1
 }
 "@
     [System.IO.File]::WriteAllText((Join-Path $OutDir 'voice.json'), $voiceJson, $script:PevUtf8)
