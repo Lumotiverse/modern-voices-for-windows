@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.7.5'
+$Version = '0.7.6'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -1273,13 +1273,15 @@ function Update-UiSelection {
             $ui.SpeakerLabel.Text = "$($v.Display): one speaker."
             return
         }
-        $names = @($v.Speakers.Keys)
+        # Listed in name order, numbers by value (p225 before p1000; the voice's own order is kept in its files).
+        $names = @($v.Speakers.Keys | Sort-Object { [regex]::Replace([string]$_, '\d+', { param($m) $m.Value.PadLeft(10, '0') }) })
+        $firstSpeaker = @($v.Speakers.Keys)[0]
         $ticked = @()
         if ($ui.Speakers.ContainsKey($v.Key)) { $ticked = @(($ui.Speakers[$v.Key] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
         foreach ($n in $names) { [void]$ui.SpeakerList.Items.Add($n, ($ticked -contains $n)) }
         $ui.SpeakerList.Enabled = $true
         $ui.SpeakerLabel.Text = "Speakers of $($v.Display) ($($names.Count)): click a name to hear it (Play sample plays it again); tick its box to " +
-            "install it, each becomes a voice (none ticked: the first, $($names[0]))."
+            "install it, each becomes a voice (none ticked: $firstSpeaker)."
     } finally {
         $ui.SpeakerList.EndUpdate()
         $ui.Filling = $false
