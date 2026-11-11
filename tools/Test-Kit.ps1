@@ -124,19 +124,14 @@ Check ($liveResult -and [math]::Abs($liveResult.before - 0.95) -lt 0.03 -and [ma
 Step 'Pauses: measured gaps'
 $settingsFile = Join-Path $App 'settings.json'
 $maleName = 'Northern English Male (British)'
-# A faint sound can split a pause in two: each measurement is the median of three.
 function Measure-Speech([string]$Voice, [string]$Text, [int]$Rate = 0) {
     $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Text))
-    $runs = foreach ($n in 1..3) {
-        $line = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Measure $Voice -TextBase64 $b64 -Rate $Rate 2>&1 |
-            Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1
-        Write-Host "    measured ($Voice, rate $Rate): $line" -ForegroundColor DarkGray
-        $r = $line | ConvertFrom-Json
-        $longest = if (@($r.gaps).Count) { (@($r.gaps) | Measure-Object -Maximum).Maximum } else { 0 }
-        [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Tail = [double]$r.tail }
-    }
-    $median = { param($key) (@($runs | ForEach-Object { $_.$key }) | Sort-Object)[1] }
-    return [pscustomobject]@{ Seconds = (& $median 'Seconds'); Longest = (& $median 'Longest'); Tail = (& $median 'Tail') }
+    $line = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Measure $Voice -TextBase64 $b64 -Rate $Rate 2>&1 |
+        Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1
+    Write-Host "    measured ($Voice, rate $Rate): $line" -ForegroundColor DarkGray
+    $r = $line | ConvertFrom-Json
+    $longest = if (@($r.gaps).Count) { (@($r.gaps) | Measure-Object -Maximum).Maximum } else { 0 }
+    return [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Tail = [double]$r.tail }
 }
 function Check-Added([string]$What, $Without, $With, [double]$Expected, [double]$Slack) {
     $added = $With.Longest - $Without.Longest
@@ -171,6 +166,7 @@ Set-GlobalSpeed $settingsFile 100
 Set-GlobalPauses $settingsFile 0 0 0
 $base = Measure-Speech $albaName $two
 $baseFast = Measure-Speech $albaName $two 5
+$baseRate2 = Measure-Speech $albaName $two 2
 $basePara = Measure-Speech $albaName $para
 $baseComma = Measure-Speech $albaName $comma
 $baseOne = Measure-Speech $albaName $one
@@ -195,8 +191,8 @@ Check-Added 'Alba back on the global 1000 ms' $base (Measure-Speech $albaName $t
 Set-GlobalSpeed $settingsFile 125
 Set-GlobalPauses $settingsFile 0 0 0
 $fastBase = Measure-Speech $albaName $two
-$ratio = $fastBase.Seconds / $base.Seconds
-Check ($ratio -gt 0.72 -and $ratio -lt 0.88) ("speed 125%: Alba {0:N2}x as long (expected 0.80)" -f $ratio)
+$ratio = $fastBase.Seconds / $baseRate2.Seconds
+Check ([math]::Abs($ratio - 1) -lt 0.05) ("speed 125% at rate 0 as long as 100% at rate +2: {0:N2} s and {1:N2} s" -f $fastBase.Seconds, $baseRate2.Seconds)
 Set-GlobalPauses $settingsFile 1000 0 2000
 Check-Added 'speed 125%, sentence gap 1000 ms (800 ms)' $fastBase (Measure-Speech $albaName $two) 800 30
 Set-GlobalPauses $settingsFile 600 0 1200
