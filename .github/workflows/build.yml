@@ -64,6 +64,8 @@ jobs:
     needs: [engine-x64, engine-x86]
     if: ${{ always() && needs.engine-x64.result == 'success' }}
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -82,6 +84,22 @@ jobs:
       - name: Install, test, repair, uninstall (Windows PowerShell, as users run it)
         shell: powershell
         run: ./tools/Test-Kit.ps1 -Kit "out/${{ steps.kit.outputs.name }}"
+      - name: Publish as a release (only when every test passed)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $name = '${{ steps.kit.outputs.name }}'
+          $version = $name -replace '^ModernVoicesForWindows', ''
+          $tag = "v$version"
+          $notes = "Built from ${{ github.sha }}. Download $name.zip, unzip, run Install.cmd."
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag "out/$name.zip" --clobber
+            gh release edit $tag --notes $notes
+          } else {
+            gh release create $tag "out/$name.zip" --title "Modern Voices for Windows $version" --notes $notes --target ${{ github.sha }}
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
