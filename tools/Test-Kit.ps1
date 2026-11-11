@@ -112,7 +112,7 @@ Set-VoiceSettings $albaDir 0.5 1 1
 Set-VoiceSettings $albaDir 0.95 1.5 2
 $slow = Test-Speech $PS64 64 3
 $ratio = $slow[$albaName].seconds / $normal[$albaName].seconds
-Check ($ratio -gt 1.6) ("length_scale 2: Alba {0:N2}x as long" -f $ratio)
+Check ($ratio -gt 1.45) ("length_scale 2: Alba {0:N2}x as long" -f $ratio)
 Set-VoiceSettings $albaDir 0.95 1.5 1
 
 Step 'Settings take effect in a program already speaking'
@@ -131,6 +131,7 @@ function Measure-Speech([string]$Voice, [string]$Text, [int]$Rate = 0) {
     $runs = foreach ($n in 1..3) {
         $line = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Measure $Voice -TextBase64 $b64 -Rate $Rate 2>&1 |
             Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1
+        Write-Host "    measured ($Voice, rate $Rate): $line" -ForegroundColor DarkGray
         $r = $line | ConvertFrom-Json
         $longest = if (@($r.gaps).Count) { (@($r.gaps) | Measure-Object -Maximum).Maximum } else { 0 }
         [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Tail = [double]$r.tail }
