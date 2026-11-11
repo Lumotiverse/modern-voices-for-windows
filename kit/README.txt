@@ -56,8 +56,8 @@ In the Modern Voices window, on "Voice manager", select a voice:
 Changes are saved as you move a slider and take effect straight away, also in programs that are already
 using the voice (from the next thing they say): no restarting, no repair. Preview says the text in the
 "Preview says" box with the voice as it now is (Enter starts a new line, which gets the paragraph
-pause); Reset puts back 95%, 1.5x, 100%. Each installed speaker of a voice has its own row (the voice named on the first): Preview, Make default voice and Nickname act
-on the row selected. A voice's speakers share its sliders (add or remove speakers on "Add or remove
+pause); Reset puts back 95%, 1.5x, 100%. Each installed speaker of a voice has its own row (the
+voice named on the first): Preview, Make default voice and Nickname act on the row selected. A voice's speakers share its sliders (add or remove speakers on "Add or remove
 voices"). A program's own volume and speed still adjust from there.
 
 Nickname gives the selected row's voice a name of your own, shown in brackets in the voice's name in place of

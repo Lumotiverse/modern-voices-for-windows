@@ -666,7 +666,8 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     # Several lines (Enter starts a new one: a paragraph pause), three showing.
     $previewBox.Multiline = $true; $previewBox.AcceptsReturn = $true; $previewBox.WordWrap = $true; $previewBox.ScrollBars = 'Vertical'
     $previewBox.Text = $PreviewText; $previewBox.Dock = 'Fill'
-    $previewBox.Height = $previewBox.Font.Height * 3 + (Get-Px 10)
+    $previewBox.MinimumSize = New-Object System.Drawing.Size(0, ($previewBox.Font.Height * 3 + (Get-Px 18)))
+    $previewBox.Height = $previewBox.MinimumSize.Height
     $previewLine.Controls.Add($previewLabel, 0, 0); $previewLine.Controls.Add($previewBox, 1, 0)
     Add-UiRow $page $previewLine
     $defaultLabel = New-UiLabel ''
