@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.7.2
+Modern Voices for Windows 0.7.3
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -22,7 +22,8 @@ Install
    named Modern Voices for Windows is made in the folder you choose) and press Install.
 3. The Modern Voices window opens (if you can't see it, it's on the taskbar). On "Add or remove
    voices", tick the voices you want. Select one and press Play sample to hear it first. Voices with
-   several speakers (VCTK, LibriTTS, ...) list their speakers to tick; each becomes a voice.
+   several speakers (VCTK, LibriTTS, ...) list their speakers: click a name and press Play sample to
+   hear that speaker; tick a speaker's box to install it. Each ticked speaker becomes a voice.
 4. Press Apply changes. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices,
    version 1.0.0), prepares them, and tests each one through Windows' speech API, with the progress
    shown at the bottom of the window.
@@ -55,6 +56,10 @@ using the voice (from the next thing they say): no restarting, no repair. Previe
 "Preview says" box with the voice as it now is; Reset puts back 95%, 1.5x, 100%. A voice's speakers
 share its settings: Speaker chooses which of the installed ones Preview and Make default voice use (add
 or remove speakers on "Add or remove voices"). A program's own volume and speed still adjust from there.
+
+Nickname gives the chosen speaker a name of your own, shown in brackets in the voice's name in place of
+its accent: "VCTK p262 (Irish Female)" for "VCTK p262 (British)". Set nickname renames the voice where
+Windows lists it (restart programs that were open to see it); with the box empty, it puts the accent back.
 
 Make default voice sets the selected voice as Windows' default speech voice: the one programs speak
 with when they don't choose a voice (what Windows' Speech control panel, sapi.cpl, sets; Windows
