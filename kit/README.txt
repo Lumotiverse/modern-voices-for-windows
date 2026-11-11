@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.7.4
+Modern Voices for Windows 0.7.5
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -22,8 +22,8 @@ Install
    named Modern Voices for Windows is made in the folder you choose) and press Install.
 3. The Modern Voices window opens (if you can't see it, it's on the taskbar). On "Add or remove
    voices", tick the voices you want. Select one and press Play sample to hear it first. Voices with
-   several speakers (VCTK, LibriTTS, ...) list their speakers: click a name and press Play sample to
-   hear that speaker; tick a speaker's box to install it. Each ticked speaker becomes a voice.
+   several speakers (VCTK, LibriTTS, ...) list their speakers: click a name to hear that speaker (Play
+   sample plays it again); tick a speaker's box to install it. Each ticked speaker becomes a voice.
 4. Press Apply changes. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices,
    version 1.0.0), prepares them, and tests each one through Windows' speech API, with the progress
    shown at the bottom of the window.
@@ -49,7 +49,8 @@ In the Modern Voices window, on "Voice manager", select a voice:
            made it (quieter: the model's own level).
   Boost    lifts the quieter parts more than the loud ones, so the voice sounds louder overall without
            clipping. None, 1.5x (the default), up to 4x; higher sounds more compressed, like radio.
-  Speed    adjusts this voice from the speed for every voice (Speed and pauses): 100% = that speed.
+  Dictation speed  adjusts this voice from the speed for every voice (Speed and pauses): 100% = that
+                   speed.
 
 Changes are saved as you move a slider and take effect straight away, also in programs that are already
 using the voice (from the next thing they say): no restarting, no repair. Preview says the line in the
@@ -72,20 +73,20 @@ Speed and pauses
 ----------------
 On the Speed and pauses tab, for every voice:
 
-  Speed           how fast every voice speaks before a program's own rate. Default 125%, about what
+  Dictation speed how fast every voice speaks before a program's own rate. Default 125%, about what
                   Windows' speech speed +2 gives (each voice's own Speed adjusts from here).
 
-  Sentence gap    added after a sentence when another follows (never after the last, so short bits
-                  of speech, such as a screen reader's, don't gain dead air). Default 600 ms.
-  Paragraph gap   at a line break, in place of the sentence gap. Default 1200 ms.
-  Comma gap       at each , ; or : (default 0: commas as the voice says them). Above 0 the voice says
-                  each part of a sentence separately so the gap can go between them, which can make
+  Sentence pause  added after a sentence when another follows (never after the last, so short bits
+                  of speech, such as a screen reader's, don't gain dead air). Default 500 ms.
+  Paragraph pause at a line break, in place of the sentence pause. Default 1200 ms.
+  Comma pause     at each , ; or : (default 0: commas as the voice says them). Above 0 the voice says
+                  each part of a sentence separately so the pause can go between them, which can make
                   the intonation a little more broken up.
 
-Each gap is silence added to the voice's own pause, in milliseconds at 100% speed and a program's
+Each pause is silence added to the voice's own, in milliseconds at 100% dictation speed and a program's
 speech rate 0. Faster speech uses a smaller share of it and slower a larger share, in step with the
-speech: at the default 125%, a 600 ms gap is 480 ms (as it was at Windows' speed +2 before), 385 ms
-if a program also sets rate +2, and 598 ms at -2. The tab shows each gap's result at the speed set.
+speech: at the default 125%, a 500 ms pause is 400 ms, 321 ms if a program also sets rate +2, and
+498 ms at -2. The tab shows each pause's result at the speed set.
 
 Speed is applied inside the engine, so it works in every program, also those that set their own
 rate (World of Warcraft, Balabolka, NVDA): theirs adds to it. So does Windows' own speech speed (its
@@ -94,7 +95,7 @@ says so, with a button to set it to 0. Set the speed here instead, and leave Win
 program's at 0 (TTS Enhanced in World of Warcraft: its speed 0) unless you want faster still.
 
 A voice can have its own: in the Voice manager, tick "Modify pause duration for the selected voice" and
-set its three gaps. Changes apply straight away, like volume. Preview on this tab says the Voice
+set its three pauses. Changes apply straight away, like volume. Preview on this tab says the Voice
 manager's line with the voice chosen beside it.
 
 The window opens no larger than the screen; a tab that doesn't fit in it scrolls.

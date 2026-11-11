@@ -95,7 +95,7 @@ $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\At
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"
 Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 0.95') 'voice.json: loudness set (95%, 1.5x)'
 $settingsText = Get-Content (Join-Path $App 'settings.json') -Raw
-Check ($settingsText -match '"speed_percent": 125' -and $settingsText -match '"sentence_ms": 600' -and $settingsText -match '"paragraph_ms": 1200') 'settings.json: speed 125%, sentence 600 ms, paragraph 1200 ms'
+Check ($settingsText -match '"speed_percent": 125' -and $settingsText -match '"sentence_ms": 500' -and $settingsText -match '"paragraph_ms": 1200') 'settings.json: speed 125%, sentence 500 ms, paragraph 1200 ms'
 
 Step 'Speaking through System.Speech (SAPI 5), at the set loudness'
 $normal = Test-Speech $PS64 64 3
@@ -195,7 +195,7 @@ $ratio = $fastBase.Seconds / $baseRate2.Seconds
 Check ([math]::Abs($ratio - 1) -lt 0.05) ("speed 125% at rate 0 as long as 100% at rate +2: {0:N2} s and {1:N2} s" -f $fastBase.Seconds, $baseRate2.Seconds)
 Set-GlobalPauses $settingsFile 1000 0 2000
 Check-Added 'speed 125%, sentence gap 1000 ms (800 ms)' $fastBase (Measure-Speech $albaName $two) 800 30
-Set-GlobalPauses $settingsFile 600 0 1200
+Set-GlobalPauses $settingsFile 500 0 1200
 [void](Set-Noise $albaDir $albaNoise)
 [void](Set-Noise $maleDir $maleNoise)
 $screens = Join-Path (Split-Path (Resolve-Path $Kit).Path -Parent) 'screens'

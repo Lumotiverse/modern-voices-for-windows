@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.7.4'
+$Version = '0.7.5'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -503,9 +503,11 @@ function Add-UiGridRow($Grid) {
     if ($Grid.Controls.Count -gt 0) { $Grid.RowCount++; [void]$Grid.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize))) }
     return ($Grid.RowCount - 1)
 }
+# What the sliders are called in the window (their names in the code stay as they are).
+$script:SliderNames = @{ 'Speed' = 'Dictation speed'; 'Sentence gap' = 'Sentence pause'; 'Comma gap' = 'Comma pause'; 'Paragraph gap' = 'Paragraph pause' }
 function Add-UiSlider($Grid, [string]$Name, [int]$Min, [int]$Max, [int]$Small, [int]$Large, [int]$Tick) {
     $row = Add-UiGridRow $Grid
-    $label = New-UiLabel $Name
+    $label = New-UiLabel $(if ($script:SliderNames.ContainsKey($Name)) { $script:SliderNames[$Name] } else { $Name })
     $label.Dock = 'None'; $label.Anchor = 'Left'
     $bar = New-Object System.Windows.Forms.TrackBar
     $bar.Maximum = $Max; $bar.Minimum = $Min; $bar.SmallChange = $Small; $bar.LargeChange = $Large; $bar.TickFrequency = $Tick
@@ -620,8 +622,8 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $installedList = New-Object System.Windows.Forms.ListView
     $installedList.View = 'Details'; $installedList.FullRowSelect = $true; $installedList.HideSelection = $false
     $installedList.MultiSelect = $false
-    $installedList.Dock = 'Fill'; $installedList.Height = Get-Px 150
-    $installedList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 150))
+    $installedList.Dock = 'Fill'; $installedList.Height = Get-Px 300
+    $installedList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 300))
     [void]$installedList.Columns.Add('Voice', (Get-Px 210))
     [void]$installedList.Columns.Add('Speaker', (Get-Px 80))
     [void]$installedList.Columns.Add('Nickname', (Get-Px 190))
@@ -693,7 +695,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         $sliders[$k].Bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.SaveTimer.Stop(); $script:Ui.SaveTimer.Start() } })
     }
     Add-UiRow $page (New-UiLabel ("Volume: each sentence's loudest moment (0 = as Piper made it). Boost: lifts quiet parts more than loud ones " +
-        "(higher sounds more compressed). Speed: 100% = the speed for every voice (Speed and pauses tab). Unticked, the voice uses the pauses " +
+        "(higher sounds more compressed). Dictation speed: 100% = the speed for every voice (Speed and pauses tab). Unticked, the voice uses the pauses " +
         "for every voice; ticked, its own.") -Grey)
     Add-UiRow $page (New-UiLabel ("Changes are saved as you move a slider and take effect straight away, also in programs already using the " +
         "voice (from the next thing they say): press Preview to hear them. A voice's speakers share its settings.") -Grey)
@@ -726,7 +728,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $globalBars = @{}
     foreach ($spec in @(@('Sentence gap', $PauseLimits.Sentence, 'after each sentence, when another follows (none after the last)'),
                         @('Comma gap', $PauseLimits.Comma, 'at each , ; or : (0 = commas left as the voice says them)'),
-                        @('Paragraph gap', $PauseLimits.Paragraph, 'at a line break, in place of the sentence gap'))) {
+                        @('Paragraph gap', $PauseLimits.Paragraph, 'at a line break, in place of the sentence pause'))) {
         $slider = Add-UiSlider $globalGrid $spec[0] 0 $spec[1] 50 250 250
         $slider.Value.Font = $bold
         Add-UiNote $globalGrid (New-UiLabel $spec[2] -Grey)
@@ -736,12 +738,12 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         $slider.Bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.GlobalTimer.Stop(); $script:Ui.GlobalTimer.Start() } })
     }
     Add-UiRow $page $globalGrid
-    Add-UiRow $page (New-UiLabel ("Each gap is silence added to the voice's own pause, in milliseconds at 100% speed and a program's rate 0. " +
+    Add-UiRow $page (New-UiLabel ("Each pause is silence added to the voice's own, in milliseconds at 100% dictation speed and a program's rate 0. " +
         "Faster speech uses a smaller share of it and slower a larger share, in step with the speech (the line under each shows what you get). " +
-        "A comma gap above 0 has the voice say each part of a sentence separately, so the intonation can sound a little more broken up.") -Grey)
+        "A comma pause above 0 has the voice say each part of a sentence separately, so the intonation can sound a little more broken up.") -Grey)
     $resetLine = New-UiLine @('auto', 'fill')
     $pausesReset = New-UiButton 'Reset to defaults'
-    $pausesNote = New-UiLabel 'Defaults: speed 125%, sentence 600 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.' -Grey
+    $pausesNote = New-UiLabel 'Defaults: dictation speed 125%, sentence 500 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.' -Grey
     $resetLine.Controls.Add($pausesReset, 0, 0); $resetLine.Controls.Add($pausesNote, 1, 0)
     Add-UiRow $page $resetLine
 
@@ -836,6 +838,8 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
             $script:Ui.List.SelectedItems.Count -gt 0) { $script:Ui.List.SelectedItems[0].Checked = $true }
     })
     $play.add_Click({ Invoke-UiSample })
+    # Selecting a speaker plays its sample (Play sample plays it again, or a voice with one speaker).
+    $speakerList.add_SelectedIndexChanged({ if (-not $script:Ui.Filling -and $script:Ui.SpeakerList.SelectedIndex -ge 0) { Invoke-UiSample } })
     $installedList.add_SelectedIndexChanged({ Update-UiInstalled })
     $previewButton.add_Click({ Invoke-UiPreview })
     $globalPreview.add_Click({ Invoke-UiGlobalPreview })
@@ -1274,7 +1278,7 @@ function Update-UiSelection {
         if ($ui.Speakers.ContainsKey($v.Key)) { $ticked = @(($ui.Speakers[$v.Key] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
         foreach ($n in $names) { [void]$ui.SpeakerList.Items.Add($n, ($ticked -contains $n)) }
         $ui.SpeakerList.Enabled = $true
-        $ui.SpeakerLabel.Text = "Speakers of $($v.Display) ($($names.Count)): click a name and press Play sample to hear it; tick its box to " +
+        $ui.SpeakerLabel.Text = "Speakers of $($v.Display) ($($names.Count)): click a name to hear it (Play sample plays it again); tick its box to " +
             "install it, each becomes a voice (none ticked: the first, $($names[0]))."
     } finally {
         $ui.SpeakerList.EndUpdate()

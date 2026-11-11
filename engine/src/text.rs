@@ -187,7 +187,7 @@ pub struct Pauses {
 }
 
 /// Before any are set: 0.6 s after a sentence, double that at a paragraph, none added at commas.
-pub const DEFAULT_PAUSES: Pauses = Pauses { sentence_ms: 600.0, comma_ms: 0.0, paragraph_ms: 1200.0 };
+pub const DEFAULT_PAUSES: Pauses = Pauses { sentence_ms: 500.0, comma_ms: 0.0, paragraph_ms: 1200.0 };
 
 impl Pauses {
     /// From a settings file's or voice.json's text (keys sentence_ms, comma_ms, paragraph_ms); the

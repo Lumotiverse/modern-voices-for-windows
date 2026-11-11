@@ -10,7 +10,7 @@
 #     boost: above 1, the quieter parts are lifted more than the loud ones (a soft limiter, tanh), so
 #            the voice is louder overall without its peaks clipping. 1 = none, 1.5 mild, 2-3 strong.
 #   "inference": { "length_scale": 1 }   speed: higher is slower
-#   "pauses": { "own_pauses": 1, "sentence_ms": 600, "comma_ms": 0, "paragraph_ms": 1200 }
+#   "pauses": { "own_pauses": 1, "sentence_ms": 500, "comma_ms": 0, "paragraph_ms": 1200 }
 #     this voice's own pauses (with own_pauses 1; else the program's settings.json, same keys, applies)
 #     the silence added to the voice's own pause after a sentence, at a comma (0 = commas untouched)
 #     and at a line break, in milliseconds at rate 0, 100% speed and the voice's own speed: faster
@@ -183,7 +183,7 @@ function Set-VoiceSettings([string]$Dir, [double]$Peak, [double]$Boost, [double]
 
 # --- pauses -------------------------------------------------------------------------------------------
 
-$script:PauseDefaults = @{ Sentence = 600; Comma = 0; Paragraph = 1200 }
+$script:PauseDefaults = @{ Sentence = 500; Comma = 0; Paragraph = 1200 }
 $script:PauseLimits = @{ Sentence = 2000; Comma = 1000; Paragraph = 3000 }
 
 function Test-Pauses([double]$Sentence, [double]$Comma, [double]$Paragraph) {
