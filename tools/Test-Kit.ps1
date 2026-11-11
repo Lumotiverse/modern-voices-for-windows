@@ -134,19 +134,25 @@ function Check-Added([string]$What, $Without, $With, [double]$Expected, [double]
     $added = $With.Longest - $Without.Longest
     Check ([math]::Abs($added - $Expected) -le $Slack) ("{0}: +{1:N0} ms (expected {2:N0} +/- {3:N0}; longest gap {4:N0} -> {5:N0} ms)" -f $What, $added, $Expected, $Slack, $Without.Longest, $With.Longest)
 }
-# Piper varies its timing a little each time it speaks (noise_w): off for these measurements, so that
-# each "with" and "without" differ only by the gap. (Read when a voice loads: each measurement is a
-# new process.)
-function Set-NoiseW([string]$Dir, [string]$Value) {
+# Piper varies its timing (noise_w) and its sound (noise_scale, which can put a faint breath inside a
+# pause) a little each time it speaks: both off for these measurements, so that each "with" and
+# "without" differ only by the gap. (Read when a voice loads: each measurement is a new process.)
+function Set-Noise([string]$Dir, [string[]]$Values) {
     $path = Join-Path $Dir 'voice.json'
     $text = [System.IO.File]::ReadAllText($path)
-    $m = [regex]::Match($text, '"noise_w"\s*:\s*(-?[0-9.]+)')
-    [System.IO.File]::WriteAllText($path, $text.Substring(0, $m.Groups[1].Index) + $Value + $text.Substring($m.Groups[1].Index + $m.Groups[1].Length))
-    return $m.Groups[1].Value
+    $was = @()
+    $keys = @('noise_scale', 'noise_w')
+    for ($i = 0; $i -lt 2; $i++) {
+        $m = [regex]::Match($text, '"' + $keys[$i] + '"\s*:\s*(-?[0-9.]+)')
+        $was += $m.Groups[1].Value
+        $text = $text.Substring(0, $m.Groups[1].Index) + $Values[$i] + $text.Substring($m.Groups[1].Index + $m.Groups[1].Length)
+    }
+    [System.IO.File]::WriteAllText($path, $text)
+    return ,$was
 }
 $maleDir = Join-Path $App 'voices\en_GB-northern_english_male-medium'
-$albaNoise = Set-NoiseW $albaDir '0'
-$maleNoise = Set-NoiseW $maleDir '0'
+$albaNoise = Set-Noise $albaDir @('0', '0')
+$maleNoise = Set-Noise $maleDir @('0', '0')
 $two = 'Pulling in three. Watch the patrol on the left.'
 $para = "Pulling in three.`nWatch the patrol on the left."
 $comma = 'Pulling in three, watch the patrol on the left.'
@@ -176,8 +182,8 @@ Check-Added 'Northern English Male still the global 1000 ms' $baseMale (Measure-
 Set-VoicePauses $albaDir $false 300 0 600
 Check-Added 'Alba back on the global 1000 ms' $base (Measure-Speech $albaName $two) 1000 30
 Set-GlobalPauses $settingsFile 600 0 1200
-[void](Set-NoiseW $albaDir $albaNoise)
-[void](Set-NoiseW $maleDir $maleNoise)
+[void](Set-Noise $albaDir $albaNoise)
+[void](Set-Noise $maleDir $maleNoise)
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest | Out-Host
 Check ($LASTEXITCODE -eq 0) 'window: pause sliders save (Pauses tab and a voice of its own)'
 
