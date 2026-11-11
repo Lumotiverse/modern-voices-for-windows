@@ -52,7 +52,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.6.1'
+$Version = '0.6.2'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $App = Join-Path $env:ProgramFiles $AppName
@@ -839,9 +839,6 @@ function Write-Launcher([string]$Destination, [string]$Script, [string]$Extra, [
 }
 
 function Register-Program {
-    foreach ($old in (Join-Path $App 'Choose voices.cmd'), (Join-Path $StartMenu 'Choose voices.lnk')) {   # 0.5's names
-        if (Test-Path $old) { Remove-Item $old -Force }
-    }
     Write-Launcher (Join-Path $App 'Modern Voices.cmd') 'Install.ps1' ''
     Write-Launcher (Join-Path $App 'Repair.cmd') 'Install.ps1' '-Repair'
     Write-Launcher (Join-Path $App 'Test voices.cmd') 'Test.ps1' ''
@@ -910,17 +907,6 @@ function Install-AndRegisterEngine {
     # Programs that only load signed engines (World of Warcraft, for one) need the build's certificate trusted.
     foreach ($store in 'Root', 'TrustedPublisher') {
         & "$env:SystemRoot\System32\certutil.exe" -f -addstore $store $Cer | Out-Null
-    }
-}
-
-# Voices installed before 0.6 have their loudness inside their models: the engine applies it now.
-function Update-OldVoices {
-    if (-not (Test-Path $VoiceRoot)) { return }
-    foreach ($folder in Get-ChildItem $VoiceRoot -Directory) {
-        if (-not (Test-VoiceFolder $folder.FullName)) { continue }
-        if (Convert-ToEngineLoudness $folder.FullName $DefaultPeak $DefaultBoost) {
-            Write-Host "  $($folder.Name): its loudness is applied by the engine now (done once)"
-        }
     }
 }
 
@@ -1044,7 +1030,7 @@ try {
             Save-UiSettings
             $now = Get-VoiceSettings $dir
             Write-Output ("sliders: {0} -> peak {1}, boost {2}, length_scale {3}" -f $ui.CurrentInstalled.Title, $now.Peak, $now.Boost, $now.LengthScale)
-            if ($now.Peak -ne 0.6 -or $now.Boost -ne 2 -or $now.LengthScale -ne 1.25 -or -not $now.Engine) { $bad += 'sliders' }
+            if ($now.Peak -ne 0.6 -or $now.Boost -ne 2 -or $now.LengthScale -ne 1.25) { $bad += 'sliders' }
             Set-VoiceSettings $dir $was.Peak $was.Boost $was.LengthScale
         }
         # Apply with nothing changed: says so, changes nothing.
@@ -1091,7 +1077,6 @@ try {
     Install-AndRegisterEngine
     Register-Program
     Write-Host ("  {0}{1}" -f $Dll64, $(if (Test-Path $Dll32) { ' and 32-bit' } else { ' (no 32-bit engine in this build)' }))
-    Update-OldVoices
 
     Write-Host "`nVoice list"
     $catalogue = Get-Catalogue

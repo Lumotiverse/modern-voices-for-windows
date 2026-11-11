@@ -4,8 +4,7 @@ it: the manager window builds and its controls work (speakers, duplicate warning
 voice.json); install three voices (one a speaker of a multi-speaker voice); each speaks through
 System.Speech (SAPI 5) in 64-bit and, when built, 32-bit PowerShell, reporting words and a bookmark, at
 the loudness its voice.json sets (measured); a settings change takes effect, also in a process already
-speaking; speed works; a voice installed by 0.5 (loudness inside its model) is upgraded; repair; change
-the voices (removed ones go); uninstall (nothing left).
+speaking; speed works; repair; change the voices (removed ones go); uninstall (nothing left).
 #>
 param([Parameter(Mandatory)][string]$Kit)
 
@@ -55,11 +54,6 @@ function Test-Speech([string]$PowerShell, [int]$Bits, [int]$Expected, [hashtable
     }
     return $results
 }
-function Test-ModelPlain([string]$Dir) {
-    $text = [System.IO.File]::ReadAllText((Join-Path $Dir 'model.onnx'), [System.Text.Encoding]::GetEncoding(28591))
-    return -not $text.Contains('pev_abs')
-}
-
 # The engine's verbose log (every call, fragment and sentence), shown at the end.
 $logFolder = Join-Path $env:LOCALAPPDATA 'ModernVoices'
 New-Item $logFolder -ItemType Directory -Force | Out-Null
@@ -82,12 +76,11 @@ if ($has32) { Check ((Get-OurTokens $Tokens32).Count -eq 3) '3 voices for 32-bit
 $signature = Get-AuthenticodeSignature (Join-Path $App 'engine\x64\modern_voices.dll')
 Check ($signature.Status -eq 'Valid') "64-bit engine signature trusted ($($signature.Status))"
 $menu = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Modern Voices for Windows'
-Check ((Test-Path "$menu\Modern Voices.lnk") -and (Test-Path "$menu\Repair.lnk") -and -not (Test-Path "$menu\Choose voices.lnk")) 'Start menu: Modern Voices, Repair'
+Check ((Test-Path "$menu\Modern Voices.lnk") -and (Test-Path "$menu\Repair.lnk")) 'Start menu: Modern Voices, Repair'
 Check (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows') 'Installed apps entry'
 $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"
-Check (Test-ModelPlain $albaDir) 'model as Piper made it (no loudness stage inside)'
-Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"engine_loudness": 1') 'voice.json: the engine applies the loudness'
+Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 0.95') 'voice.json: loudness set (95%, 1.5x)'
 
 Step 'Speaking through System.Speech (SAPI 5), at the set loudness'
 $normal = Test-Speech $PS64 64 3
@@ -113,18 +106,11 @@ $lines | ForEach-Object { Write-Host "  $_" }
 $liveResult = ($lines | Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1) | ConvertFrom-Json
 Check ($liveResult -and [math]::Abs($liveResult.before - 0.95) -lt 0.03 -and [math]::Abs($liveResult.after - 0.5) -lt 0.03) "same process: peak $($liveResult.before), then $($liveResult.after) after the change"
 
-Step 'Upgrade of a voice installed by 0.5 (loudness inside its model)'
-Write-PiperModel -InPath (Join-Path $albaDir 'model.onnx') -OutPath (Join-Path $albaDir 'model.onnx') -Meta $null -Peak 0.6 -Boost 1
-$json = Get-Content (Join-Path $albaDir 'voice.json') -Raw
-$json = $json -replace ',\s*"engine_loudness": 1', '' -replace '"peak": 0.95', '"peak": 0.9'
-[System.IO.File]::WriteAllText((Join-Path $albaDir 'voice.json'), $json)
-Check (-not (Test-ModelPlain $albaDir)) 'made like 0.5: stage inside the model, no engine_loudness'
-[void](Test-Speech $PS64 64 3 @{ $albaName = 0.6 })   # the model's own stage, not voice.json's 0.9 on top
+Step 'Repair (registers everything again; settings kept)'
+Set-VoiceSettings $albaDir 0.8 2 1
 $code = Invoke-Install @('-Repair', '-Unattended', '-NoPause')
 Check ($code -eq 0) 'repair finished without errors'
-Check (Test-ModelPlain $albaDir) 'upgraded: model as Piper made it again'
-Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"engine_loudness": 1') 'upgraded: engine applies the loudness'
-[void](Test-Speech $PS64 64 3 @{ $albaName = 0.9 })   # now voice.json's setting, applied by the engine
+[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })
 Set-VoiceSettings $albaDir 0.95 1.5 1
 
 Step 'Change voices: Alba only'

@@ -163,13 +163,10 @@ struct Settings {
 }
 
 impl Settings {
-    /// From voice.json's text. Loudness only where the file says the engine applies it
-    /// (`"engine_loudness": 1`): models from before 0.6 have it inside them, and are fixed when the
-    /// installer next runs.
+    /// From voice.json's text; a voice.json without them leaves the voice as Piper made it.
     fn from(info: &str) -> Settings {
-        let engine_loudness = number(info, "engine_loudness", 0.0) >= 1.0;
         Settings {
-            peak: if engine_loudness { number(info, "peak", 0.0).min(1.0) } else { 0.0 },
+            peak: number(info, "peak", 0.0).min(1.0),
             boost: number(info, "boost", 1.0).clamp(1.0, 5.0),
             length_scale: number(info, "length_scale", 1.0).clamp(0.3, 3.0),
         }
@@ -780,12 +777,9 @@ mod tests {
 
     #[test]
     fn settings_from_voice_json() {
-        let new = r#"{ "inference": { "noise_scale": 0.667, "length_scale": 1.2, "noise_w": 0.8 },
-            "loudness": { "peak": 0.9, "boost": 2 }, "engine_loudness": 1 }"#;
-        assert_eq!(Settings::from(new), Settings { peak: 0.9, boost: 2.0, length_scale: 1.2 });
-        // Before 0.6 the loudness was inside the model: not applied twice.
-        let old = r#"{ "inference": { "length_scale": 1 }, "loudness": { "peak": 0.95, "boost": 1.5 } }"#;
-        assert_eq!(Settings::from(old).peak, 0.0);
+        let set = r#"{ "inference": { "noise_scale": 0.667, "length_scale": 1.2, "noise_w": 0.8 },
+            "loudness": { "peak": 0.9, "boost": 2 } }"#;
+        assert_eq!(Settings::from(set), Settings { peak: 0.9, boost: 2.0, length_scale: 1.2 });
         assert_eq!(Settings::from(""), Settings { peak: 0.0, boost: 1.0, length_scale: 1.0 });
     }
 
