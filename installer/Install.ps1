@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.7.8'
+$Version = '0.7.9'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -99,7 +99,7 @@ $StartMenu = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$
 $PS64 = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $PS32 = "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
 $Base = 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0'   # v1.0.0: the voices as tested
-$DefaultPeak = 0.95
+$DefaultPeak = 1
 $DefaultBoost = 1.5
 Set-AppPaths $DefaultApp
 $InPlace = $false
@@ -359,9 +359,10 @@ function Protect-AppFolder {
 # applied in the window, with progress). The window's controls and state live in $script:Ui: its event
 # handlers run later (while it is shown), in the script's scope.
 
-# Two paragraphs, so that Preview also has a paragraph pause in it.
-$PreviewText = ("Speaking a preview of the selected voice, to hear how natural it sounds.`r`n`r`n" +
-    "Change the dictation speed, and 'Comma pause' values, to adjust the sound to your liking.")
+# Three lines, so that Preview also has paragraph gaps in it.
+$PreviewText = ("Speaking a preview of the selected voice, to hear how natural it sounds.`r`n" +
+    "Change the dictation speed, and 'Comma pause' values, to adjust the sound to your liking.`r`n" +
+    "Change the 'Paragraph gap', to adjust the wait before a new paragraph.")
 
 # A nickname of your own for a voice, shown in brackets in its name in place of its accent ("VCTK p262
 # (Irish Female)"): kept by voice id under the program's settings key.
@@ -506,7 +507,19 @@ function Add-UiGridRow($Grid) {
     return ($Grid.RowCount - 1)
 }
 # What the sliders are called in the window (their names in the code stay as they are).
-$script:SliderNames = @{ 'Speed' = 'Dictation speed'; 'Sentence gap' = 'Sentence pause'; 'Comma gap' = 'Comma pause'; 'Paragraph gap' = 'Paragraph pause' }
+$script:SliderNames = @{ 'Speed' = 'Dictation speed'; 'Sentence gap' = 'Sentence pause'; 'Comma gap' = 'Comma pause'; 'Paragraph gap' = 'Paragraph gap' }
+# Scrolls the tab a control is on, as the mouse wheel would.
+function Send-UiWheelToPage($Control, [int]$Delta) {
+    $tab = $Control.Parent
+    while ($tab -and -not ($tab -is [System.Windows.Forms.TabPage])) { $tab = $tab.Parent }
+    if (-not $tab -or -not $tab.VerticalScroll.Visible) { return }
+    $lines = [System.Windows.Forms.SystemInformation]::MouseWheelScrollLines
+    if ($lines -le 0) { $lines = 3 }
+    $step = [int]($Delta / 120 * $lines * $tab.Font.Height)
+    $y = [math]::Max(0, [math]::Min($tab.VerticalScroll.Maximum, -$tab.AutoScrollPosition.Y - $step))
+    $tab.AutoScrollPosition = New-Object System.Drawing.Point(0, $y)
+}
+
 function Add-UiSlider($Grid, [string]$Name, [int]$Min, [int]$Max, [int]$Small, [int]$Large, [int]$Tick) {
     $row = Add-UiGridRow $Grid
     $label = New-UiLabel $(if ($script:SliderNames.ContainsKey($Name)) { $script:SliderNames[$Name] } else { $Name })
@@ -515,6 +528,8 @@ function Add-UiSlider($Grid, [string]$Name, [int]$Min, [int]$Max, [int]$Small, [
     $bar.Maximum = $Max; $bar.Minimum = $Min; $bar.SmallChange = $Small; $bar.LargeChange = $Large; $bar.TickFrequency = $Tick
     $bar.Dock = 'Fill'
     $bar.Margin = New-Object System.Windows.Forms.Padding 0
+    # The mouse wheel over a slider scrolls the tab, not the slider (it moves by dragging, clicking or the arrow keys).
+    $bar.add_MouseWheel({ param($sender, $e) if ($e -is [System.Windows.Forms.HandledMouseEventArgs]) { $e.Handled = $true }; Send-UiWheelToPage $sender $e.Delta })
     $value = New-UiLabel ''
     $value.Dock = 'None'; $value.Anchor = 'Left'
     $value.MinimumSize = New-Object System.Drawing.Size((Get-Px 150), 0)
@@ -628,6 +643,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $installedList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 300))
     [void]$installedList.Columns.Add('Voice', (Get-Px 210))
     [void]$installedList.Columns.Add('Speaker', (Get-Px 80))
+    $installedList.Columns[1].TextAlign = 'Center'
     [void]$installedList.Columns.Add('Nickname', (Get-Px 190))
     [void]$installedList.Columns.Add('On disk', (Get-Px 70))
     [void]$installedList.Columns.Add('Windows default', (Get-Px 110))
@@ -643,10 +659,11 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     # The selected voice (a row for each installed speaker): hear it, make it Windows' default.
     $voiceLine = New-UiFlow
     $previewButton = New-UiButton 'Preview'
+    $stopButton = New-UiButton 'Stop'
     $defaultButton = New-UiButton 'Make default voice'
     $sapiButton = New-UiButton 'Windows speech settings'
     $previewButton.Enabled = $false; $defaultButton.Enabled = $false
-    foreach ($c in $previewButton, $defaultButton, $sapiButton) { $voiceLine.Controls.Add($c) }
+    foreach ($c in $previewButton, $stopButton, $defaultButton, $sapiButton) { $voiceLine.Controls.Add($c) }
     Add-UiRow $page $voiceLine
     $nickLine = New-UiFlow
     $nickLabel = New-UiLabel 'Nickname'
@@ -682,7 +699,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     Add-UiRow $page $soundLine
     $sliders = @{}
     $soundGrid = New-UiSliderGrid
-    foreach ($spec in @(@('Volume', 0, 100, 1, 5, 10), @('Boost', 10, 40, 1, 5, 5), @('Speed', 50, 200, 1, 5, 25))) {
+    foreach ($spec in @(@('Volume', 0, 100, 1, 5, 10), @('Boost', 10, 40, 1, 5, 5), @('Speed', 25, 200, 1, 5, 25))) {
         $sliders[$spec[0]] = Add-UiSlider $soundGrid $spec[0] $spec[1] $spec[2] $spec[3] $spec[4] $spec[5]
     }
     Add-UiRow $page $soundGrid
@@ -715,14 +732,15 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $previewVoiceBox = New-Object System.Windows.Forms.ComboBox
     $previewVoiceBox.DropDownStyle = 'DropDownList'; $previewVoiceBox.Width = Get-Px 280; $previewVoiceBox.Anchor = 'Left'
     $globalPreview = New-UiButton 'Preview'
+    $globalStop = New-UiButton 'Stop'
     $globalPreview.Enabled = $false
-    foreach ($c in $hearLabel, $previewVoiceBox, $globalPreview) { $hearLine.Controls.Add($c) }
+    foreach ($c in $hearLabel, $previewVoiceBox, $globalPreview, $globalStop) { $hearLine.Controls.Add($c) }
     Add-UiRow $page $hearLine
     $globalGrid = New-UiSliderGrid
-    $speedSlider = Add-UiSlider $globalGrid 'Speed' 50 200 5 25 25
+    $speedSlider = Add-UiSlider $globalGrid 'Speed' 25 200 5 25 25
     $speedBar = $speedSlider.Bar; $speedValue = $speedSlider.Value
     $speedValue.Font = $bold
-    Add-UiNote $globalGrid (New-UiLabel ("how fast every voice speaks before a program's own rate: 120% by default (rate +2 is about 125%) " +
+    Add-UiNote $globalGrid (New-UiLabel ("how fast every voice speaks before a program's own rate: 100% by default, the voices' own pace (rate +2 is about 125%) " +
         "(each voice's own Dictation speed, on the Voice manager, adjusts from here)") -Grey)
     $rateWarn = New-UiLabel ''
     $rateWarn.ForeColor = $red
@@ -734,7 +752,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $globalBars = @{}
     foreach ($spec in @(@('Sentence gap', $PauseLimits.Sentence, 'after each sentence, when another follows (none after the last)'),
                         @('Comma gap', $PauseLimits.Comma, 'at each , ; or : (0 = commas left as the voice says them)'),
-                        @('Paragraph gap', $PauseLimits.Paragraph, 'at a line break, in place of the sentence pause'))) {
+                        @('Paragraph gap', $PauseLimits.Paragraph, 'at a line break, in place of the sentence pause (Enter in Preview says starts a new line)'))) {
         $slider = Add-UiSlider $globalGrid $spec[0] 0 $spec[1] 50 250 250
         $slider.Value.Font = $bold
         Add-UiNote $globalGrid (New-UiLabel $spec[2] -Grey)
@@ -749,7 +767,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         "A comma pause above 0 has the voice say each part of a sentence separately, so the intonation can sound a little more broken up.") -Grey)
     $resetLine = New-UiLine @('auto', 'fill')
     $pausesReset = New-UiButton 'Reset to defaults'
-    $pausesNote = New-UiLabel 'Defaults: dictation speed 120%, sentence 500 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.' -Grey
+    $pausesNote = New-UiLabel 'Defaults: dictation speed 100%, sentence 500 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.' -Grey
     $resetLine.Controls.Add($pausesReset, 0, 0); $resetLine.Controls.Add($pausesNote, 1, 0)
     Add-UiRow $page $resetLine
 
@@ -849,6 +867,8 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $installedList.add_SelectedIndexChanged({ Update-UiInstalled })
     $previewButton.add_Click({ Invoke-UiPreview })
     $globalPreview.add_Click({ Invoke-UiGlobalPreview })
+    $stopButton.add_Click({ Stop-UiPreview })
+    $globalStop.add_Click({ Stop-UiPreview })
     $nickButton.add_Click({ Set-UiNickname })
     $tabAdd.add_Resize({ Update-UiAddLayout })
     $tabAdd.add_ClientSizeChanged({ Update-UiAddLayout })
@@ -910,7 +930,7 @@ function Set-UiGlobalBars($Pauses, [double]$Speed) {
     $ui = $script:Ui
     $ui.Filling = $true
     try {
-        $ui.SpeedBar.Value = [int][math]::Max(50, [math]::Min(200, $Speed))
+        $ui.SpeedBar.Value = [int][math]::Max(25, [math]::Min(200, $Speed))
         $ui.GlobalBars['Sentence gap'].Bar.Value = [int][math]::Min($PauseLimits.Sentence, $Pauses.Sentence)
         $ui.GlobalBars['Comma gap'].Bar.Value = [int][math]::Min($PauseLimits.Comma, $Pauses.Comma)
         $ui.GlobalBars['Paragraph gap'].Bar.Value = [int][math]::Min($PauseLimits.Paragraph, $Pauses.Paragraph)
@@ -1168,7 +1188,7 @@ function Update-UiInstalled {
         $ui.Sliders['Paragraph gap'].Bar.Value = [int][math]::Min($PauseLimits.Paragraph, $shown.Paragraph)
         $ui.Sliders.Volume.Bar.Value = [int][math]::Max(0, [math]::Min(100, [math]::Round($peak * 100)))
         $ui.Sliders.Boost.Bar.Value = [int][math]::Max(10, [math]::Min(40, [math]::Round($boost * 10)))
-        $ui.Sliders.Speed.Bar.Value = [int][math]::Max(50, [math]::Min(200, [math]::Round(100 / $lengthScale)))
+        $ui.Sliders.Speed.Bar.Value = [int][math]::Max(25, [math]::Min(200, [math]::Round(100 / $lengthScale)))
         Update-UiSliderLabels
     } finally {
         $ui.Filling = $false
@@ -1673,7 +1693,7 @@ try {
             $speedNow = Get-GlobalSpeed $SettingsFile
             Write-Output ("speed and pauses tab: speed {0} -> {1}%, sentence {2} -> {3} ms; example: {4}" -f $speedBefore, $speedNow,
                 $before.Sentence, $now.Sentence, $ui.GlobalBars['Sentence gap'].Example.Text)
-            if ($now.Sentence -ne 750 -or $speedNow -ne 150 -or $speedBefore -ne 120 -or $now.Paragraph -ne $before.Paragraph) { $bad += 'speed and pauses tab' }
+            if ($now.Sentence -ne 750 -or $speedNow -ne 150 -or $speedBefore -ne 100 -or $now.Paragraph -ne $before.Paragraph) { $bad += 'speed and pauses tab' }
             Set-GlobalSpeed $SettingsFile $speedBefore
             Set-GlobalPauses $SettingsFile $before.Sentence $before.Comma $before.Paragraph
             Set-UiGlobalBars (Get-Pauses $SettingsFile) (Get-GlobalSpeed $SettingsFile)

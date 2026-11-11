@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.7.8
+Modern Voices for Windows 0.7.9
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -46,7 +46,7 @@ How each voice sounds
 ---------------------
 In the Modern Voices window, on "Voice manager", select a voice:
 
-  Volume   how loud each sentence's loudest moment is: 95% = just under full volume. 0 = as Piper
+  Volume   how loud each sentence's loudest moment is: 100% = full volume. 0 = as Piper
            made it (quieter: the model's own level).
   Boost    lifts the quieter parts more than the loud ones, so the voice sounds louder overall without
            clipping. None, 1.5x (the default), up to 4x; higher sounds more compressed, like radio.
@@ -56,7 +56,7 @@ In the Modern Voices window, on "Voice manager", select a voice:
 Changes are saved as you move a slider and take effect straight away, also in programs that are already
 using the voice (from the next thing they say): no restarting, no repair. Preview says the text in the
 "Preview says" box with the voice as it now is (Enter starts a new line, which gets the paragraph
-pause); Reset puts back 95%, 1.5x, 100%. Each installed speaker of a voice has its own row (the
+gap); Reset puts back 100%, 1.5x, 100%. Each installed speaker of a voice has its own row (the
 voice named on the first): Preview, Make default voice and Nickname act on the row selected. A voice's speakers share its sliders (add or remove speakers on "Add or remove
 voices"). A program's own volume and speed still adjust from there.
 
@@ -74,21 +74,21 @@ Speed and pauses
 ----------------
 On the Speed and pauses tab, for every voice:
 
-  Dictation speed how fast every voice speaks before a program's own rate. Default 120%, a little
-                  under Windows' speech speed +2 (about 125%). Each voice's own Dictation speed, on
+  Dictation speed how fast every voice speaks before a program's own rate. Default 100%, the
+                  voices' own pace (Windows' speech speed +2 is about 125%). Each voice's own Dictation speed, on
                   the Voice manager, adjusts from here.
 
   Sentence pause  added after a sentence when another follows (never after the last, so short bits
                   of speech, such as a screen reader's, don't gain dead air). Default 500 ms.
-  Paragraph pause at a line break, in place of the sentence pause. Default 1200 ms.
+  Paragraph gap   at a line break, in place of the sentence pause. Default 1200 ms.
   Comma pause     at each , ; or : (default 0: commas as the voice says them). Above 0 the voice says
                   each part of a sentence separately so the pause can go between them, which can make
                   the intonation a little more broken up.
 
 Each pause is silence added to the voice's own, in milliseconds at 100% dictation speed and a program's
 speech rate 0. Faster speech uses a smaller share of it and slower a larger share, in step with the
-speech: at the default 120%, a 500 ms pause is 417 ms, 334 ms if a program also sets rate +2, and
-519 ms at -2. The tab shows each pause's result at the speed set.
+speech: at the default 100%, a 500 ms pause is 500 ms, 401 ms if a program also sets rate +2, and
+623 ms at -2. The tab shows each pause's result at the speed set.
 
 Speed is applied inside the engine, so it works in every program, also those that set their own
 rate (World of Warcraft, Balabolka, NVDA): theirs adds to it. So does Windows' own speech speed (its
@@ -100,7 +100,9 @@ A voice can have its own: in the Voice manager, tick "Modify pause duration for 
 set its three pauses. Changes apply straight away, like volume. Preview on this tab says the Voice
 manager's line with the voice chosen beside it.
 
-The window opens no larger than the screen; a tab that doesn't fit in it scrolls.
+The window opens no larger than the screen; a tab that doesn't fit in it scrolls. The mouse wheel
+scrolls the tab even over a slider (sliders move by dragging, clicking or the arrow keys). Stop,
+beside each Preview, stops the preview playing. Dictation speed goes from 25% to 200%.
 
 The settings live in the install folder: settings.json (the Speed and pauses tab: "speed_percent"
 and "pauses") and voices\<voice>\voice.json

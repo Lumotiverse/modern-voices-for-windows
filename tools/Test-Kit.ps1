@@ -38,7 +38,7 @@ function Invoke-Install([string[]]$Arguments) {
     return $code
 }
 # Speaks with every voice (Test.ps1 -Quiet), checks words and bookmark, and returns the results by
-# name; $Peaks maps a voice name to the peak it should reach (else 0.95).
+# name; $Peaks maps a voice name to the peak it should reach (else 1, full).
 function Test-Speech([string]$PowerShell, [int]$Bits, [int]$Expected, [hashtable]$Peaks = @{}) {
     $lines = & $PowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Quiet 2>&1
     $results = @{}
@@ -52,7 +52,7 @@ function Test-Speech([string]$PowerShell, [int]$Bits, [int]$Expected, [hashtable
         Check (-not $r.error -and $r.seconds -gt 0.5) "$Bits-bit $($r.name): speaks ($($r.seconds) s of audio in $($r.ms) ms) $($r.error)"
         Check ($r.words -ge 7) "$Bits-bit $($r.name): word events ($($r.words), 9 words said)"
         Check ($r.bookmark -eq '7') "$Bits-bit $($r.name): bookmark event ('$($r.bookmark)')"
-        $want = if ($Peaks.ContainsKey($r.name)) { $Peaks[$r.name] } else { 0.95 }
+        $want = if ($Peaks.ContainsKey($r.name)) { $Peaks[$r.name] } else { 1 }
         Check ([math]::Abs($r.peak - $want) -lt 0.03) "$Bits-bit $($r.name): loudness, peak $($r.peak) (set: $want)"
     }
     return $results
@@ -93,9 +93,9 @@ Check ((Test-Path "$menu\Modern Voices.lnk") -and (Test-Path "$menu\Repair.lnk")
 Check (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows') 'Installed apps entry'
 $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"
-Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 0.95') 'voice.json: loudness set (95%, 1.5x)'
+Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 1,') 'voice.json: loudness set (100%, 1.5x)'
 $settingsText = Get-Content (Join-Path $App 'settings.json') -Raw
-Check ($settingsText -match '"speed_percent": 120' -and $settingsText -match '"sentence_ms": 500' -and $settingsText -match '"paragraph_ms": 1200') 'settings.json: speed 120%, sentence 500 ms, paragraph 1200 ms'
+Check ($settingsText -match '"speed_percent": 100' -and $settingsText -match '"sentence_ms": 500' -and $settingsText -match '"paragraph_ms": 1200') 'settings.json: speed 100%, sentence 500 ms, paragraph 1200 ms'
 
 Step 'Speaking through System.Speech (SAPI 5), at the set loudness'
 $normal = Test-Speech $PS64 64 3
@@ -109,17 +109,17 @@ Step 'Settings take effect: volume, speed'
 . (Join-Path $App 'installer\VoiceConvert.ps1')
 Set-VoiceSettings $albaDir 0.5 1 1
 [void](Test-Speech $PS64 64 3 @{ $albaName = 0.5 })
-Set-VoiceSettings $albaDir 0.95 1.5 2
+Set-VoiceSettings $albaDir 1 1.5 2
 $slow = Test-Speech $PS64 64 3
 $ratio = $slow[$albaName].seconds / $normal[$albaName].seconds
 Check ($ratio -gt 1.45) ("length_scale 2: Alba {0:N2}x as long" -f $ratio)
-Set-VoiceSettings $albaDir 0.95 1.5 1
+Set-VoiceSettings $albaDir 1 1.5 1
 
 Step 'Settings take effect in a program already speaking'
 $lines = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Live $albaName -Dir $albaDir 2>&1
 $lines | ForEach-Object { Write-Host "  $_" }
 $liveResult = ($lines | Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1) | ConvertFrom-Json
-Check ($liveResult -and [math]::Abs($liveResult.before - 0.95) -lt 0.03 -and [math]::Abs($liveResult.after - 0.5) -lt 0.03) "same process: peak $($liveResult.before), then $($liveResult.after) after the change"
+Check ($liveResult -and [math]::Abs($liveResult.before - 1) -lt 0.03 -and [math]::Abs($liveResult.after - 0.5) -lt 0.03) "same process: peak $($liveResult.before), then $($liveResult.after) after the change"
 
 Step 'Pauses: measured gaps'
 $settingsFile = Join-Path $App 'settings.json'
@@ -196,7 +196,7 @@ Check ([math]::Abs($ratio - 1) -lt 0.05) ("speed 125% at rate 0 as long as 100% 
 Set-GlobalPauses $settingsFile 1000 0 2000
 Check-Added 'speed 125%, sentence gap 1000 ms (800 ms)' $fastBase (Measure-Speech $albaName $two) 800 30
 Set-GlobalPauses $settingsFile 500 0 1200
-Set-GlobalSpeed $settingsFile 120
+Set-GlobalSpeed $settingsFile 100
 [void](Set-Noise $albaDir $albaNoise)
 [void](Set-Noise $maleDir $maleNoise)
 $screens = Join-Path (Split-Path (Resolve-Path $Kit).Path -Parent) 'screens'
@@ -208,7 +208,7 @@ Set-VoiceSettings $albaDir 0.8 2 1
 $code = Invoke-Install @('-Repair', '-Unattended', '-NoPause')
 Check ($code -eq 0) 'repair finished without errors'
 [void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })
-Set-VoiceSettings $albaDir 0.95 1.5 1
+Set-VoiceSettings $albaDir 1 1.5 1
 
 Step 'Change voices: Alba only'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium', '-Unattended', '-NoPause')

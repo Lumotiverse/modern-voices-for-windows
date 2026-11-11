@@ -170,7 +170,7 @@ impl Settings {
         Settings {
             peak: number(info, "peak", 0.0).min(1.0),
             boost: number(info, "boost", 1.0).clamp(1.0, 5.0),
-            length_scale: number(info, "length_scale", 1.0).clamp(0.3, 3.0),
+            length_scale: number(info, "length_scale", 1.0).clamp(0.3, 4.0),
             own_pauses: (number(info, "own_pauses", 0.0) >= 1.0).then(|| Pauses::read(info)),
         }
     }
@@ -645,8 +645,8 @@ impl Engine_Impl {
         let global = global_settings(voice.settings_file.as_deref());
         let pauses = settings.own_pauses.unwrap_or(global.pauses);
         // The program's rate on top of the speed set for every voice (the window's Speed and pauses
-        // tab): 120% unless set; 125% is about as fast as rate +2.
-        let speed = (3f32.powf(rate / 10.0).clamp(0.4, 2.5) * global.speed).clamp(0.3, 3.0);
+        // tab): 100% unless set; 125% is about as fast as rate +2.
+        let speed = (3f32.powf(rate / 10.0).clamp(0.4, 2.5) * global.speed).clamp(0.1, 3.0);
         let pace = speed / settings.length_scale;
         let rate_hz = voice.model.sample_rate;
         let config = GenerationConfig { speed: speed / shift / settings.length_scale, sid: voice.speaker, ..Default::default() };

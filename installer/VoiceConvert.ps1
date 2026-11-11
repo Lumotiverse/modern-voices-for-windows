@@ -4,8 +4,8 @@
 #
 # How a voice sounds is set in its voice.json, which the engine reads while speaking (a change takes
 # effect from the next thing said, in programs already using the voice):
-#   "loudness": { "peak": 0.95, "boost": 1.5 }
-#     peak:  each sentence is scaled so its loudest moment is this (0.95 = just under full; 0 = off,
+#   "loudness": { "peak": 1, "boost": 1.5 }
+#     peak:  each sentence is scaled so its loudest moment is this (1 = full; 0 = off,
 #            as Piper made it)
 #     boost: above 1, the quieter parts are lifted more than the loud ones (a soft limiter, tanh), so
 #            the voice is louder overall without its peaks clipping. 1 = none, 1.5 mild, 2-3 strong.
@@ -16,7 +16,7 @@
 #     and at a line break, in milliseconds at rate 0, 100% speed and the voice's own speed: faster
 #     speech, shorter gaps, in proportion
 # The program's settings.json also has "speed_percent": the speed every voice speaks at before a
-# program's own rate (120 unless set; each voice's length_scale adjusts from there).
+# program's own rate (100 unless set; each voice's length_scale adjusts from there).
 
 $script:PevUtf8 = New-Object System.Text.UTF8Encoding $false
 
@@ -136,7 +136,7 @@ function Format-Number([double]$Number) { return $Number.ToString('0.###', [Glob
 function Test-VoiceSettings([double]$Peak, [double]$Boost, [double]$LengthScale) {
     if ($Peak -lt 0 -or $Peak -gt 1) { throw "peak must be from 0 to 1 (it is $(Format-Number $Peak))." }
     if ($Boost -lt 1 -or $Boost -gt 5) { throw "boost must be from 1 to 5 (it is $(Format-Number $Boost))." }
-    if ($LengthScale -lt 0.3 -or $LengthScale -gt 3) { throw "length_scale must be from 0.3 to 3 (it is $(Format-Number $LengthScale))." }
+    if ($LengthScale -lt 0.3 -or $LengthScale -gt 4) { throw "length_scale must be from 0.3 to 4 (it is $(Format-Number $LengthScale))." }
 }
 
 # What a voice folder's voice.json sets: Peak, Boost, LengthScale ($null where it says nothing). $null
@@ -237,15 +237,15 @@ function Set-GlobalPauses([string]$Path, [double]$Sentence, [double]$Comma, [dou
 }
 
 # The speed every voice speaks at before a program's rate, in % (settings.json's speed_percent).
-$script:SpeedDefault = 120
+$script:SpeedDefault = 100
 function Get-GlobalSpeed([string]$Path) {
     $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8) } else { '' }
     $m = [regex]::Match($text, '"speed_percent"\s*:\s*' + $script:PevNumber)
     if (-not $m.Success) { return $script:SpeedDefault }
-    return [math]::Max(50, [math]::Min(200, [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)))
+    return [math]::Max(25, [math]::Min(200, [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)))
 }
 function Set-GlobalSpeed([string]$Path, [double]$Percent) {
-    if ($Percent -lt 50 -or $Percent -gt 200) { throw "speed must be 50 to 200% (got $Percent)" }
+    if ($Percent -lt 25 -or $Percent -gt 200) { throw "speed must be 25 to 200% (got $Percent)" }
     $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8).Replace("`r`n", "`n") } else { "{`n}`n" }
     $line = '"speed_percent": ' + (Format-Number $Percent)
     $existing = [regex]::Match($text, '"speed_percent"\s*:\s*' + $script:PevNumber)
