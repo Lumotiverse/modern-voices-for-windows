@@ -75,11 +75,12 @@ Step 'Install: Alba, Northern English Male, VCTK speaker p239'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium,en_GB-northern_english_male-medium,en_GB-vctk-medium#p239', '-Unattended', '-NoPause',
     '-InstallDir', $InstallParent)
 Check ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows').InstallLocation -eq $App) "installed in the chosen folder ($App)"
-$users = New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-545'
-$userWrite = @((Get-Acl $App).Access | Where-Object {
-    $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]) -eq $users -and
+$users = (New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-545').Translate([Security.Principal.NTAccount]).Value
+$rules = @((Get-Acl $App).Access)
+$userWrite = @($rules | Where-Object { $_.IdentityReference.Value -eq $users -and
     ($_.FileSystemRights -band [Security.AccessControl.FileSystemRights]::Write) })
-Check ($userWrite.Count -eq 0) 'outside Program Files: ordinary users cannot change the files'
+Write-Host ("  folder permissions: " + (($rules | ForEach-Object { "$($_.IdentityReference.Value): $($_.FileSystemRights)" }) -join '; '))
+Check ($userWrite.Count -eq 0 -and @($rules | Where-Object { $_.IdentityReference.Value -eq $users }).Count -gt 0) 'outside Program Files: ordinary users can read the files, not change them'
 $token = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium')
 Check ($token.SettingsFile -eq (Join-Path $App 'settings.json') -and (Test-Path $token.SettingsFile)) 'voices point at the settings file'
 Check ($code -eq 0) 'installer finished without errors'
