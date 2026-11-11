@@ -128,7 +128,7 @@ function Measure-Speech([string]$Voice, [string]$Text, [int]$Rate = 0) {
         Where-Object { ([string]$_).StartsWith('{') } | Select-Object -First 1
     $r = $line | ConvertFrom-Json
     $longest = if (@($r.gaps).Count) { (@($r.gaps) | Measure-Object -Maximum).Maximum } else { 0 }
-    return [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Gaps = @($r.gaps) }
+    return [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Gaps = @($r.gaps); Tail = [double]$r.tail }
 }
 function Check-Added([string]$What, $Without, $With, [double]$Expected, [double]$Slack) {
     $added = $With.Longest - $Without.Longest
@@ -151,7 +151,8 @@ Check-Added 'sentence gap 1000 ms, rate 0' $base (Measure-Speech $albaName $two)
 Check-Added 'sentence gap 1000 ms, rate +5 (1.73x as fast: 577 ms)' $baseFast (Measure-Speech $albaName $two 5) 577 80
 Check-Added 'paragraph gap 2000 ms at a line break' $basePara (Measure-Speech $albaName $para) 2000 80
 $withOne = Measure-Speech $albaName $one
-Check ([math]::Abs($withOne.Seconds - $baseOne.Seconds) -lt 0.03) ("no gap after the last sentence ({0:N3} s -> {1:N3} s)" -f $baseOne.Seconds, $withOne.Seconds)
+# (Not by total length: Piper varies its timing a little each time it speaks.)
+Check ($withOne.Tail -lt $baseOne.Tail + 150) ("no gap after the last sentence: silence at the end {0:N0} ms with a 1000 ms sentence gap, {1:N0} ms without" -f $withOne.Tail, $baseOne.Tail)
 Set-GlobalPauses $settingsFile 0 600 0
 Check-Added 'comma gap 600 ms (each part said separately)' $baseComma (Measure-Speech $albaName $comma) 600 200
 # A voice's own pauses: Alba 300 ms while every other voice has 1000.

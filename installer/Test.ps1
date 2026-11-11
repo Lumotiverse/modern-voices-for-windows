@@ -14,8 +14,8 @@ programs use them (System.Speech, which sits on SAPI 5).
                             process, puts the settings back; prints the two peaks as JSON.
   Test.ps1 -Measure NAME -TextBase64 TEXT [-Rate N]
                             the build's test of pauses: speaks TEXT (base64 of UTF-16) with voice
-                            NAME at SAPI rate N into a file; prints its length and the silent gaps
-                            inside it (ms) as JSON.
+                            NAME at SAPI rate N into a file; prints its length, the silent gaps
+                            inside it and the silence at its end (ms) as JSON.
 
 Only voices of this program (token names starting ModernVoices_) are tried.
 #>
@@ -88,6 +88,17 @@ function Get-WavGaps([string]$Path, [int]$SampleRate) {
     return ,$gaps
 }
 
+# The silence at the end of a 16-bit mono WAV, in ms.
+function Get-WavTail([string]$Path, [int]$SampleRate) {
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $count = [int](($bytes.Length - 44) / 2)
+    $samples = New-Object 'int16[]' $count
+    [Buffer]::BlockCopy($bytes, 44, $samples, 0, $count * 2)
+    $last = $count - 1
+    while ($last -ge 0 -and [math]::Abs([int]$samples[$last]) -lt 655) { $last-- }
+    return [math]::Round(($count - 1 - $last) * 1000.0 / $SampleRate)
+}
+
 if ($Measure) {
     $text = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($TextBase64))
     $synth.SelectVoice($Measure)
@@ -97,9 +108,10 @@ if ($Measure) {
     $synth.Speak($text)
     $synth.SetOutputToNull()
     $gaps = Get-WavGaps $wav 22050
+    $tail = Get-WavTail $wav 22050
     $seconds = [math]::Round(((Get-Item $wav).Length - 44) / 44100.0, 3)
     Remove-Item $wav -ErrorAction SilentlyContinue
-    ('{"seconds":' + $seconds.ToString([Globalization.CultureInfo]::InvariantCulture) + ',"gaps":[' + ($gaps -join ',') + ']}')
+    ('{"seconds":' + $seconds.ToString([Globalization.CultureInfo]::InvariantCulture) + ',"tail":' + $tail + ',"gaps":[' + ($gaps -join ',') + ']}')
     exit 0
 }
 
