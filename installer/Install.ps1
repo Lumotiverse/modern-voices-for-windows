@@ -556,7 +556,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $tabInstalled = New-Object System.Windows.Forms.TabPage 'Voice manager'
     $tabPauses = New-Object System.Windows.Forms.TabPage 'Speed and pauses'
     $tabAdd = New-Object System.Windows.Forms.TabPage 'Add or remove voices'
-    foreach ($tab in $tabInstalled, $tabPauses, $tabAdd) { $tab.AutoScroll = $true; $tab.UseVisualStyleBackColor = $true; $tabs.TabPages.Add($tab) }
+    foreach ($tab in $tabInstalled, $tabPauses, $tabAdd) { $tab.AutoScroll = $true; $tab.UseVisualStyleBackColor = $false; $tab.BackColor = [System.Drawing.SystemColors]::Control; $tabs.TabPages.Add($tab) }
     $form.Controls.Add($tabs)
 
     # ---- bottom of the window: progress while applying changes
@@ -1085,6 +1085,9 @@ function Update-UiInstalled {
         $isDefault = @($names | Where-Object { (Get-TokenName "$($tag.Key)#$_") -eq $default })
         $ui.SpeakerBox.SelectedIndex = if ($isDefault.Count) { [array]::IndexOf($names, $isDefault[0]) } else { 0 }
         $ui.SpeakerBox.Enabled = $names.Count -gt 1
+    } else {
+        [void]$ui.SpeakerBox.Items.Add('(one speaker)')
+        $ui.SpeakerBox.SelectedIndex = 0
     }
     $ui.SoundLabel.Text = "How $($tag.Title) sounds" + $(if ($tag.Shared) { ' (all its speakers)' } else { '' })
 }
