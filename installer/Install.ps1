@@ -52,7 +52,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.5.1'
+$Version = '0.5.2'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $App = Join-Path $env:ProgramFiles $AppName
@@ -209,13 +209,13 @@ function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "$AppName $Version - choose voices"
-    $form.Size = New-Object System.Drawing.Size(820, 640)
+    $form.Size = New-Object System.Drawing.Size(820, 700)
     $form.StartPosition = 'CenterScreen'
     # In front of the console it was started from (else it can open behind it, unseen).
     $form.TopMost = $true
     $form.add_Shown({ $script:Ui.Form.Activate(); $script:Ui.Form.TopMost = $false })
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-    $form.MinimumSize = New-Object System.Drawing.Size(700, 480)
+    $form.MinimumSize = New-Object System.Drawing.Size(700, 600)
 
     $intro = New-Object System.Windows.Forms.Label
     $intro.Text = "Tick the voices to install; untick an installed one to remove it. They are offline neural voices " +
@@ -233,7 +233,7 @@ function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
     $list.HideSelection = $false
     $list.MultiSelect = $false
     $list.Location = New-Object System.Drawing.Point(12, 52)
-    $list.Size = New-Object System.Drawing.Size(780, 380)
+    $list.Size = New-Object System.Drawing.Size(780, 300)
     $list.Anchor = 'Top, Bottom, Left, Right'
     [void]$list.Columns.Add('Voice', 220)
     [void]$list.Columns.Add('Accent', 90)
@@ -269,30 +269,43 @@ function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
     $form.Controls.Add($list)
 
     $speakerLabel = New-Object System.Windows.Forms.Label
-    $speakerLabel.Location = New-Object System.Drawing.Point(12, 442)
+    $speakerLabel.Location = New-Object System.Drawing.Point(12, 362)
     $speakerLabel.Size = New-Object System.Drawing.Size(780, 18)
     $speakerLabel.Anchor = 'Bottom, Left, Right'
     $speakerLabel.AutoEllipsis = $true
     $speakerLabel.Text = 'Select a voice with several speakers to choose which of them to install (each becomes a voice).'
     $form.Controls.Add($speakerLabel)
 
-    $speakerBox = New-Object System.Windows.Forms.TextBox
-    $speakerBox.Location = New-Object System.Drawing.Point(12, 462)
-    $speakerBox.Size = New-Object System.Drawing.Size(560, 24)
-    $speakerBox.Anchor = 'Bottom, Left, Right'
-    $speakerBox.Enabled = $false
-    $form.Controls.Add($speakerBox)
+    # Every speaker of the selected voice, to tick (scrolls sideways when there are many).
+    $speakerList = New-Object System.Windows.Forms.CheckedListBox
+    $speakerList.Location = New-Object System.Drawing.Point(12, 382)
+    $speakerList.Size = New-Object System.Drawing.Size(670, 112)
+    $speakerList.Anchor = 'Bottom, Left, Right'
+    $speakerList.MultiColumn = $true
+    $speakerList.ColumnWidth = 90
+    $speakerList.CheckOnClick = $true
+    $speakerList.IntegralHeight = $false
+    $speakerList.Enabled = $false
+    $form.Controls.Add($speakerList)
 
     $play = New-Object System.Windows.Forms.Button
     $play.Text = 'Play sample'
-    $play.Location = New-Object System.Drawing.Point(582, 461)
+    $play.Location = New-Object System.Drawing.Point(692, 382)
     $play.Size = New-Object System.Drawing.Size(100, 26)
     $play.Anchor = 'Bottom, Right'
     $form.Controls.Add($play)
 
+    $playHint = New-Object System.Windows.Forms.Label
+    $playHint.Text = 'plays the voice, or the speaker selected in this list'
+    $playHint.Location = New-Object System.Drawing.Point(692, 412)
+    $playHint.Size = New-Object System.Drawing.Size(100, 60)
+    $playHint.Anchor = 'Bottom, Right'
+    $playHint.ForeColor = [System.Drawing.Color]::DimGray
+    $form.Controls.Add($playHint)
+
     $usBox = New-Object System.Windows.Forms.CheckBox
     $usBox.Text = 'Also list British voices as US English (only if a program does not show them)'
-    $usBox.Location = New-Object System.Drawing.Point(12, 496)
+    $usBox.Location = New-Object System.Drawing.Point(12, 504)
     $usBox.Size = New-Object System.Drawing.Size(780, 22)
     $usBox.Anchor = 'Bottom, Left, Right'
     $usBox.Checked = $UsTags
@@ -300,7 +313,7 @@ function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
 
     $note = New-Object System.Windows.Forms.Label
     $note.Text = 'Some programs (World of Warcraft, for one) take longer to start the more voices Windows has installed: keep the list to the ones you use.'
-    $note.Location = New-Object System.Drawing.Point(12, 522)
+    $note.Location = New-Object System.Drawing.Point(12, 530)
     $note.Size = New-Object System.Drawing.Size(560, 34)
     $note.Anchor = 'Bottom, Left, Right'
     $note.ForeColor = [System.Drawing.Color]::DimGray
@@ -308,7 +321,7 @@ function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
 
     $ok = New-Object System.Windows.Forms.Button
     $ok.Text = 'Install'
-    $ok.Location = New-Object System.Drawing.Point(582, 552)
+    $ok.Location = New-Object System.Drawing.Point(582, 610)
     $ok.Size = New-Object System.Drawing.Size(100, 30)
     $ok.Anchor = 'Bottom, Right'
     $ok.DialogResult = 'OK'
@@ -317,16 +330,22 @@ function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
 
     $cancel = New-Object System.Windows.Forms.Button
     $cancel.Text = 'Cancel'
-    $cancel.Location = New-Object System.Drawing.Point(692, 552)
+    $cancel.Location = New-Object System.Drawing.Point(692, 610)
     $cancel.Size = New-Object System.Drawing.Size(100, 30)
     $cancel.Anchor = 'Bottom, Right'
     $cancel.DialogResult = 'Cancel'
     $form.Controls.Add($cancel)
     $form.CancelButton = $cancel
 
-    $script:Ui = @{ Form = $form; List = $list; SpeakerLabel = $speakerLabel; SpeakerBox = $speakerBox; UsBox = $usBox
-                    Speakers = $chosenSpeakers; Current = $null; Player = $null }
+    $script:Ui = @{ Form = $form; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
+                    Speakers = $chosenSpeakers; Current = $null; Player = $null; Filling = $false }
     $list.add_SelectedIndexChanged({ Update-UiSelection })
+    # Ticking a speaker ticks its voice too.
+    $speakerList.add_ItemCheck({
+        param($sender, $e)
+        if (-not $script:Ui.Filling -and $e.NewValue -eq [System.Windows.Forms.CheckState]::Checked -and
+            $script:Ui.List.SelectedItems.Count -gt 0) { $script:Ui.List.SelectedItems[0].Checked = $true }
+    })
     $play.add_Click({ Invoke-UiSample })
     $form.add_FormClosing({ Save-UiSpeakers; if ($script:Ui.Player) { $script:Ui.Player.Stop() } })
     return $script:Ui
@@ -334,27 +353,37 @@ function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
 
 function Save-UiSpeakers {
     $current = $script:Ui.Current
-    if ($current -and $current.Speakers.Count -gt 1) { $script:Ui.Speakers[$current.Key] = $script:Ui.SpeakerBox.Text }
+    if ($current -and $current.Speakers.Count -gt 1) {
+        $script:Ui.Speakers[$current.Key] = (@($script:Ui.SpeakerList.CheckedItems) | ForEach-Object { [string]$_ }) -join ', '
+    }
 }
 
 function Update-UiSelection {
     Save-UiSpeakers
     $ui = $script:Ui
     $ui.Current = $null
-    if ($ui.List.SelectedItems.Count -eq 0) { $ui.SpeakerBox.Enabled = $false; return }
-    $v = $ui.List.SelectedItems[0].Tag
-    $ui.Current = $v
-    if ($v.Speakers.Count -gt 1) {
+    $ui.Filling = $true
+    $ui.SpeakerList.BeginUpdate()
+    try {
+        $ui.SpeakerList.Items.Clear()
+        $ui.SpeakerList.Enabled = $false
+        if ($ui.List.SelectedItems.Count -eq 0) { return }
+        $v = $ui.List.SelectedItems[0].Tag
+        $ui.Current = $v
+        if ($v.Speakers.Count -le 1) {
+            $ui.SpeakerLabel.Text = "$($v.Display): one speaker."
+            return
+        }
         $names = @($v.Speakers.Keys)
-        $shown = ($names | Select-Object -First 12) -join ', '
-        if ($names.Count -gt 12) { $shown += ", ... ($($names.Count) in all)" }
-        $ui.SpeakerLabel.Text = "Speakers of $($v.Display) to install (names, comma-separated): $shown"
-        $ui.SpeakerBox.Text = if ($ui.Speakers.ContainsKey($v.Key)) { $ui.Speakers[$v.Key] } else { $names[0] }
-        $ui.SpeakerBox.Enabled = $true
-    } else {
-        $ui.SpeakerLabel.Text = "$($v.Display): one speaker."
-        $ui.SpeakerBox.Text = ''
-        $ui.SpeakerBox.Enabled = $false
+        $ticked = @()
+        if ($ui.Speakers.ContainsKey($v.Key)) { $ticked = @(($ui.Speakers[$v.Key] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
+        foreach ($n in $names) { [void]$ui.SpeakerList.Items.Add($n, ($ticked -contains $n)) }
+        $ui.SpeakerList.Enabled = $true
+        $ui.SpeakerLabel.Text = "Speakers of $($v.Display) ($($names.Count)): tick the ones to install, each becomes a voice " +
+            "(none ticked: the first, $($names[0])). Select one and press Play sample to hear it."
+    } finally {
+        $ui.SpeakerList.EndUpdate()
+        $ui.Filling = $false
     }
 }
 
@@ -365,8 +394,10 @@ function Invoke-UiSample {
     $v = $ui.List.SelectedItems[0].Tag
     $speakerNumber = 0
     if ($v.Speakers.Count -gt 1) {
-        $first = (($ui.SpeakerBox.Text -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -First 1)
-        if ($first -and $v.Speakers.Contains($first)) { $speakerNumber = $v.Speakers[$first] }
+        # The speaker selected in the list, else the first ticked, else the first.
+        $name = [string]$ui.SpeakerList.SelectedItem
+        if (-not $name -and $ui.SpeakerList.CheckedItems.Count -gt 0) { $name = [string]$ui.SpeakerList.CheckedItems[0] }
+        if ($name -and $v.Speakers.Contains($name)) { $speakerNumber = $v.Speakers[$name] }
     }
     $folder = $v.Onnx.Substring(0, $v.Onnx.LastIndexOf('/'))
     $file = Join-Path $env:TEMP ("modernvoices_sample_{0}_{1}.mp3" -f $v.Key, $speakerNumber)
@@ -572,7 +603,23 @@ try {
         $picker = New-PickerForm $catalogue @('en_GB-alba-medium', 'en_GB-vctk-medium#p239') $false
         $picked = @(Get-PickedIds $picker)
         Write-Output ("picker: {0} voices listed, {1} ticked: {2}" -f $picker.List.Items.Count, $picked.Count, ($picked -join ' '))
+        # The speaker list, driven as a click would: select VCTK, tick a second speaker.
+        $null = $picker.Form.Handle; $null = $picker.List.Handle
+        $vctk = @($picker.List.Items | Where-Object { $_.Tag.Key -eq 'en_GB-vctk-medium' })[0]
+        $vctk.Selected = $true
+        Update-UiSelection
+        $speakerCount = $picker.SpeakerList.Items.Count
+        $ticked = @($picker.SpeakerList.CheckedItems | ForEach-Object { [string]$_ })
+        $other = [string]$picker.SpeakerList.Items[0]
+        $picker.SpeakerList.SetItemChecked(0, $true)
+        Save-UiSpeakers
+        $picked = @(Get-PickedIds $picker)
+        Write-Output ("speakers: {0} listed for VCTK ({1} in the catalogue), ticked {2}; after ticking {3}: {4}" -f
+            $speakerCount, $vctk.Tag.Speakers.Count, ($ticked -join ','), $other, ($picked -join ' '))
+        $good = $speakerCount -eq $vctk.Tag.Speakers.Count -and ($ticked -join ',') -eq 'p239' -and
+            $picked -contains 'en_GB-vctk-medium#p239' -and $picked -contains "en_GB-vctk-medium#$other"
         $picker.Form.Dispose()
+        if (-not $good) { Write-Output 'picker: speaker list FAILED'; exit 3 }
         exit 0
     }
 
