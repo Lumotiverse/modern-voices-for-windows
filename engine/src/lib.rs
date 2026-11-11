@@ -645,7 +645,7 @@ impl Engine_Impl {
         let global = global_settings(voice.settings_file.as_deref());
         let pauses = settings.own_pauses.unwrap_or(global.pauses);
         // The program's rate on top of the speed set for every voice (the window's Speed and pauses
-        // tab): 125% is about as fast as rate +2.
+        // tab): 120% unless set; 125% is about as fast as rate +2.
         let speed = (3f32.powf(rate / 10.0).clamp(0.4, 2.5) * global.speed).clamp(0.3, 3.0);
         let pace = speed / settings.length_scale;
         let rate_hz = voice.model.sample_rate;

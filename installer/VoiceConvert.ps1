@@ -16,7 +16,7 @@
 #     and at a line break, in milliseconds at rate 0, 100% speed and the voice's own speed: faster
 #     speech, shorter gaps, in proportion
 # The program's settings.json also has "speed_percent": the speed every voice speaks at before a
-# program's own rate (125 unless set; each voice's length_scale adjusts from there).
+# program's own rate (120 unless set; each voice's length_scale adjusts from there).
 
 $script:PevUtf8 = New-Object System.Text.UTF8Encoding $false
 
@@ -237,7 +237,7 @@ function Set-GlobalPauses([string]$Path, [double]$Sentence, [double]$Comma, [dou
 }
 
 # The speed every voice speaks at before a program's rate, in % (settings.json's speed_percent).
-$script:SpeedDefault = 125
+$script:SpeedDefault = 120
 function Get-GlobalSpeed([string]$Path) {
     $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8) } else { '' }
     $m = [regex]::Match($text, '"speed_percent"\s*:\s*' + $script:PevNumber)

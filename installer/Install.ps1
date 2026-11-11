@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.7.7'
+$Version = '0.7.8'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -361,7 +361,7 @@ function Protect-AppFolder {
 
 # Two paragraphs, so that Preview also has a paragraph pause in it.
 $PreviewText = ("Speaking a preview of the selected voice, to hear how natural it sounds.`r`n`r`n" +
-    "Adjust the dictation speed, and 'Comma pause' values, to adjust the sound to your liking.")
+    "Change the dictation speed, and 'Comma pause' values, to adjust the sound to your liking.")
 
 # A nickname of your own for a voice, shown in brackets in its name in place of its accent ("VCTK p262
 # (Irish Female)"): kept by voice id under the program's settings key.
@@ -722,7 +722,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $speedSlider = Add-UiSlider $globalGrid 'Speed' 50 200 5 25 25
     $speedBar = $speedSlider.Bar; $speedValue = $speedSlider.Value
     $speedValue.Font = $bold
-    Add-UiNote $globalGrid (New-UiLabel ("how fast every voice speaks before a program's own rate: 125% is about rate +2 " +
+    Add-UiNote $globalGrid (New-UiLabel ("how fast every voice speaks before a program's own rate: 120% by default (rate +2 is about 125%) " +
         "(each voice's own Dictation speed, on the Voice manager, adjusts from here)") -Grey)
     $rateWarn = New-UiLabel ''
     $rateWarn.ForeColor = $red
@@ -749,7 +749,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         "A comma pause above 0 has the voice say each part of a sentence separately, so the intonation can sound a little more broken up.") -Grey)
     $resetLine = New-UiLine @('auto', 'fill')
     $pausesReset = New-UiButton 'Reset to defaults'
-    $pausesNote = New-UiLabel 'Defaults: dictation speed 125%, sentence 500 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.' -Grey
+    $pausesNote = New-UiLabel 'Defaults: dictation speed 120%, sentence 500 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.' -Grey
     $resetLine.Controls.Add($pausesReset, 0, 0); $resetLine.Controls.Add($pausesNote, 1, 0)
     Add-UiRow $page $resetLine
 
@@ -1673,7 +1673,7 @@ try {
             $speedNow = Get-GlobalSpeed $SettingsFile
             Write-Output ("speed and pauses tab: speed {0} -> {1}%, sentence {2} -> {3} ms; example: {4}" -f $speedBefore, $speedNow,
                 $before.Sentence, $now.Sentence, $ui.GlobalBars['Sentence gap'].Example.Text)
-            if ($now.Sentence -ne 750 -or $speedNow -ne 150 -or $speedBefore -ne 125 -or $now.Paragraph -ne $before.Paragraph) { $bad += 'speed and pauses tab' }
+            if ($now.Sentence -ne 750 -or $speedNow -ne 150 -or $speedBefore -ne 120 -or $now.Paragraph -ne $before.Paragraph) { $bad += 'speed and pauses tab' }
             Set-GlobalSpeed $SettingsFile $speedBefore
             Set-GlobalPauses $SettingsFile $before.Sentence $before.Comma $before.Paragraph
             Set-UiGlobalBars (Get-Pauses $SettingsFile) (Get-GlobalSpeed $SettingsFile)

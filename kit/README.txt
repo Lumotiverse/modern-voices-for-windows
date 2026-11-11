@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.7.7
+Modern Voices for Windows 0.7.8
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -74,8 +74,9 @@ Speed and pauses
 ----------------
 On the Speed and pauses tab, for every voice:
 
-  Dictation speed how fast every voice speaks before a program's own rate. Default 125%, about what
-                  Windows' speech speed +2 gives (each voice's own Speed adjusts from here).
+  Dictation speed how fast every voice speaks before a program's own rate. Default 120%, a little
+                  under Windows' speech speed +2 (about 125%). Each voice's own Dictation speed, on
+                  the Voice manager, adjusts from here.
 
   Sentence pause  added after a sentence when another follows (never after the last, so short bits
                   of speech, such as a screen reader's, don't gain dead air). Default 500 ms.
@@ -86,8 +87,8 @@ On the Speed and pauses tab, for every voice:
 
 Each pause is silence added to the voice's own, in milliseconds at 100% dictation speed and a program's
 speech rate 0. Faster speech uses a smaller share of it and slower a larger share, in step with the
-speech: at the default 125%, a 500 ms pause is 400 ms, 321 ms if a program also sets rate +2, and
-498 ms at -2. The tab shows each pause's result at the speed set.
+speech: at the default 120%, a 500 ms pause is 417 ms, 334 ms if a program also sets rate +2, and
+519 ms at -2. The tab shows each pause's result at the speed set.
 
 Speed is applied inside the engine, so it works in every program, also those that set their own
 rate (World of Warcraft, Balabolka, NVDA): theirs adds to it. So does Windows' own speech speed (its
