@@ -167,7 +167,7 @@ $withOne = Measure-Speech $albaName $one
 # (Not by total length: Piper varies its timing a little each time it speaks.)
 Check ($withOne.Tail -lt $baseOne.Tail + 150) ("no gap after the last sentence: silence at the end {0:N0} ms with a 1000 ms sentence gap, {1:N0} ms without" -f $withOne.Tail, $baseOne.Tail)
 Set-GlobalPauses $settingsFile 0 600 0
-Check-Added 'comma gap 600 ms (each part said separately)' $baseComma (Measure-Speech $albaName $comma) 600 150
+Check-Added 'comma gap 600 ms (each part said separately)' $baseComma (Measure-Speech $albaName $comma) 600 80
 # A voice's own pauses: Alba 300 ms while every other voice has 1000.
 Set-GlobalPauses $settingsFile 1000 0 2000
 Set-VoicePauses $albaDir $true 300 0 600

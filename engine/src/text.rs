@@ -244,6 +244,23 @@ pub fn clauses(text: &[u16], from: usize, to: usize) -> Vec<(usize, usize)> {
     }).collect()
 }
 
+/// The part of `audio` from just before its first sound to just after its last (sound: above a fiftieth
+/// of its loudest), keeping `margin` samples of the silence on each side that is trimmed: where a
+/// sentence is said in parts (a gap at its commas), the silence each part starts and ends with comes
+/// off, so only the gap is added to the voice's own short pause. `head`/`tail`: which ends to trim.
+pub fn trim_silence(audio: &[f32], head: bool, tail: bool, margin: usize) -> &[f32] {
+    let loudest = audio.iter().fold(0f32, |m, s| m.max(s.abs()));
+    if loudest <= 0.0 {
+        return audio;
+    }
+    let threshold = loudest / 50.0;
+    let first = audio.iter().position(|s| s.abs() > threshold).unwrap_or(0);
+    let last = audio.iter().rposition(|s| s.abs() > threshold).map(|p| p + 1).unwrap_or(audio.len());
+    let from = if head { first.saturating_sub(margin) } else { 0 };
+    let to = if tail { (last + margin).min(audio.len()) } else { audio.len() };
+    &audio[from..to.max(from)]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,5 +375,16 @@ mod tests {
         let e = "No commas here.";
         let v = utf16(e);
         assert_eq!(texts(e, &clauses(&v, 0, v.len())), ["No commas here."]);
+    }
+
+    #[test]
+    fn trims_silence() {
+        let mut audio = vec![0f32; 1000];
+        for s in &mut audio[300..600] { *s = 0.5; }
+        assert_eq!(trim_silence(&audio, true, true, 40).len(), 380);      // 260..640
+        assert_eq!(trim_silence(&audio, false, true, 40).len(), 640);     // 0..640
+        assert_eq!(trim_silence(&audio, true, false, 40).len(), 740);     // 260..1000
+        assert_eq!(trim_silence(&audio, false, false, 40).len(), 1000);
+        assert_eq!(trim_silence(&[0f32; 10], true, true, 2).len(), 10);
     }
 }

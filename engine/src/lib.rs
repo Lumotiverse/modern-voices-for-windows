@@ -651,7 +651,9 @@ impl Engine_Impl {
                 if k > 0 && !out.silence(gap_samples(pauses.comma_ms, pace, rate_hz)) {
                     return false;
                 }
-                if !self.say_piece(voice, run, a, b, &config, &settings, shift, gain, out) {
+                // Said in parts: the silence where a part meets the next comes off (the gap replaces it).
+                let (head, tail) = (k > 0, k + 1 < pieces.len());
+                if !self.say_piece(voice, run, (a, b), (head, tail), &config, &settings, (shift, gain), out) {
                     return false;
                 }
             }
@@ -661,9 +663,10 @@ impl Engine_Impl {
     }
 
     /// Makes text[from..to) of a run and writes it word by word, each word's event just before it.
+    /// `trim`: whether to take the silence off its start and end (a part of a sentence said in parts).
     #[allow(clippy::too_many_arguments)]
-    fn say_piece(&self, voice: &Voice, run: &Run, from: usize, to: usize, config: &GenerationConfig, settings: &Settings,
-                 shift: f32, gain: f32, out: &mut Output) -> bool {
+    fn say_piece(&self, voice: &Voice, run: &Run, (from, to): (usize, usize), (head, tail): (bool, bool),
+                 config: &GenerationConfig, settings: &Settings, (shift, gain): (f32, f32), out: &mut Output) -> bool {
         let text = String::from_utf16_lossy(&run.text[from..to]);
         let started = Instant::now();
         let made = {
@@ -674,7 +677,8 @@ impl Engine_Impl {
             Some(made) => {
                 let mut raw = made.samples().to_vec();
                 apply_loudness(&mut raw, settings.peak, settings.boost);
-                resample(&raw, shift)
+                let margin = (voice.model.sample_rate as usize) * 40 / 1000;
+                resample(trim_silence(&raw, head, tail, margin), shift)
             }
             None => {
                 log::write(&format!("{}: nothing made for {text:?}", voice.name));
