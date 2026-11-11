@@ -52,7 +52,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.5.0'
+$Version = '0.5.1'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $App = Join-Path $env:ProgramFiles $AppName
@@ -211,6 +211,9 @@ function New-PickerForm($Catalogue, [string[]]$Installed, [bool]$UsTags) {
     $form.Text = "$AppName $Version - choose voices"
     $form.Size = New-Object System.Drawing.Size(820, 640)
     $form.StartPosition = 'CenterScreen'
+    # In front of the console it was started from (else it can open behind it, unseen).
+    $form.TopMost = $true
+    $form.add_Shown({ $script:Ui.Form.Activate(); $script:Ui.Form.TopMost = $false })
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
     $form.MinimumSize = New-Object System.Drawing.Size(700, 480)
 
@@ -582,7 +585,9 @@ try {
     $usTags = [bool]$UsEnglishTags
     if (-not $UsEnglishTags -and (Test-Path $Settings)) { $usTags = ((Get-ItemProperty $Settings).UsEnglishTags -eq 1) }
     Write-Host "`n[1/5] Voices"
+    Write-Host '  getting the voice list ...'
     $catalogue = Get-Catalogue
+    Write-Host "  $($catalogue.Count) English voices"
     $byKey = @{}
     foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
     if ($Repair) {
@@ -593,6 +598,7 @@ try {
         $wanted = if ($installed.Count -gt 0) { $installed } else { @('en_GB-alba-medium', 'en_GB-northern_english_male-medium') }
     } else {
         $picker = New-PickerForm $catalogue $installed $usTags
+        Write-Host '  choose voices in the window that opened (it may be behind this one: see the taskbar)'
         $answer = $picker.Form.ShowDialog()
         if ($answer -ne 'OK') { Write-Host '  cancelled: nothing changed'; if (-not $NoPause) { Read-Host 'Press Enter to close' | Out-Null }; exit 0 }
         $wanted = @(Get-PickedIds $picker)
