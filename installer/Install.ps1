@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.7.6'
+$Version = '0.7.7'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -359,7 +359,9 @@ function Protect-AppFolder {
 # applied in the window, with progress). The window's controls and state live in $script:Ui: its event
 # handlers run later (while it is shown), in the script's scope.
 
-$PreviewText = 'Speaking a preview of the selected voice, to hear how natural it sounds. Change the speed and pause values to adjust the sound to your liking.'
+# Two paragraphs, so that Preview also has a paragraph pause in it.
+$PreviewText = ("Speaking a preview of the selected voice, to hear how natural it sounds.`r`n`r`n" +
+    "Adjust the dictation speed, and 'Comma pause' values, to adjust the sound to your liking.")
 
 # A nickname of your own for a voice, shown in brackets in its name in place of its accent ("VCTK p262
 # (Irish Female)"): kept by voice id under the program's settings key.
@@ -659,9 +661,12 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     Add-UiRow $page $nickLine
     $previewLine = New-UiLine @('auto', 'fill')
     $previewLabel = New-UiLabel 'Preview says'
-    $previewLabel.Dock = 'None'; $previewLabel.Anchor = 'Left'
+    $previewLabel.Dock = 'None'; $previewLabel.Anchor = 'Top, Left'
     $previewBox = New-Object System.Windows.Forms.TextBox
+    # Several lines (Enter starts a new one: a paragraph pause), three showing.
+    $previewBox.Multiline = $true; $previewBox.AcceptsReturn = $true; $previewBox.WordWrap = $true; $previewBox.ScrollBars = 'Vertical'
     $previewBox.Text = $PreviewText; $previewBox.Dock = 'Fill'
+    $previewBox.Height = $previewBox.Font.Height * 3 + (Get-Px 10)
     $previewLine.Controls.Add($previewLabel, 0, 0); $previewLine.Controls.Add($previewBox, 1, 0)
     Add-UiRow $page $previewLine
     $defaultLabel = New-UiLabel ''
@@ -1003,7 +1008,7 @@ function Update-UiInstalledList {
             $id = if ($speaker) { "$key#$speaker" } else { $key }
             $nick = Get-Nickname $id
             $item = New-Object System.Windows.Forms.ListViewItem($(if ($r -eq 0) { $title } else { '' }))
-            [void]$item.SubItems.Add($speaker)
+            [void]$item.SubItems.Add($(if ($speaker) { $speaker } else { 'n/a' }))
             [void]$item.SubItems.Add($(if ($nick) { "($nick)" } else { '' }))
             [void]$item.SubItems.Add($(if ($r -eq 0) { "$(Get-FolderMb $dir) MB" } else { '' }))
             [void]$item.SubItems.Add($(if ((Get-TokenName $id) -eq $default) { 'yes' } else { '' }))
