@@ -26,6 +26,23 @@ people wrote the engines, the tools, the documentation and the answers it learne
 due to them. If you are one of them and see something here done badly, issues and pull requests
 are welcome.
 
+## Standing on other people's work
+
+This program is a thin layer over years of work by people who actually know how to do this.
+
+- **The engine is based on the engine of the
+  [Spoken Players voicepack](https://github.com/f-rolf/spoken-players-voicepack) by f-rolf.** That
+  project solved the hard problem: a real Windows speech engine, in Rust, that runs Piper voices
+  and reports words and bookmarks as Windows expects. Modern Voices for Windows exists because that
+  work was published under a free licence. If you find this program useful, that repository
+  deserves the star.
+- **Piper** (Michael Hansen and contributors) for the voices and the way of making them.
+- **eSpeak NG** (Jonathan Duddington, Reece H. Dunn and contributors) for pronunciation.
+- **sherpa-onnx** (the k2-fsa project) and **ONNX Runtime** (Microsoft) for running the voices.
+- Everyone who recorded their voice for a research collection or an audiobook and let it be used.
+
+The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## What you get
 
 | Program | What it is for |
@@ -68,23 +85,6 @@ The recordings come from university research collections, public-domain audioboo
 each voice's page in the [Piper voice collection](https://huggingface.co/rhasspy/piper-voices) says
 whose it is and under what licence. Modern Voices Config downloads the voices you tick from that
 collection (version 1.0.0). They are not part of this project and keep their own licences.
-
-## Standing on other people's work
-
-This program is a thin layer over years of work by people who actually know how to do this.
-
-- **The engine is based on the engine of the
-  [Spoken Players voicepack](https://github.com/f-rolf/spoken-players-voicepack) by f-rolf.** That
-  project solved the hard problem: a real Windows speech engine, in Rust, that runs Piper voices
-  and reports words and bookmarks as Windows expects. Modern Voices for Windows exists because that
-  work was published under a free licence. If you find this program useful, that repository
-  deserves the star.
-- **Piper** (Michael Hansen and contributors) for the voices and the way of making them.
-- **eSpeak NG** (Jonathan Duddington, Reece H. Dunn and contributors) for pronunciation.
-- **sherpa-onnx** (the k2-fsa project) and **ONNX Runtime** (Microsoft) for running the voices.
-- Everyone who recorded their voice for a research collection or an audiobook and let it be used.
-
-The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Open and transparent
 
