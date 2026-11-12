@@ -211,6 +211,28 @@ fn global_settings(path: Option<&str>) -> Global {
     global
 }
 
+/// The pronunciation dictionary for every voice: `dictionary.txt` beside the settings file the voice
+/// token names, read again whenever it changes. Empty without one.
+fn dictionary(settings_path: Option<&str>) -> Arc<Dictionary> {
+    static CACHE: OnceLock<Mutex<HashMap<String, (Option<SystemTime>, Arc<Dictionary>)>>> = OnceLock::new();
+    let Some(settings_path) = settings_path else { return Arc::new(Dictionary::default()) };
+    let path = std::path::Path::new(settings_path).with_file_name("dictionary.txt");
+    let key = path.to_string_lossy().to_string();
+    let changed = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+    let Ok(mut cache) = CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock() else { return Arc::new(Dictionary::default()) };
+    if let Some((when, found)) = cache.get(&key) {
+        if *when == changed {
+            return found.clone();
+        }
+    }
+    let read = Arc::new(Dictionary::read(&std::fs::read_to_string(&path).unwrap_or_default()));
+    if cache.contains_key(&key) || log::enabled() {
+        log::write(&format!("pronunciation dictionary: {} rule(s) ({key})", read.rules.len()));
+    }
+    cache.insert(key, (changed, read.clone()));
+    read
+}
+
 impl Model {
     /// The voice's settings now: read again when its voice.json has changed since last time.
     fn settings(&self) -> Settings {
@@ -644,6 +666,7 @@ impl Engine_Impl {
         let settings = voice.model.settings();
         let global = global_settings(voice.settings_file.as_deref());
         let pauses = settings.own_pauses.unwrap_or(global.pauses);
+        let dictionary = dictionary(voice.settings_file.as_deref());
         // The program's rate on top of the speed set for every voice (the window's Speed and pauses
         // tab): 100% unless set; 125% is about as fast as rate +2.
         let speed = (3f32.powf(rate / 10.0).clamp(0.4, 2.5) * global.speed).clamp(0.1, 3.0);
@@ -672,7 +695,7 @@ impl Engine_Impl {
                 }
                 // Said in parts: the silence where a part meets the next comes off (the gap replaces it).
                 let (head, tail) = (k > 0, k + 1 < pieces.len());
-                if !self.say_piece(voice, run, (a, b), (head, tail), &config, &settings, (shift, gain), out) {
+                if !self.say_piece(voice, run, (a, b), (head, tail), &config, &settings, &dictionary, (shift, gain), out) {
                     return false;
                 }
             }
@@ -685,8 +708,10 @@ impl Engine_Impl {
     /// `trim`: whether to take the silence off its start and end (a part of a sentence said in parts).
     #[allow(clippy::too_many_arguments)]
     fn say_piece(&self, voice: &Voice, run: &Run, (from, to): (usize, usize), (head, tail): (bool, bool),
-                 config: &GenerationConfig, settings: &Settings, (shift, gain): (f32, f32), out: &mut Output) -> bool {
-        let text = String::from_utf16_lossy(&run.text[from..to]);
+                 config: &GenerationConfig, settings: &Settings, dictionary: &Dictionary, (shift, gain): (f32, f32),
+                 out: &mut Output) -> bool {
+        // Said as the pronunciation dictionary has it (the words reported to the program stay the text's own).
+        let text = dictionary.apply(&String::from_utf16_lossy(&run.text[from..to]));
         let started = Instant::now();
         let made = {
             let _turn = voice.model.busy.lock();

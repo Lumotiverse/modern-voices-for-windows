@@ -270,6 +270,93 @@ pub fn trim_silence(audio: &[f32], head: bool, tail: bool, margin: usize) -> &[f
     &audio[from..to.max(from)]
 }
 
+/// A rule of the pronunciation dictionary: `from`, where it is found in text to be spoken, is said as
+/// `to`. `whole`: only as whole words ("cat" not in "catalogue"); `case`: only with these capitals.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Rule {
+    pub from: Vec<char>,
+    pub to: String,
+    pub whole: bool,
+    pub case: bool,
+}
+
+/// The pronunciation dictionary for every voice: the program's `dictionary.txt`, a rule a line as
+/// `on<TAB>whole<TAB>case<TAB>from<TAB>to` (on: 1 or 0; whole: w, or p for parts of words too; case: c
+/// to match capitals, or i). Lines that aren't that are passed over.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Dictionary {
+    /// The rules that are on, longest `from` first (so that the longest that fits is the one used).
+    pub rules: Vec<Rule>,
+}
+
+/// A character that is part of a word (for "whole words only").
+fn in_word(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+/// A character without its capital (one character for one, so that places in the text stay put).
+fn lower(c: char) -> char {
+    c.to_lowercase().next().unwrap_or(c)
+}
+
+impl Dictionary {
+    pub fn read(text: &str) -> Dictionary {
+        let mut rules = Vec::new();
+        for line in text.lines() {
+            let line = line.trim_start_matches('\u{feff}').trim_end_matches('\r');
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 5 || parts[0] != "1" {
+                continue;
+            }
+            let case = parts[2] == "c";
+            let from: Vec<char> = parts[3].trim().chars().map(|c| if case { c } else { lower(c) }).collect();
+            if from.is_empty() {
+                continue;
+            }
+            rules.push(Rule { from, to: parts[4].trim().to_string(), whole: parts[1] != "p", case });
+        }
+        rules.sort_by(|a, b| b.from.len().cmp(&a.from.len()));     // (stable: equal lengths stay in the file's order)
+        Dictionary { rules }
+    }
+
+    /// The text as it is to be said: in one pass, so a rule's result is not changed by another rule.
+    pub fn apply(&self, text: &str) -> String {
+        if self.rules.is_empty() {
+            return text.to_string();
+        }
+        let chars: Vec<char> = text.chars().collect();
+        let lowered: Vec<char> = chars.iter().map(|&c| lower(c)).collect();
+        let mut out = String::with_capacity(text.len());
+        let mut i = 0;
+        'text: while i < chars.len() {
+            for rule in &self.rules {
+                let end = i + rule.from.len();
+                if end > chars.len() {
+                    continue;
+                }
+                let here = if rule.case { &chars[i..end] } else { &lowered[i..end] };
+                if here != rule.from.as_slice() {
+                    continue;
+                }
+                if rule.whole {
+                    // An end of the rule that is a letter or digit must not be in the middle of a word.
+                    let starts_in_word = in_word(chars[i]) && i > 0 && in_word(chars[i - 1]);
+                    let ends_in_word = in_word(chars[end - 1]) && end < chars.len() && in_word(chars[end]);
+                    if starts_in_word || ends_in_word {
+                        continue;
+                    }
+                }
+                out.push_str(&rule.to);
+                i = end;
+                continue 'text;
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,5 +492,24 @@ mod tests {
         assert_eq!(trim_silence(&audio, true, false, 40).len(), 740);     // 260..1000
         assert_eq!(trim_silence(&audio, false, false, 40).len(), 1000);
         assert_eq!(trim_silence(&[0f32; 10], true, true, 2).len(), 10);
+    }
+
+    #[test]
+    fn dictionary_rules() {
+        let d = Dictionary::read("1\tw\ti\tGIF\tjif\r\n1\tw\ti\tcat\tfeline\n0\tw\ti\tdog\thound\n1\tp\ti\tcolour\tcolor\n1\tw\tc\tUS\tU S\n\
+            1\tw\ti\tNew York\tthe big apple\n1\tw\ti\tyork\tyork city\n# a note\n1\tw\ti\tC++\tC plus plus\n1\tw\ti\tNiamh\tNeev\n");
+        assert_eq!(d.rules.len(), 8);
+        // Whole words, any capitals; not inside other words; a rule that is off does nothing.
+        assert_eq!(d.apply("A gif, a GIF and gifts for the Cat's catalogue dog."), "A jif, a jif and gifts for the feline's catalogue dog.");
+        // Parts of words too.
+        assert_eq!(d.apply("Colourful colours"), "colorful colors");
+        // Capitals matched: "US" but not "us".
+        assert_eq!(d.apply("US and us"), "U S and us");
+        // The longest rule that fits is used, and a result is not changed again.
+        assert_eq!(d.apply("new york, York."), "the big apple, york city.");
+        // Rules that end in symbols; names.
+        assert_eq!(d.apply("C++ and c++14, Niamh's."), "C plus plus and C plus plus14, Neev's.");
+        assert_eq!(Dictionary::read("").apply("unchanged"), "unchanged");
+        assert!(Dictionary::read("not a rule\n1\tw\ti\t\tx\n").rules.is_empty());
     }
 }

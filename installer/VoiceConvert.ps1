@@ -261,6 +261,33 @@ function Set-GlobalSpeed([string]$Path, [double]$Percent) {
     Move-Item $temp $Path -Force
 }
 
+# ---- the pronunciation dictionary for every voice (dictionary.txt in the program's folder): a rule a
+# line, tab-separated: on (1 or 0), whole words only (w) or parts of words too (p), capitals matched
+# (c) or not (i), the word or phrase, what it is said as. The engine reads it again whenever it changes.
+function Get-Dictionary([string]$Path) {
+    $rules = @()
+    if (Test-Path $Path) {
+        foreach ($line in [System.IO.File]::ReadAllLines($Path, $script:PevUtf8)) {
+            $parts = $line.Split("`t")
+            if ($parts.Count -lt 5 -or @('0', '1') -notcontains $parts[0]) { continue }
+            $rules += [pscustomobject]@{ On = ($parts[0] -eq '1'); Whole = ($parts[1] -ne 'p'); Case = ($parts[2] -eq 'c'); From = $parts[3]; To = $parts[4] }
+        }
+    }
+    return $rules
+}
+function Set-Dictionary([string]$Path, $Rules) {
+    $lines = @('# Modern Voices for Windows - pronunciation dictionary: on, whole words (w) or parts too (p), capitals matched (c) or not (i), said, as')
+    foreach ($rule in @($Rules)) {
+        $from = ([string]$rule.From -replace '[\t\r\n]+', ' ').Trim()
+        $to = ([string]$rule.To -replace '[\t\r\n]+', ' ').Trim()
+        if (-not $from) { continue }
+        $lines += (@($(if ($rule.On) { '1' } else { '0' }), $(if ($rule.Whole) { 'w' } else { 'p' }), $(if ($rule.Case) { 'c' } else { 'i' }), $from, $to) -join "`t")
+    }
+    $temp = "$Path.writing"
+    [System.IO.File]::WriteAllLines($temp, [string[]]$lines, $script:PevUtf8)
+    Move-Item $temp $Path -Force
+}
+
 # A voice's own pauses ($Own true) or not (the global ones apply; its values are kept for next time).
 function Set-VoicePauses([string]$Dir, [bool]$Own, [double]$Sentence, [double]$Comma, [double]$Paragraph) {
     Test-Pauses $Sentence $Comma $Paragraph

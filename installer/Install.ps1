@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.8.1'
+$Version = '0.9.0'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -70,6 +70,7 @@ function Set-AppPaths([string]$Path) {
     $script:Data = Join-Path $script:Engine 'espeak-ng-data'
     $script:VoiceRoot = Join-Path $script:App 'voices'
     $script:SettingsFile = Join-Path $script:App 'settings.json'
+    $script:DictionaryFile = Join-Path $script:App 'dictionary.txt'
 }
 
 # The folder the installer puts the program in, for the folder chosen: a folder named
@@ -766,7 +767,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $tabStrip.Dock = 'Top'; $tabStrip.WrapContents = $false
     $form.Controls.Add($tabStrip)
     $pages = @(); $tabButtons = @()
-    foreach ($title in 'Voice manager', 'Speed and pauses', 'Add or remove voices') {
+    foreach ($title in 'Voice manager', 'Speed and pauses', 'Pronunciation', 'Add or remove voices') {
         $tab = New-Object System.Windows.Forms.Panel
         $tab.Dock = 'Fill'; $tab.AutoScroll = $true; $tab.Tag = 'page'; $tab.Visible = $false
         $pageHost.Controls.Add($tab)
@@ -779,7 +780,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         $tabStrip.Controls.Add($tabButton)
         $tabButtons += $tabButton
     }
-    $tabInstalled = $pages[0]; $tabPauses = $pages[1]; $tabAdd = $pages[2]
+    $tabInstalled = $pages[0]; $tabPauses = $pages[1]; $tabWords = $pages[2]; $tabAdd = $pages[3]
 
     # ---- bottom of the window: progress while applying changes
     $bottom = New-UiLine @('auto', 'auto', 'fill', 'auto', 'auto')
@@ -946,6 +947,49 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $resetLine.Controls.Add($pausesReset, 0, 0); $resetLine.Controls.Add($pausesNote, 1, 0)
     Add-UiRow $page $resetLine
 
+    # ---- Pronunciation: words and names said another way, by every voice in every program
+    $page = New-UiPage $tabWords
+    Add-UiRow $page (New-UiLabel 'Words and names said your way: by every voice, in every program that uses these voices' -Bold)
+    $wordList = New-Object System.Windows.Forms.ListView
+    $wordList.View = 'Details'; $wordList.CheckBoxes = $true; $wordList.FullRowSelect = $true; $wordList.HideSelection = $false
+    $wordList.MultiSelect = $false; $wordList.Dock = 'Fill'; $wordList.Height = Get-Px 260
+    $wordList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 260))
+    [void]$wordList.Columns.Add('Word or phrase (ticked: in use)', (Get-Px 250))
+    [void]$wordList.Columns.Add('Said as', (Get-Px 270))
+    [void]$wordList.Columns.Add('Matches', (Get-Px 260))
+    Add-UiRow $page $wordList
+    $wordLine = New-UiLine @('auto', 'fill', 'auto', 'fill')
+    $wordFromLabel = New-UiLabel 'Word or phrase'
+    $wordFromLabel.Dock = 'None'; $wordFromLabel.Anchor = 'Left'
+    $wordFrom = New-Object System.Windows.Forms.TextBox
+    $wordFrom.Dock = 'Fill'; $wordFrom.MaxLength = 200
+    $wordToLabel = New-UiLabel 'Say it as'
+    $wordToLabel.Dock = 'None'; $wordToLabel.Anchor = 'Left'
+    $wordTo = New-Object System.Windows.Forms.TextBox
+    $wordTo.Dock = 'Fill'; $wordTo.MaxLength = 200
+    $wordLine.Controls.Add($wordFromLabel, 0, 0); $wordLine.Controls.Add($wordFrom, 1, 0)
+    $wordLine.Controls.Add($wordToLabel, 2, 0); $wordLine.Controls.Add($wordTo, 3, 0)
+    Add-UiRow $page $wordLine
+    $wordTools = New-UiFlow
+    $wordWhole = New-Object System.Windows.Forms.CheckBox
+    $wordWhole.Text = 'Whole words only'; $wordWhole.AutoSize = $true; $wordWhole.Checked = $true; $wordWhole.Anchor = 'Left'
+    $wordCase = New-Object System.Windows.Forms.CheckBox
+    $wordCase.Text = 'Match capitals'; $wordCase.AutoSize = $true; $wordCase.Anchor = 'Left'
+    $wordSave = New-UiButton 'Add rule'
+    $wordNew = New-UiButton 'New rule'
+    $wordRemove = New-UiButton 'Remove'
+    $wordHear = New-UiButton 'Hear it'
+    $wordStop = New-UiButton 'Stop'
+    $wordRemove.Enabled = $false
+    foreach ($c in $wordWhole, $wordCase, $wordSave, $wordNew, $wordRemove, $wordHear, $wordStop) { $wordTools.Controls.Add($c) }
+    Add-UiRow $page $wordTools
+    Add-UiRow $page (New-UiLabel ("To add a rule: type the word or phrase and how to say it (spell it as it sounds: Niamh as Neev), then Add rule. " +
+        "To change one: select it, edit, then Save rule. Untick a rule to switch it off without removing it. Hear it says the " +
+        "`"Say it as`" text with the voice selected on the Voice manager, to try a spelling before saving.") -Grey)
+    Add-UiRow $page (New-UiLabel ("Rules apply from the next thing a program says. Whole words only: `"cat`" changes `"the cat's`" but not " +
+        "`"catalogue`". Match capitals: `"US`" but not `"us`". Where two rules fit, the longer one is used, and a rule never changes " +
+        "another rule's result. Programs still show and highlight the original words.") -Grey)
+
     # ---- Add or remove voices (the list takes the room there is; the tab scrolls below a minimum)
     $addGrid = New-Object System.Windows.Forms.TableLayoutPanel
     $addGrid.ColumnCount = 1
@@ -1020,6 +1064,8 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         OwnBox = $ownBox; GlobalBars = $globalBars; GlobalTimer = $globalTimer; SpeedBar = $speedBar; SpeedValue = $speedValue
         RateWarn = $rateWarn; RateReset = $rateReset; PreviewVoiceBox = $previewVoiceBox
         GlobalPreview = $globalPreview; GapGrid = $gapGrid; AddGrid = $addGrid; AddTab = $tabAdd
+        WordList = $wordList; WordFrom = $wordFrom; WordTo = $wordTo; WordWhole = $wordWhole; WordCase = $wordCase
+        WordSave = $wordSave; WordRemove = $wordRemove
         NickBox = $nickBox; NickButton = $nickButton; NameClick = $false }
     $list.add_SelectedIndexChanged({ Update-UiSelection })
     $list.add_ItemChecked({ if (-not $script:Ui.Filling) { Update-UiSummary } })
@@ -1049,6 +1095,14 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $tabAdd.add_ClientSizeChanged({ Update-UiAddLayout })
     $defaultButton.add_Click({ Set-UiDefaultVoice })
     $sapiButton.add_Click({ Start-Process "$env:SystemRoot\System32\Speech\SpeechUX\sapi.cpl" })
+    $wordList.add_SelectedIndexChanged({ Update-UiWordFields })
+    $wordList.add_ItemChecked({ if (-not $script:Ui.Filling) { Save-UiWords } })
+    $wordSave.add_Click({ Save-UiWord })
+    $wordNew.add_Click({ Clear-UiWordFields })
+    $wordRemove.add_Click({ Remove-UiWord })
+    $wordHear.add_Click({ Invoke-UiWordPreview })
+    $wordStop.add_Click({ Stop-UiPreview })
+    Update-UiWordList
     $apply.add_Click({ Invoke-UiApply })
     $resetButton.add_Click({ Reset-UiSettings })
     $ownBox.add_CheckedChanged({ Update-UiOwnPauses })
@@ -1072,10 +1126,10 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     Update-UiSummary
     # Dark or light: as chosen, or as Windows is (looked at again whenever the window comes to the front).
     $script:UiDark = $null
-    foreach ($view in $installedList, $list) { Enable-UiDarkHeader $view }
+    foreach ($view in $installedList, $list, $wordList) { Enable-UiDarkHeader $view }
     Set-UiTheme
     $form.add_Activated({ Set-UiTheme })
-    Show-UiPage $(if ($installedList.Items.Count -eq 0) { 2 } else { 0 })
+    Show-UiPage $(if ($installedList.Items.Count -eq 0) { 3 } else { 0 })
     return $script:Ui
 }
 
@@ -1412,15 +1466,115 @@ function Stop-UiPreview {
 
 # Speaks the line with a voice in a separate PowerShell, as any program would (the engine is never
 # loaded into this one, so nothing here holds its files). Settings not yet saved are saved first.
-function Start-UiPreview([string]$VoiceName) {
+function Start-UiPreview([string]$VoiceName, [string]$Say) {
     $ui = $script:Ui
     if ($ui.SaveTimer.Enabled) { $ui.SaveTimer.Stop(); Save-UiSettings }
     if ($ui.GlobalTimer.Enabled) { $ui.GlobalTimer.Stop(); Save-UiGlobalSettings }
     Stop-UiPreview
-    $text = if ($ui.PreviewBox.Text.Trim()) { $ui.PreviewBox.Text } else { $PreviewText }
+    $text = if ($Say) { $Say } elseif ($ui.PreviewBox.Text.Trim()) { $ui.PreviewBox.Text } else { $PreviewText }
     $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($text))
     $ui.PreviewProcess = Start-Process $PS64 -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass',
         '-File', "`"$(Join-Path $Here 'Speak.ps1')`"", '-Voice', "`"$VoiceName`"", '-TextBase64', $encoded)
+}
+
+# ---- the Pronunciation tab. Each row of its list is a rule (its Tag); changes are saved at once.
+function Format-UiWordMatch($Rule) {
+    $what = if ($Rule.Whole) { 'whole words' } else { 'parts of words too' }
+    if ($Rule.Case) { $what += ', with these capitals' }
+    return $what
+}
+function Add-UiWordRow($Rule) {
+    $item = New-Object System.Windows.Forms.ListViewItem([string]$Rule.From)
+    [void]$item.SubItems.Add([string]$Rule.To)
+    [void]$item.SubItems.Add((Format-UiWordMatch $Rule))
+    $item.Tag = $Rule
+    $item.Checked = [bool]$Rule.On
+    [void]$script:Ui.WordList.Items.Add($item)
+    return $item
+}
+function Update-UiWordList {
+    $ui = $script:Ui
+    $ui.Filling = $true
+    try {
+        $ui.WordList.BeginUpdate()
+        $ui.WordList.Items.Clear()
+        foreach ($rule in (Get-Dictionary $DictionaryFile)) { [void](Add-UiWordRow $rule) }
+        $ui.WordList.EndUpdate()
+    } finally { $ui.Filling = $false }
+    Update-UiWordFields
+}
+# Writes the list to the dictionary file (the engine picks it up at the next thing said).
+function Save-UiWords {
+    $ui = $script:Ui
+    $rules = @()
+    foreach ($item in $ui.WordList.Items) { $item.Tag.On = $item.Checked; $rules += $item.Tag }
+    try { Set-Dictionary $DictionaryFile $rules }
+    catch { $ui.Status.Text = "Could not save the pronunciation rules: $($_.Exception.Message)" }
+}
+# The boxes under the list: the selected rule's, to change it; empty for a new one.
+function Update-UiWordFields {
+    $ui = $script:Ui
+    $selected = $ui.WordList.SelectedItems
+    if ($selected.Count) {
+        $rule = $selected[0].Tag
+        $ui.WordFrom.Text = $rule.From; $ui.WordTo.Text = $rule.To
+        $ui.WordWhole.Checked = $rule.Whole; $ui.WordCase.Checked = $rule.Case
+    }
+    $ui.WordSave.Text = if ($selected.Count) { 'Save rule' } else { 'Add rule' }
+    $ui.WordRemove.Enabled = $selected.Count -gt 0
+}
+function Clear-UiWordFields {
+    $ui = $script:Ui
+    foreach ($item in @($ui.WordList.SelectedItems)) { $item.Selected = $false }
+    $ui.WordFrom.Text = ''; $ui.WordTo.Text = ''; $ui.WordWhole.Checked = $true; $ui.WordCase.Checked = $false
+    Update-UiWordFields
+    [void]$ui.WordFrom.Focus()
+}
+# Adds the rule in the boxes, or changes the selected one (or the one already there for that word).
+function Save-UiWord {
+    $ui = $script:Ui
+    $from = ($ui.WordFrom.Text -replace '\s+', ' ').Trim()
+    $to = ($ui.WordTo.Text -replace '\s+', ' ').Trim()
+    if (-not $from) { $ui.Status.Text = 'Type the word or phrase first.'; return }
+    $rule = [pscustomobject]@{ On = $true; Whole = $ui.WordWhole.Checked; Case = $ui.WordCase.Checked; From = $from; To = $to }
+    $target = if ($ui.WordList.SelectedItems.Count) { $ui.WordList.SelectedItems[0] } else { $null }
+    if (-not $target) {
+        foreach ($item in $ui.WordList.Items) {
+            $same = if ($rule.Case -or $item.Tag.Case) { $item.Tag.From -ceq $from } else { $item.Tag.From -eq $from }
+            if ($same -and $item.Tag.Case -eq $rule.Case) { $target = $item; break }
+        }
+    }
+    $ui.Filling = $true
+    try {
+        if ($target) {
+            $rule.On = $target.Checked
+            $target.Tag = $rule
+            $target.Text = $from; $target.SubItems[1].Text = $to; $target.SubItems[2].Text = Format-UiWordMatch $rule
+        } else { $target = Add-UiWordRow $rule }
+    } finally { $ui.Filling = $false }
+    Save-UiWords
+    $target.Selected = $true
+    $target.EnsureVisible()
+    Update-UiWordFields
+    $ui.Status.Text = "Saved: `"$from`" is said as `"$to`" from the next thing a program says."
+}
+function Remove-UiWord {
+    $ui = $script:Ui
+    if (-not $ui.WordList.SelectedItems.Count) { return }
+    $ui.WordList.Items.Remove($ui.WordList.SelectedItems[0])
+    Save-UiWords
+    Clear-UiWordFields
+}
+# Says the "Say it as" text (the word itself if that is empty) with the Voice manager's selected voice,
+# else the one chosen on Speed and pauses: to try a spelling before saving it.
+function Invoke-UiWordPreview {
+    $ui = $script:Ui
+    $say = if ($ui.WordTo.Text.Trim()) { $ui.WordTo.Text.Trim() } else { $ui.WordFrom.Text.Trim() }
+    if (-not $say) { $ui.Status.Text = 'Type something to hear first.'; return }
+    $voice = Get-UiCurrentVoice
+    $name = if ($voice) { $voice.Voice } else { [string]$ui.PreviewVoiceBox.SelectedItem }
+    if (-not $name) { $ui.Status.Text = 'Install a voice first (Add or remove voices).'; return }
+    Start-UiPreview $name $say
 }
 
 # The Voice manager's Preview: the selected voice (its chosen speaker).
@@ -1944,6 +2098,23 @@ try {
             Write-Output ("nickname: {0} -> {1} (Windows lists it: {2}; box shows '{3}') -> {4}" -f $plain, $named, $listed, $shown, $restored)
             if ($named -notlike '*(Test Name)' -or -not $listed -or $shown -ne 'Test Name' -or $restored -ne $plain -or
                 @(Get-OurVoiceNames) -notcontains $plain) { $bad += 'nickname' }
+            # A pronunciation rule: added, changed, switched off and removed, each saved to the dictionary file.
+            $rulesBefore = @(Get-Dictionary $DictionaryFile).Count
+            $ui.WordFrom.Text = ' Niamh '; $ui.WordTo.Text = 'Neev'
+            Save-UiWord
+            $added = @(Get-Dictionary $DictionaryFile | Where-Object { $_.From -eq 'Niamh' })
+            $ui.WordTo.Text = 'Neeve'; $ui.WordCase.Checked = $true
+            Save-UiWord
+            $changed = @(Get-Dictionary $DictionaryFile | Where-Object { $_.From -eq 'Niamh' })
+            $ui.WordList.SelectedItems[0].Checked = $false
+            Save-UiWords      # (what unticking does, once the list is on screen)
+            $off = @(Get-Dictionary $DictionaryFile | Where-Object { $_.From -eq 'Niamh' })
+            Remove-UiWord
+            $rulesAfter = @(Get-Dictionary $DictionaryFile).Count
+            Write-Output ("pronunciation: added '{0}' as '{1}' (on {2}, whole {3}); changed to '{4}' (capitals {5}, {6} rule); unticked: on {7}; removed: {8} -> {9} rules" -f
+                $added[0].From, $added[0].To, $added[0].On, $added[0].Whole, $changed[0].To, $changed[0].Case, $changed.Count, $off[0].On, $rulesBefore, $rulesAfter)
+            if ($added.Count -ne 1 -or $added[0].To -ne 'Neev' -or -not $added[0].On -or -not $added[0].Whole -or $changed.Count -ne 1 -or $changed[0].To -ne 'Neeve' -or
+                -not $changed[0].Case -or $off[0].On -or $rulesAfter -ne $rulesBefore) { $bad += 'pronunciation rules' }
             # Preview: the selected voice by the name programs see; the Speed and pauses tab lists every voice.
             $voice = Get-UiCurrentVoice
             $known = @(Get-OurVoiceNames)

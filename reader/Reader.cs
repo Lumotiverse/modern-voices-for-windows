@@ -6,7 +6,9 @@
 // with nothing installed.
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
@@ -24,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.8.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.9.0.0")]
 
 namespace ModernVoicesReader
 {
@@ -362,6 +364,124 @@ namespace ModernVoicesReader
         }
     }
 
+    // ---------------------------------------------------------------- text from the screen
+
+    // Windows' own text recognition, through the helper script installed with the program (it
+    // answers in a moment or two, in a process of its own).
+    public static class Ocr
+    {
+        public static string Script
+        {
+            get { return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), @"..\installer\Ocr.ps1")); }
+        }
+
+        public static Process Prepare(string image, string output)
+        {
+            ProcessStartInfo info = new ProcessStartInfo();
+            info.FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe");
+            info.Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + Script + "\" -Image \"" + image + "\" -Out \"" + output + "\"";
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+            Process process = new Process();
+            process.StartInfo = info;
+            process.EnableRaisingEvents = true;
+            return process;
+        }
+
+        // The part of a picture to read, twice the size when it is small (small print is read better).
+        public static Bitmap Enlarged(Bitmap whole, Rectangle part)
+        {
+            int times = (part.Height < 1400 && part.Width * 2 <= 5000) ? 2 : 1;
+            Bitmap made = new Bitmap(part.Width * times, part.Height * times);
+            using (Graphics g = Graphics.FromImage(made))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(whole, new Rectangle(0, 0, made.Width, made.Height), part, GraphicsUnit.Pixel);
+            }
+            return made;
+        }
+    }
+
+    // The whole screen as it was, dimmed, to drag a box on: what is in the box is read.
+    public class RegionPicker : Form
+    {
+        readonly Bitmap shot;
+        Point corner, other;
+        bool dragging;
+        public Rectangle Picked;
+
+        public RegionPicker(Bitmap shot, Rectangle screen)
+        {
+            this.shot = shot;
+            FormBorderStyle = FormBorderStyle.None;
+            StartPosition = FormStartPosition.Manual;
+            Bounds = screen;
+            TopMost = true;
+            ShowInTaskbar = false;
+            DoubleBuffered = true;
+            Cursor = Cursors.Cross;
+            KeyPreview = true;
+            Font = new Font("Segoe UI", 12f);
+        }
+
+        Rectangle Chosen()
+        {
+            return Rectangle.FromLTRB(Math.Min(corner.X, other.X), Math.Min(corner.Y, other.Y), Math.Max(corner.X, other.X), Math.Max(corner.Y, other.Y));
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.DrawImageUnscaled(shot, 0, 0);
+            Rectangle chosen = Chosen();
+            using (SolidBrush dim = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
+            using (Region outside = new Region(ClientRectangle))
+            {
+                if (dragging && chosen.Width > 0 && chosen.Height > 0) { outside.Exclude(chosen); }
+                e.Graphics.FillRegion(dim, outside);
+            }
+            if (dragging && chosen.Width > 0 && chosen.Height > 0)
+            {
+                using (Pen edge = new Pen(Color.FromArgb(96, 165, 250), 2f)) { e.Graphics.DrawRectangle(edge, chosen); }
+            }
+            else
+            {
+                string hint = "Drag a box around the text to read aloud.   Esc cancels.";
+                Size size = TextRenderer.MeasureText(hint, Font);
+                Rectangle primary = Screen.PrimaryScreen.Bounds;
+                Rectangle panel = new Rectangle(primary.X - Left + (primary.Width - size.Width) / 2 - 16, primary.Y - Top + 40, size.Width + 32, size.Height + 20);
+                using (SolidBrush back = new SolidBrush(Color.FromArgb(230, 32, 32, 32))) { e.Graphics.FillRectangle(back, panel); }
+                TextRenderer.DrawText(e.Graphics, hint, Font, panel, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) { DialogResult = DialogResult.Cancel; Close(); return; }
+            corner = e.Location; other = e.Location; dragging = true;
+            Invalidate();
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            if (dragging) { other = e.Location; Invalidate(); }
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            if (!dragging) { return; }
+            other = e.Location;
+            Picked = Chosen();
+            dragging = false;
+            DialogResult = (Picked.Width > 8 && Picked.Height > 8) ? DialogResult.OK : DialogResult.Cancel;
+            Close();
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape) { DialogResult = DialogResult.Cancel; Close(); }
+        }
+    }
+
     // ---------------------------------------------------------------- what is kept between runs
 
     public class Saved
@@ -481,6 +601,10 @@ namespace ModernVoicesReader
         Button playButton, pauseButton, stopButton, startButton;
         Button clipboardButton, clearButton, saveButton, addClipboardButton, openButton, removeButton, fileButton, audioButton;
         SpeechSynthesizer saver;         // while the text is being saved as sound
+        Button screenButton;
+        Process recogniser;              // while the text of a picture is being read
+        public string LastRecognised = "";
+        public int LastRecogniserCode = -1;
         string savingTo = "";
         CheckBox autoBox, tidyBox;
         ProgressBar progress;
@@ -649,7 +773,8 @@ namespace ModernVoicesReader
             clearButton = NewButton("Clear", delegate { ClearText(); });
             fileButton = NewButton("Open a file...", delegate { ChooseFile(); });
             audioButton = NewButton("Save as sound...", delegate { ChooseAudioFile(); });
-            tools.Controls.Add(clipboardButton); tools.Controls.Add(fileButton); tools.Controls.Add(audioButton); tools.Controls.Add(clearButton);
+            screenButton = NewButton("Read from the screen...", delegate { ReadScreen(); });
+            tools.Controls.Add(clipboardButton); tools.Controls.Add(screenButton); tools.Controls.Add(fileButton); tools.Controls.Add(audioButton); tools.Controls.Add(clearButton);
             tools.Controls.Add(autoBox); tools.Controls.Add(tidyBox);
             // A file dropped on the text is opened.
             box.AllowDrop = true;
@@ -1062,6 +1187,88 @@ namespace ModernVoicesReader
             Status("Opened " + Path.GetFileName(path) + ". Save it to the list to keep your place in it.");
         }
 
+        // ---- text on the screen that can't be selected (pictures, games, some PDFs): a box is dragged
+        // around it and Windows' text recognition reads it
+
+        void ReadScreen()
+        {
+            if (recogniser != null) { return; }
+            if (!File.Exists(Ocr.Script)) { Status("The text recognition helper is missing (" + Ocr.Script + "): install Modern Voices again."); return; }
+            Rectangle screen = SystemInformation.VirtualScreen;
+            // The screen as it is without this window.
+            Hide();
+            Application.DoEvents();
+            System.Threading.Thread.Sleep(250);
+            Bitmap shot = new Bitmap(screen.Width, screen.Height);
+            using (Graphics g = Graphics.FromImage(shot)) { g.CopyFromScreen(screen.Location, Point.Empty, screen.Size); }
+            DialogResult answer;
+            Rectangle picked;
+            using (RegionPicker picker = new RegionPicker(shot, screen))
+            {
+                answer = picker.ShowDialog();
+                picked = picker.Picked;
+            }
+            Show();
+            Activate();
+            picked.Intersect(new Rectangle(0, 0, shot.Width, shot.Height));
+            if (answer != DialogResult.OK || picked.Width < 8 || picked.Height < 8)
+            {
+                shot.Dispose();
+                Status("Nothing chosen.");
+                return;
+            }
+            string image = Path.Combine(Path.GetTempPath(), "ModernVoicesReader-" + Guid.NewGuid().ToString("N") + ".png");
+            using (Bitmap part = Ocr.Enlarged(shot, picked)) { part.Save(image, ImageFormat.Png); }
+            shot.Dispose();
+            Recognise(image, true);
+        }
+
+        public bool Recognising { get { return recogniser != null; } }
+
+        public void Recognise(string image, bool thenPlay)
+        {
+            string output = image + ".txt";
+            Status("Reading the text in the picture...");
+            recogniser = Ocr.Prepare(image, output);
+            recogniser.Exited += delegate
+            {
+                try { BeginInvoke(new MethodInvoker(delegate { Recognised(image, output, thenPlay); })); } catch (Exception) { }
+            };
+            try { recogniser.Start(); }
+            catch (Exception e)
+            {
+                recogniser = null;
+                Status("Could not start the text recognition: " + e.Message);
+            }
+        }
+
+        void Recognised(string image, string output, bool thenPlay)
+        {
+            if (recogniser == null) { return; }
+            int code = recogniser.ExitCode;
+            recogniser.Dispose();
+            recogniser = null;
+            LastRecogniserCode = code;
+            string text = "", problem = "";
+            try
+            {
+                if (File.Exists(output)) { text = File.ReadAllText(output, Encoding.UTF8); File.Delete(output); }
+                if (File.Exists(output + ".error")) { problem = File.ReadAllText(output + ".error"); File.Delete(output + ".error"); }
+                File.Delete(image);
+            }
+            catch (Exception) { }
+            if (code == 2) { Status("Windows has no text recognition for your language: add it in Settings > Time & language > Language (the language's optional features)."); }
+            else if (code != 0) { Status("Could not read the picture" + (problem.Length > 0 ? ": " + problem : ".")); }
+            else if (text.Trim().Length == 0) { Status("No text was found there."); }
+            else
+            {
+                LastRecognised = text;
+                LoadText(text, 0, "");
+                Status("Read from the screen. Recognition is not perfect: check the text if something sounds wrong.");
+                if (thenPlay) { Play(); }
+            }
+        }
+
         // ---- the text as a sound file (WAV), made as fast as the voice can: not played
 
         void ChooseAudioFile()
@@ -1422,6 +1629,32 @@ namespace ModernVoicesReader
                 Application.DoEvents();
                 log.AppendLine("voices: " + form.VoicesShown);
                 Check(form.VoiceCount > 0, "voices are listed (" + form.VoiceCount + ", " + form.OurVoiceCount + " Modern Voices)");
+                // Text in a picture (where this PC has Windows' text recognition).
+                string picture = Path.Combine(made, "words.png");
+                using (Bitmap drawn = new Bitmap(900, 300))
+                {
+                    using (Graphics g = Graphics.FromImage(drawn))
+                    using (Font face = new Font("Segoe UI", 22f))
+                    {
+                        g.Clear(Color.White);
+                        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                        g.DrawString("The quick brown fox jumps", face, Brushes.Black, 20, 20);
+                        g.DrawString("over the lazy dog.", face, Brushes.Black, 20, 62);
+                        g.DrawString("A new paragraph follows.", face, Brushes.Black, 20, 180);
+                    }
+                    drawn.Save(picture, ImageFormat.Png);
+                }
+                Check(File.Exists(Ocr.Script), "the text recognition helper is installed (" + Ocr.Script + ")");
+                form.Recognise(picture, false);
+                bool answered = WaitWhile(delegate { return form.Recognising; }, 120);
+                log.AppendLine("picture read (code " + form.LastRecogniserCode + "): " + form.LastRecognised.Replace("\r\n", " / "));
+                if (form.LastRecogniserCode == 2) { log.AppendLine("(this PC has no text recognition installed: reading a picture not tried)"); }
+                else
+                {
+                    Check(answered && form.LastRecogniserCode == 0 && form.LastRecognised.ToLowerInvariant().Contains("quick brown fox"), "the words in a picture are read");
+                    Check(form.LastRecognised.Contains("dog.\r\nA new"), "a gap between lines starts a new paragraph; lines close together are joined");
+                }
+
                 string text = "The quick brown fox jumps over the lazy dog. Then it reads a second sentence, with a comma.\r\nAnd a new paragraph to finish with.";
                 form.TestLoad(text, 0);
                 Theme.Choice = "light"; Theme.Apply(form, false); Application.DoEvents();

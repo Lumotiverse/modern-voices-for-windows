@@ -176,6 +176,19 @@ Set-GlobalPauses $settingsFile 0 0 0
 $base = Measure-Speech $albaName $two
 $baseFast = Measure-Speech $albaName $two 5
 $baseRate2 = Measure-Speech $albaName $two 2
+
+# The pronunciation dictionary: a rule's replacement is what is said (heard here as longer speech) by
+# the next program to speak; switched off, the speech is as it was.
+$dictFile = Join-Path $App 'dictionary.txt'
+$troll = [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = 'PATROL'; To = 'patrol of seven very large and extremely angry mountain trolls' }
+Set-Dictionary $dictFile @($troll)
+$longer = Measure-Speech $albaName $two
+Check ($longer.Seconds -gt $base.Seconds + 1.5) ("pronunciation rule: 'patrol' said as a longer phrase ({0:N2} s -> {1:N2} s)" -f $base.Seconds, $longer.Seconds)
+$troll.On = $false
+Set-Dictionary $dictFile @($troll)
+$asBefore = Measure-Speech $albaName $two
+Check ([math]::Abs($asBefore.Seconds - $base.Seconds) -lt 0.05) ("pronunciation rule switched off: as before ({0:N2} s)" -f $asBefore.Seconds)
+Remove-Item $dictFile -ErrorAction SilentlyContinue
 $basePara = Measure-Speech $albaName $para
 $baseComma = Measure-Speech $albaName $comma
 $baseOne = Measure-Speech $albaName $one
