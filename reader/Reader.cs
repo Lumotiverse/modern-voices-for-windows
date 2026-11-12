@@ -881,7 +881,7 @@ namespace ModernVoicesReader
         }
 
         // Light or dark as chosen with the moon in Modern Voices Config: now, and whenever that changes.
-        void FollowTheme()
+        public void FollowTheme()
         {
             string choice = Theme.Choice;
             if (choice == shownTheme) { return; }
@@ -1850,9 +1850,9 @@ namespace ModernVoicesReader
 
                 string text = "The quick brown fox jumps over the lazy dog. Then it reads a second sentence, with a comma.\r\nAnd a new paragraph to finish with.";
                 form.TestLoad(text, 0);
-                Theme.Choice = "light"; Theme.Apply(form, false); Application.DoEvents();
+                Theme.Choice = "light"; form.FollowTheme(); Application.DoEvents();
                 form.Picture(Path.Combine(folder, "reader-light.png"));
-                Theme.Choice = "dark"; Theme.Apply(form, true); Application.DoEvents();
+                Theme.Choice = "dark"; form.FollowTheme(); Application.DoEvents();
                 form.Picture(Path.Combine(folder, "reader-dark.png"));
                 Check(true, "pictures of the window, light and dark");
 
