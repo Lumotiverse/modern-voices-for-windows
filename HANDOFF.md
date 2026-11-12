@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.9.4 (12 Nov 2026).
+Last updated at version 0.9.5 (12 Nov 2026).
 
 ## What it is
 
@@ -16,7 +16,7 @@ with Windows' voices but can't use Narrator's natural voices. It must keep worki
 | Modern Voices Config | The installer and settings window: Voice manager, Speed and pauses, Pronunciation, Add or remove voices. | PowerShell 5.1 + WinForms | `installer/Install.ps1` (plus `VoiceConvert.ps1`, `Test.ps1`, `Speak.ps1`, `Ocr.ps1`, `Uninstall.ps1`) |
 | Modern Voices: Reader | A small app that reads pasted or copied text, files and screen regions. It has play/pause/stop, time left, saves as WAV, and remembers its place per file. | C# 5 (built with Windows' own `csc.exe`, .NET Framework 4) | `reader/Reader.cs`, `reader/Build.ps1` |
 
-The user-facing documentation is `kit/README.txt`, and it is accurate for 0.9.4. Read it to see what
+The user-facing documentation is `kit/README.txt`, and it is accurate for 0.9.5. Read it to see what
 each feature does.
 
 ## Luke's standing rules
@@ -24,7 +24,7 @@ each feature does.
 - **Before any build request, say whether it needs Fable (complicated: new features, engine work,
   multi-part changes) or Opus 5.5 (simple and safe changes to working code)**, so he can switch model
   first. If he's already on the right one, say so and proceed.
-- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.9.4.zip`.
+- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.9.5.zip`.
 - Builds assume a fresh install: he uninstalls the old version first. Never add upgrade or migration code.
 - Bump the version in all three places: `engine/Cargo.toml`, `$Version` in `installer/Install.ps1`, and
   the first line of `kit/README.txt`. The Reader's `AssemblyVersion` in `reader/Reader.cs` is stamped
@@ -111,7 +111,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Keep the source pure ASCII. Write symbols as `\uXXXX` escapes. A literal `▶` or `•` in the file was
   garbled once at build.
 - Button symbols come from the Segoe MDL2 Assets font (E768 play, E769 pause, E71A stop, E892 restart,
-  E708 moon), with word labels as a fallback.
+  E713 cog; Config's moon is E708), with word labels as a fallback.
 
 **Other**
 - Icons must store their small sizes as BMP, not PNG. Windows ignored the PNG small sizes, so the taskbar
@@ -119,13 +119,21 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.9.4)
+## Current state (0.9.5)
 
 Everything above works and is tested on the CI Windows machine. Luke has been using it and sending UI
 tweaks one batch at a time; the last batch (0.9.4) is done and delivered: the moon moved and greyed in
 both windows, and the clipped last word fixed in the engine (`with_end_mark` in `text.rs` adds a full
 stop to an unmarked sentence end; `TAIL_MS` of silence is written after a Speak call's last word).
+0.9.5 then: the Reader reads the
+clipboard's "HTML Format" bytes itself as UTF-8 (`CopiedHtml`; .NET's `Clipboard.GetText(Html)` decodes
+them in the ANSI code page, which turned ' and ... into mojibake); the engine says sums of money aloud
+(`money` in `text.rs`, applied after the dictionary); the Reader's moon became a cog that opens Config,
+and the Reader follows Config's moon by re-reading the registry `Theme` value on its 500 ms tick.
 Not yet confirmed by Luke:
+
+- curly quotes and ellipses copied from his browser now read cleanly (CI has no real clipboard);
+- the cog opening Config (UAC prompt, then the window) on his machine;
 
 - the last word now heard whole, both in playback and in the Reader's saved WAV;
 - the icon now showing in the taskbar and Start menu;

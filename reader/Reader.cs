@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.9.4.0")]
+[assembly: System.Reflection.AssemblyVersion("0.9.5.0")]
 
 namespace ModernVoicesReader
 {
@@ -40,7 +40,7 @@ namespace ModernVoicesReader
 
     public static class Theme
     {
-        // Shared with Modern Voices Config: light or dark, as last chosen with the moon (dark until then).
+        // Shared with Modern Voices Config: light or dark, as last chosen with the moon in Modern Voices Config (dark until then).
         const string OurKey = @"Software\Modern Voices for Windows";
 
         public static string Choice
@@ -361,6 +361,24 @@ namespace ModernVoicesReader
             if (a >= 0 && b > a) { return copied.Substring(a + start.Length, b - a - start.Length); }
             int first = copied.IndexOf('<');
             return first > 0 ? copied.Substring(first) : copied;
+        }
+
+        // The clipboard's formatted copy from its bytes: UTF-8, up to the zero that ends it.
+        public static string FromBytes(byte[] bytes)
+        {
+            int length = Array.IndexOf(bytes, (byte)0);
+            return Encoding.UTF8.GetString(bytes, 0, length < 0 ? bytes.Length : length);
+        }
+
+        // UTF-8 that was read in Windows' code page, read again as UTF-8 (left alone where that does not work out).
+        public static string Utf8Again(string misread)
+        {
+            try
+            {
+                Encoding ansi = Encoding.GetEncoding(Encoding.Default.CodePage, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+                return new UTF8Encoding(false, true).GetString(ansi.GetBytes(misread));
+            }
+            catch (Exception) { return misread; }
         }
 
         // At least so many line ends at the end of what is made so far (none at its very start).
@@ -696,6 +714,26 @@ namespace ModernVoicesReader
         static extern bool AddClipboardFormatListener(IntPtr hwnd);
         [DllImport("user32.dll", SetLastError = true)]
         static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
+        [DllImport("user32.dll")]
+        static extern bool SetForegroundWindow(IntPtr hwnd);
+        [DllImport("user32.dll")]
+        static extern bool IsIconic(IntPtr hwnd);
+        [DllImport("user32.dll")]
+        static extern bool ShowWindowAsync(IntPtr hwnd, int show);
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool OpenClipboard(IntPtr owner);
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool CloseClipboard();
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern IntPtr GetClipboardData(uint format);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern uint RegisterClipboardFormat(string name);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern IntPtr GlobalLock(IntPtr memory);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool GlobalUnlock(IntPtr memory);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern UIntPtr GlobalSize(IntPtr memory);
 
         readonly Store store;
         SpeechSynthesizer synth;         // (made once the window exists, so that its events come to the window's thread)
@@ -703,7 +741,8 @@ namespace ModernVoicesReader
         public readonly float Dpi;
 
         ComboBox voiceBox;
-        Label themeButton;               // a moon to click: light to dark and back
+        Label configButton;              // a cog to click: opens Modern Voices Config
+        string shownTheme;               // the theme the window wears (Config changes it: the tick follows)
         int alignedFor;                  // the time's width the line under the buttons was laid out for
         TrackBar rateBar;
         Label rateLabel, timeLabel, statusLabel;
@@ -764,7 +803,7 @@ namespace ModernVoicesReader
             synth.SpeakCompleted += OnCompleted;
             tick = new Timer();
             tick.Interval = 500;
-            tick.Tick += delegate { UpdateTime(); };
+            tick.Tick += delegate { UpdateTime(); FollowTheme(); };
             tick.Start();
             UpdateButtons();
         }
@@ -841,12 +880,50 @@ namespace ModernVoicesReader
             AlignLine();
         }
 
-        // The moon button says which way it goes (where there are no symbols, in words).
-        void ShowTheme()
+        // Light or dark as chosen with the moon in Modern Voices Config: now, and whenever that changes.
+        void FollowTheme()
         {
-            bool dark = Theme.IsDark();
-            if (!symbols) { themeButton.Text = dark ? "Light" : "Dark"; }
-            tips.SetToolTip(themeButton, dark ? "Light theme" : "Dark theme");
+            string choice = Theme.Choice;
+            if (choice == shownTheme) { return; }
+            shownTheme = choice;
+            Theme.Apply(this, Theme.IsDark());
+            AlignLine();
+        }
+
+        // Modern Voices Config (the settings window, a program beside this one), as its Start menu entry opens it.
+        void OpenConfig()
+        {
+            try
+            {
+                // Already open: that window comes to the front.
+                foreach (System.Diagnostics.Process running in System.Diagnostics.Process.GetProcessesByName("powershell"))
+                {
+                    try
+                    {
+                        if (running.MainWindowHandle != IntPtr.Zero && running.MainWindowTitle.StartsWith("Modern Voices Config", StringComparison.Ordinal))
+                        {
+                            if (IsIconic(running.MainWindowHandle)) { ShowWindowAsync(running.MainWindowHandle, 9); }
+                            SetForegroundWindow(running.MainWindowHandle);
+                            return;
+                        }
+                    }
+                    catch (Exception) { }
+                    finally { running.Dispose(); }
+                }
+                string app = Path.GetDirectoryName(Path.GetDirectoryName(Application.ExecutablePath));
+                string script = Path.Combine(app, "installer", "Install.ps1");
+                if (!File.Exists(script)) { Status("Modern Voices Config was not found (" + script + ")."); return; }
+                string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                bool narrow = Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess;      // (Config needs the 64-bit PowerShell)
+                string shell = Path.Combine(windows, narrow ? "Sysnative" : "System32", @"WindowsPowerShell\v1.0\powershell.exe");
+                System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(shell,
+                    "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\"");
+                start.WorkingDirectory = app; start.UseShellExecute = true;
+                start.WindowStyle = System.Diagnostics.ProcessWindowStyle.Minimized;      // (its console, which it hides itself)
+                System.Diagnostics.Process.Start(start);
+                Status("Opening Modern Voices Config...");
+            }
+            catch (Exception e) { Status("Modern Voices Config did not open: " + e.Message); }
         }
 
         void Build()
@@ -945,26 +1022,21 @@ namespace ModernVoicesReader
             under.Controls.Add(left, 0, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(under, 0, row++);
 
-            // The last line: what is happening (left) and, in grey at the far right, a moon to click (no
-            // button around it): light to dark and back, shared with Modern Voices Config.
+            // The last line: what is happening (left) and, in grey at the far right, a cog to click (no
+            // button around it): it opens Modern Voices Config, where the moon for light and dark is.
             TableLayoutPanel last = NewLine(true, false);
             statusLabel = NewLabel("", true);
             statusLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right; statusLabel.AutoEllipsis = true;
             statusLabel.AutoSize = false; statusLabel.Height = Px(20); statusLabel.Dock = DockStyle.Fill;
             last.Controls.Add(statusLabel, 0, 0);
-            themeButton = NewLabel("Dark", true);     // ("muted": the grey of the status line, not the text's white)
-            themeButton.Anchor = AnchorStyles.Right; themeButton.Cursor = Cursors.Hand;
-            themeButton.Margin = new Padding(Px(6), 0, Px(4), 0);
-            if (symbols) { themeButton.Font = new Font("Segoe MDL2 Assets", 15f); themeButton.Text = "\uE708"; }
-            else { themeButton.Font = lineFont; }
-            themeButton.Click += delegate
-            {
-                Theme.Choice = Theme.IsDark() ? "light" : "dark";
-                Theme.Apply(this, Theme.IsDark());
-                ShowTheme();
-                AlignLine();
-            };
-            last.Controls.Add(themeButton, 1, 0);
+            configButton = NewLabel("Settings", true);     // ("muted": the grey of the status line, not the text's white)
+            configButton.Anchor = AnchorStyles.Right; configButton.Cursor = Cursors.Hand;
+            configButton.Margin = new Padding(Px(6), 0, Px(4), 0);
+            if (symbols) { configButton.Font = new Font("Segoe MDL2 Assets", 15f); configButton.Text = "\uE713"; }
+            else { configButton.Font = lineFont; }
+            tips.SetToolTip(configButton, "Modern Voices Config: voices, speed and pauses, pronunciation, light or dark");
+            configButton.Click += delegate { OpenConfig(); };
+            last.Controls.Add(configButton, 1, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(last, 0, row++);
             page.RowCount = row;
         }
@@ -1510,7 +1582,7 @@ namespace ModernVoicesReader
                 {
                     if (Clipboard.ContainsText(TextDataFormat.Html))
                     {
-                        string made = Html.ToText(Html.Fragment(Clipboard.GetText(TextDataFormat.Html)));
+                        string made = Html.ToText(Html.Fragment(CopiedHtml()));
                         if (made.Trim().Length > 0) { return made; }
                     }
                     return Clipboard.ContainsText() ? Regex.Replace(Clipboard.GetText(), "\r?\n", "\r\n") : "";
@@ -1518,6 +1590,38 @@ namespace ModernVoicesReader
                 catch (Exception) { System.Threading.Thread.Sleep(40); }   // another program has it open: again in a moment
             }
             return "";
+        }
+
+        // The formatted copy on the clipboard, read as the UTF-8 it is. (.NET's own Clipboard.GetText reads
+        // it in Windows' code page: a curly apostrophe or an ellipsis came out as three wrong letters.)
+        static string CopiedHtml()
+        {
+            byte[] bytes = null;
+            uint format = RegisterClipboardFormat("HTML Format");
+            if (format != 0 && OpenClipboard(IntPtr.Zero))
+            {
+                try
+                {
+                    IntPtr memory = GetClipboardData(format);
+                    if (memory != IntPtr.Zero)
+                    {
+                        IntPtr at = GlobalLock(memory);
+                        if (at != IntPtr.Zero)
+                        {
+                            try
+                            {
+                                int size = (int)GlobalSize(memory).ToUInt64();
+                                bytes = new byte[size];
+                                Marshal.Copy(at, bytes, 0, size);
+                            }
+                            finally { GlobalUnlock(memory); }
+                        }
+                    }
+                }
+                finally { CloseClipboard(); }
+            }
+            if (bytes == null) { return Html.Utf8Again(Clipboard.GetText(TextDataFormat.Html)); }
+            return Html.FromBytes(bytes);
         }
 
         void ReadClipboard(bool copiedJustNow)
@@ -1542,9 +1646,7 @@ namespace ModernVoicesReader
         {
             base.OnHandleCreated(e);
             try { AddClipboardFormatListener(Handle); } catch (Exception) { }
-            Theme.Apply(this, Theme.IsDark());
-            ShowTheme();
-            AlignLine();
+            shownTheme = null; FollowTheme();
         }
 
         protected override void WndProc(ref Message m)
@@ -1704,6 +1806,9 @@ namespace ModernVoicesReader
                 string copied = "Version:0.9\r\nStartHTML:0\r\n<html><body><!--StartFragment--><p>Intro:</p><ul><li>First</li><li>Second <b>bold</b><ul><li>Nested</li></ul></li></ul>" +
                     "<ol><li><p>One</p></li><li><p>Two</p></li></ol><p>End.</p><!--EndFragment--></body></html>";
                 string laidOut = Html.ToText(Html.Fragment(copied));
+                string curly = "I\u2019d typed it out\u2026 \u00a3150";
+                Check(Html.FromBytes(Encoding.UTF8.GetBytes("<p>" + curly + "</p>\0\0")) == "<p>" + curly + "</p>", "a formatted copy is read as UTF-8: curly quotes, ellipses and pound signs stay themselves");
+                Check(Encoding.Default.CodePage != 1252 || Html.Utf8Again(Encoding.Default.GetString(Encoding.UTF8.GetBytes(curly))) == curly, "UTF-8 misread in Windows' code page is put right");
                 log.AppendLine("copied: " + laidOut.Replace("\r\n", " / "));
                 Check(laidOut == "Intro:\r\n\r\n\u2022 First\r\n\u2022 Second bold\r\n    \u2022 Nested\r\n\r\n1. One\r\n2. Two\r\n\r\nEnd.", "a formatted copy keeps its paragraphs, bullets and numbers");
                 Check(Cleaner.Prepare("\u2022 First\r\n\u2022 Second", true).Text == "First\r\nSecond", "bullets are not read out (with tidying on)");

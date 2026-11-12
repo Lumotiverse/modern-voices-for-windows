@@ -201,6 +201,10 @@ $unmarked = Measure-Speech $albaName 'This is a test'
 Check ([math]::Abs($marked.Seconds - $unmarked.Seconds) -lt 0.03) ("'This is a test' without a full stop said as with one: {0:N2} s and {1:N2} s" -f $unmarked.Seconds, $marked.Seconds)
 $baseMale = Measure-Speech $maleName $two
 Set-GlobalPauses $settingsFile 1000 0 2000
+# Sums of money are said as they are read aloud: a pound sign and 150 as "150 pounds".
+$sum = Measure-Speech $albaName ('It costs ' + [char]0xA3 + '150 a session.')
+$sumSaid = Measure-Speech $albaName 'It costs 150 pounds a session.'
+Check ([math]::Abs($sum.Seconds - $sumSaid.Seconds) -lt 0.03) ("a sum of money said as '150 pounds': {0:N2} s and {1:N2} s" -f $sum.Seconds, $sumSaid.Seconds)
 Check-Added 'sentence gap 1000 ms, rate 0' $base (Measure-Speech $albaName $two) 1000 30
 Check-Added 'sentence gap 1000 ms, rate +5 (1.73x as fast: 577 ms)' $baseFast (Measure-Speech $albaName $two 5) 577 30
 Check-Added 'paragraph gap 2000 ms at a line break' $basePara (Measure-Speech $albaName $para) 2000 30

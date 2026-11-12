@@ -716,8 +716,9 @@ impl Engine_Impl {
                  config: &GenerationConfig, settings: &Settings, dictionary: &Dictionary, (shift, gain): (f32, f32),
                  out: &mut Output) -> bool {
         // Said as the pronunciation dictionary has it (the words reported to the program stay the text's
-        // own), and with an end mark where it has none, which the voice needs to finish its last word.
-        let text = with_end_mark(&dictionary.apply(&String::from_utf16_lossy(&run.text[from..to])));
+        // own), sums of money the way they are read aloud ("£150": "150 pounds"), and with an end mark
+        // where it has none, which the voice needs to finish its last word.
+        let text = with_end_mark(&money(&dictionary.apply(&String::from_utf16_lossy(&run.text[from..to]))));
         let started = Instant::now();
         let made = {
             let _turn = voice.model.busy.lock();

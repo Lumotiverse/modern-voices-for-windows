@@ -272,6 +272,87 @@ pub fn with_end_mark(text: &str) -> String {
     }
 }
 
+/// Sums of money said as they are read aloud: "£150" as "150 pounds" (the voice, left to itself, says
+/// "pound 150"). A £, $ or € with a number straight after it: "£1" is "1 pound", "£1.50" "1 pound 50",
+/// "£0.99" "99 pence", "£2.05" "2 pounds and 5 pence", "$3.5m" and "$3.5 million" "3.5 million dollars".
+pub fn money(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut made = String::with_capacity(text.len() + 16);
+    let mut i = 0;
+    while i < chars.len() {
+        let (one, many, small_one, small_many) = match chars[i] {
+            '£' => ("pound", "pounds", "penny", "pence"),
+            '$' => ("dollar", "dollars", "cent", "cents"),
+            '€' => ("euro", "euros", "cent", "cents"),
+            c => { made.push(c); i += 1; continue; }
+        };
+        let digit = |at: usize| chars.get(at).is_some_and(|c| c.is_ascii_digit());
+        if !digit(i + 1) {
+            made.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        // The whole part (with its commas: "1,500"), then the part after a decimal point.
+        let mut at = i + 1;
+        let mut whole = String::new();
+        while digit(at) || (chars.get(at) == Some(&',') && digit(at + 1)) {
+            whole.push(chars[at]);
+            at += 1;
+        }
+        let mut part = String::new();
+        if chars.get(at) == Some(&'.') && digit(at + 1) {
+            at += 1;
+            while digit(at) {
+                part.push(chars[at]);
+                at += 1;
+            }
+        }
+        // Thousands and millions: "k", "m", "bn" straight after, or the word after a space.
+        let letters = |from: usize| -> String {
+            chars[from.min(chars.len())..].iter().take_while(|c| c.is_alphabetic()).collect::<String>()
+        };
+        let short = letters(at);
+        let mut scale = match short.to_lowercase().as_str() {
+            "k" => "thousand", "m" | "mn" => "million", "b" | "bn" => "billion", "tn" => "trillion", _ => "",
+        }.to_string();
+        if !scale.is_empty() {
+            at += short.chars().count();
+        } else if chars.get(at) == Some(&' ') {
+            let word = letters(at + 1);
+            if matches!(word.to_lowercase().as_str(), "thousand" | "million" | "billion" | "trillion") {
+                at += 1 + word.chars().count();
+                scale = word;
+            }
+        }
+        let is_one = whole.trim_start_matches('0') == "1";
+        if !scale.is_empty() {
+            made.push_str(&whole);
+            if !part.is_empty() { made.push('.'); made.push_str(&part); }
+            made.push_str(&format!(" {scale} {many}"));
+        } else if part.len() == 2 {
+            let small: u32 = part.parse().unwrap_or(0);
+            let nothing = whole.chars().all(|c| c == '0' || c == ',');
+            if nothing && small > 0 {
+                made.push_str(&format!("{small} {}", if small == 1 { small_one } else { small_many }));
+            } else {
+                made.push_str(&format!("{whole} {}", if is_one { one } else { many }));
+                if small >= 10 {
+                    made.push_str(&format!(" {small}"));
+                } else if small > 0 {
+                    made.push_str(&format!(" and {small} {}", if small == 1 { small_one } else { small_many }));
+                }
+            }
+        } else if !part.is_empty() {
+            made.push_str(&format!("{whole}.{part} {many}"));
+        } else {
+            made.push_str(&format!("{whole} {}", if is_one { one } else { many }));
+        }
+        if chars.get(at).is_some_and(|c| c.is_alphanumeric()) { made.push(' '); }
+        i = at;
+    }
+    made
+}
+
 /// The part of `audio` from just before its first sound to just after its last (sound: above a fiftieth
 /// of its loudest), keeping `margin` samples of the silence on each side that is trimmed: where a
 /// sentence is said in parts (a gap at its commas), the silence each part starts and ends with comes
@@ -381,6 +462,34 @@ mod tests {
     use super::*;
 
     fn utf16(s: &str) -> Vec<u16> { s.encode_utf16().collect() }
+
+    #[test]
+    fn sums_of_money() {
+        assert_eq!(money("It costs £150 a session."), "It costs 150 pounds a session.");
+        assert_eq!(money("£1"), "1 pound");
+        assert_eq!(money("£1,500"), "1,500 pounds");
+        assert_eq!(money("£1.50"), "1 pound 50");
+        assert_eq!(money("£12.99, or $20.00."), "12 pounds 99, or 20 dollars.");
+        assert_eq!(money("£0.99"), "99 pence");
+        assert_eq!(money("$0.01"), "1 cent");
+        assert_eq!(money("£2.05"), "2 pounds and 5 pence");
+        assert_eq!(money("€3.5"), "3.5 euros");
+        assert_eq!(money("$3.5m"), "3.5 million dollars");
+        assert_eq!(money("£2bn"), "2 billion pounds");
+        assert_eq!(money("£40k."), "40 thousand pounds.");
+        assert_eq!(money("$5 million more"), "5 million dollars more");
+        assert_eq!(money("£5 more"), "5 pounds more");
+        assert_eq!(money("£150."), "150 pounds.");
+        assert_eq!(money("£5, then"), "5 pounds, then");
+        assert_eq!(money("£5 Million"), "5 Million pounds");
+        assert_eq!(money("£5 per month"), "5 pounds per month");
+        assert_eq!(money("£5members"), "5 pounds members");
+        assert_eq!(money("the £ sign, $x and 150"), "the £ sign, $x and 150");
+        assert_eq!(money(""), "");
+        // (A sum with pence is not cut in two as sentences.)
+        let t = utf16("It was £1.50 then. Now £2.");
+        assert_eq!(sentences(&t).len(), 2);
+    }
 
     #[test]
     fn end_marks() {

@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.9.4'
+$Version = '0.9.5'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -800,7 +800,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $moonFont = New-Object System.Drawing.Font('Segoe MDL2 Assets', 15)
     if ($moonFont.Name -eq 'Segoe MDL2 Assets') { $themeButton.Font = $moonFont; $themeButton.Text = [string][char]0xE708 }    # Windows' own symbols
     $themeTip = New-Object System.Windows.Forms.ToolTip
-    $themeTip.SetToolTip($themeButton, 'Dark or light')
+    $themeTip.SetToolTip($themeButton, 'Dark or light (here and in the Reader)')
     $themeButton.add_Click({ Set-ThemeChoice $(if (Test-DarkTheme) { 'light' } else { 'dark' }); Set-UiTheme })
     $tabStrip.Controls.Add($themeButton, 2, 0)
 
