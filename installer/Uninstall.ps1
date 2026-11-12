@@ -62,9 +62,15 @@ try {
     if (-not $isOurs) {
         Write-Host "Not deleting $App (it isn't the program's folder)." -ForegroundColor Yellow
     } elseif (Test-Path $App) {
-        Remove-Item $App -Recurse -Force -ErrorAction SilentlyContinue
+        # A file can be held for a moment (a virus scanner looking at it, a program just closed): tried a few times.
+        foreach ($attempt in 1..6) {
+            Remove-Item $App -Recurse -Force -ErrorAction SilentlyContinue
+            if (-not (Test-Path $App)) { break }
+            Start-Sleep -Milliseconds 1500
+        }
         if (Test-Path $App) {
-            Write-Host "Could not remove all of ${App}: a program still has the engine loaded. Close programs that speak (or restart), then delete the folder." -ForegroundColor Yellow
+            Write-Host "Could not remove all of ${App}: a program still has one of its files open (the engine, if it is speaking, or the Reader). Close programs that speak and the Reader (or restart), then delete the folder." -ForegroundColor Yellow
+            Get-ChildItem $App -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 8 | ForEach-Object { Write-Host "  still there: $($_.FullName)" }
         } else {
             Write-Host "removed $App"
         }
