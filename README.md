@@ -4,11 +4,14 @@ Offline neural voices (Piper, English for now) as ordinary Windows speech voices
 program that uses Windows' installed voices but can't use Narrator's natural voices. 64-bit and
 32-bit programs.
 
+All work (including uploading to GitHub) was done by Claude.ai
+Code provided by Fable5.2, assisted by Opus5.5
+
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `engine/` | the SAPI 5 engine (Rust, sherpa-onnx built in): based on the [Spoken Players voicepack](https://github.com/f-rolf/spoken-players-voicepack)'s engine, with its own class ID and the events programs follow speech by (bookmarks, sentence and word boundaries) |
+| `engine/` | the SAPI 5 engine (Rust, sherpa-onnx built in): based on the [Spoken Players voicepack](https://github.com/f-rolf/spoken-players-voicepack)'s engine, with its own class ID. The events programs follow speech by (bookmarks, sentence and word boundaries) |
 | `engine/espeak-ng-data/` | espeak-ng's data, read at run time |
 | `installer/` | `Install.ps1` (install, the Modern Voices window, repair), `VoiceConvert.ps1` (Piper model → engine folder; voice settings), `Speak.ps1` (Preview), `Test.ps1`, `Uninstall.ps1` |
 | `kit/` | what goes at the top of the packaged kit (`Install.cmd`, `README.txt`) |
