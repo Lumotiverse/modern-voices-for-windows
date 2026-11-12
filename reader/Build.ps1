@@ -9,7 +9,7 @@ $framework = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319'
 $csc = Join-Path $framework 'csc.exe'
 if (-not (Test-Path $csc)) { throw "No C# compiler at $csc." }
 New-Item $Out -ItemType Directory -Force | Out-Null
-$source = Get-Content (Join-Path $PSScriptRoot 'Reader.cs') -Raw
+$source = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Reader.cs'), [System.Text.Encoding]::UTF8)
 $source = [regex]::Replace($source, 'AssemblyVersion\("[^"]+"\)', "AssemblyVersion(`"$Version.0`")")
 $stamped = Join-Path (Resolve-Path $Out) 'Reader.stamped.cs'
 [System.IO.File]::WriteAllText($stamped, $source, (New-Object System.Text.UTF8Encoding($true)))

@@ -416,7 +416,7 @@ namespace ModernVoicesReader
                             made.Append(lists[lists.Count - 1].ToString(CultureInfo.InvariantCulture)).Append(". ");
                             lists[lists.Count - 1]++;
                         }
-                        else { made.Append("• "); }
+                        else { made.Append("\u2022 "); }
                         afterMark = true;
                     }
                     else if (name == "p" || name == "blockquote" || name == "table" || (name.Length == 2 && name[0] == 'h' && name[1] >= '1' && name[1] <= '6'))
@@ -655,7 +655,7 @@ namespace ModernVoicesReader
         public static string TitleOf(string text)
         {
             string line = Regex.Replace(text.Trim(), @"\s+", " ");
-            line = Regex.Replace(line, @"^[#>*\-•\s]+", "");
+            line = Regex.Replace(line, @"^[#>*\-\u2022\s]+", "");
             return line.Length > 60 ? line.Substring(0, 60).TrimEnd() + "..." : line;
         }
     }
@@ -873,9 +873,9 @@ namespace ModernVoicesReader
 
             // From the start, play or pause, stop; files; the clipboard and the screen.
             FlowLayoutPanel buttons = NewFlow();
-            startButton = NewSymbolButton("", "From the start", "Read from the start", delegate { FromStart(); });
-            playButton = NewSymbolButton("", "Play", "Play", delegate { PlayOrPause(); });
-            stopButton = NewSymbolButton("", "Stop", "Stop (Play goes on from the same place)", delegate { Stop(); });
+            startButton = NewSymbolButton("\uE892", "From the start", "Read from the start", delegate { FromStart(); });
+            playButton = NewSymbolButton("\uE768", "Play", "Play", delegate { PlayOrPause(); });
+            stopButton = NewSymbolButton("\uE71A", "Stop", "Stop (Play goes on from the same place)", delegate { Stop(); });
             fileButton = NewButton("Open a file...", delegate { ChooseFile(); });
             audioButton = NewButton("Save as sound...", delegate { ChooseAudioFile(); });
             clearButton = NewButton("Clear", delegate { ClearText(); });
