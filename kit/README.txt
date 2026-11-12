@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.9.8
+Modern Voices for Windows 0.9.9
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -169,11 +169,12 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     (.html). A file dropped on the text is opened too. A file opened again goes on from where you
     stopped in it (while its text is unchanged). (Not PDF or the older .doc: copy the text from those
     and press Read clipboard.)
-  * Screen reader: for text that can't be selected or copied (a picture, a game, some PDFs).
+  * Read the screen (the magnifying glass): for text that can't be selected or copied (a
+    picture, a game, some PDFs).
     The screen dims; drag a box around the text, and Windows' own text recognition reads it into the
     box and starts reading. Recognition is not perfect, small or fancy print least of all. It works
     for the languages Windows has text recognition for (Settings > Time & language > Language).
-  * Save as sound: the text as a WAV file, in the voice and at the speed chosen, made as fast as the
+  * Save as audio: the text as a WAV file, in the voice and at the speed chosen, made as fast as the
     voice can (not played). About 2.6 MB a minute.
   * Undo (Ctrl+Z) and redo (Ctrl+Y), or the two arrow buttons beside Clear, take back and put
     back the last ten changes to the text: typing, a paste, a file opened, Clear.

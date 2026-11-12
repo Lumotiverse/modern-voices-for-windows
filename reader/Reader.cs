@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.9.8.0")]
+[assembly: System.Reflection.AssemblyVersion("0.9.9.0")]
 
 namespace ModernVoicesReader
 {
@@ -891,7 +891,7 @@ namespace ModernVoicesReader
             return b;
         }
 
-        // The line under the buttons is as wide as the buttons from the first to "Save as sound": the
+        // The line under the buttons is as wide as the buttons from the first to "Save as audio": the
         // progress bar takes up the difference.
         void AlignLine()
         {
@@ -1016,16 +1016,18 @@ namespace ModernVoicesReader
             stopButton = NewSymbolButton("\uE71A", "Stop", "Stop (Play goes on from the same place)", delegate { Stop(); });
             clipboardButton = NewButton("Read clipboard", delegate { ReadClipboard(false); });
             fileButton = NewButton("Open a file...", delegate { ChooseFile(); });
-            screenButton = NewButton("Screen reader...", delegate { ReadScreen(); });
-            audioButton = NewButton("Save as sound...", delegate { ChooseAudioFile(); });
+            screenButton = NewSymbolButton("\uE721", "Read screen...", "Select an area of the screen to read with TTS", delegate { ReadScreen(); });
+            audioButton = NewButton("Save as audio...", delegate { ChooseAudioFile(); });
             clearButton = NewButton("Clear", delegate { ClearText(); });
             undoButton = NewSymbolButton("\uE7A7", "Undo", "Undo (Ctrl+Z)", delegate { Undo(); box.Focus(); });
             redoButton = NewSymbolButton("\uE7A6", "Redo", "Redo (Ctrl+Y)", delegate { Redo(); box.Focus(); });
-            foreach (Button b in new Button[] { startButton, playButton, stopButton, clipboardButton, fileButton, screenButton, audioButton })
+            foreach (Button b in new Button[] { startButton, playButton, stopButton, fileButton, clipboardButton, screenButton, audioButton })
             {
                 b.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;    // (all one height)
                 buttons.Controls.Add(b);
             }
+            // (A wider gap after Stop: the three that play, then the four that bring text in or take it out.)
+            fileButton.Margin = new Padding(fileButton.Margin.Left + Px(14), fileButton.Margin.Top, fileButton.Margin.Right, fileButton.Margin.Bottom);
             clearButton.MinimumSize = new Size((int)(clearButton.PreferredSize.Width * 1.3), 0);
             // At the far end: undo, redo, Clear (with a gap always left before them).
             FlowLayoutPanel ends = NewFlow();
@@ -1540,7 +1542,7 @@ namespace ModernVoicesReader
             if (CurrentVoice == null) { Status("Choose a voice first."); return; }
             using (SaveFileDialog dialog = new SaveFileDialog())
             {
-                dialog.Title = "Save the text as sound";
+                dialog.Title = "Save the text as audio";
                 dialog.Filter = "Sound (*.wav)|*.wav";
                 dialog.FileName = Files.SafeName(Store.TitleOf(box.Text)) + ".wav";
                 if (dialog.ShowDialog(this) == DialogResult.OK) { SaveAudio(dialog.FileName); }
@@ -1564,7 +1566,7 @@ namespace ModernVoicesReader
                 saver.SpeakProgress += delegate(object sender, SpeakProgressEventArgs e)
                 {
                     if (InvokeRequired || saver == null) { return; }
-                    Status("Saving as sound: " + Math.Min(99, 100 * e.CharacterPosition / length) + "%  (" + Path.GetFileName(savingTo) + ")");
+                    Status("Saving as audio: " + Math.Min(99, 100 * e.CharacterPosition / length) + "%  (" + Path.GetFileName(savingTo) + ")");
                 };
                 saver.SpeakCompleted += delegate(object sender, SpeakCompletedEventArgs e)
                 {
@@ -1581,7 +1583,7 @@ namespace ModernVoicesReader
                 return;
             }
             audioButton.Text = "Stop saving";
-            Status("Saving as sound: 0%  (" + Path.GetFileName(path) + ")");
+            Status("Saving as audio: 0%  (" + Path.GetFileName(path) + ")");
         }
 
         void CancelSaving()
@@ -1598,7 +1600,7 @@ namespace ModernVoicesReader
                 try { saver.Dispose(); } catch (Exception) { }
                 saver = null;
             }
-            audioButton.Text = "Save as sound...";
+            audioButton.Text = "Save as audio...";
             if (finished && File.Exists(savingTo))
             {
                 long bytes = new FileInfo(savingTo).Length;
