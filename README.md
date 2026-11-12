@@ -9,6 +9,23 @@ are old and robotic, and the newer "natural" voices in Narrator can't be used by
 Modern Voices for Windows adds modern neural voices that they can use: 64-bit and 32-bit programs
 alike. English voices for now.
 
+## Who wrote the code
+
+All work (including uploading to GitHub) was done by Claude.ai
+Code provided by Fable5.2, assisted by Opus5.5
+
+To be plain about it: every line of code in this repository beyond the engine it is based on was
+written by Claude, Anthropic's AI model, which is why Claude appears as the main contributor. The
+person behind the project (Lumoti) is not a programmer. He decided what the program should do, tried
+every build on his own computer, and said what was wrong with it; Claude wrote, built and tested
+the code. The user experience was refined by Lumoti. (Currently tested on Windows 10 only)
+
+That is only possible because of the programmers named below, and many more besides, who learned
+this craft properly and gave their work away. An AI model can assemble a program like this because
+people wrote the engines, the tools, the documentation and the answers it learned from. Respect is
+due to them. If you are one of them and see something here done badly, issues and pull requests
+are welcome.
+
 ## What you get
 
 | Program | What it is for |
@@ -68,23 +85,6 @@ This program is a thin layer over years of work by people who actually know how 
 - Everyone who recorded their voice for a research collection or an audiobook and let it be used.
 
 The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-
-## Who wrote the code
-
-All work (including uploading to GitHub) was done by Claude.ai
-Code provided by Fable5.2, assisted by Opus5.5
-
-To be plain about it: every line of code in this repository beyond the engine it is based on was
-written by Claude, Anthropic's AI model, which is why Claude appears as the main contributor. The
-person behind the project (Luke) is not a programmer. He decided what the program should do, tried
-every build on his own computer, and said what was wrong with it; Claude wrote, built and tested
-the code.
-
-That is only possible because of the programmers named above, and many more besides, who learned
-this craft properly and gave their work away. An AI model can assemble a program like this because
-people wrote the engines, the tools, the documentation and the answers it learned from. Respect is
-due to them. If you are one of them and see something here done badly, issues and pull requests
-are welcome.
 
 ## Open and transparent
 
