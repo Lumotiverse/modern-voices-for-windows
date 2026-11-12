@@ -2166,6 +2166,9 @@ try {
         $ui = New-ManagerForm $catalogue $ids $false $byKey
         $null = $ui.Form.Handle; $null = $ui.List.Handle; $null = $ui.InstalledList.Handle
         Write-Output ("window: {0} voices in the catalogue, {1} installed shown; {2}" -f $ui.List.Items.Count, $ui.InstalledList.Items.Count, $ui.SizeLabel.Text)
+        # As the window opens, nothing is waiting to be applied: Apply changes is greyed out.
+        Write-Output "apply button as the window opens: greyed out: $(-not $ui.Apply.Enabled)"
+        if ($ui.Apply.Enabled) { $bad += 'apply button lit as the window opens' }
         # Speakers: select VCTK, tick a second speaker.
         $vctk = @($ui.List.Items | Where-Object { $_.Tag.Key -eq 'en_GB-vctk-medium' })[0]
         $vctk.Selected = $true
@@ -2231,6 +2234,7 @@ try {
             $ui.Sliders['Sentence gap'].Bar.Value = 300
             Save-UiSettings
             $own = Get-Pauses (Join-Path $dir 'voice.json')
+            Update-UiApply
             if ($ScreenshotDir) { Save-UiPictures $ScreenshotDir }
             $ui.OwnBox.Checked = $false
             Update-UiOwnPauses
