@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.8.0
+Modern Voices for Windows 0.8.1
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -128,6 +128,11 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     copied in another program is read straight away.
   * "Leave out links, code and symbols": web addresses are read as "link", blocks of code are
     skipped, and the marks of formatted text (#, **, `, table lines) aren't read out.
+  * Open a file: plain text (.txt, .md), Word documents (.docx), rich text (.rtf) and web pages
+    (.html). A file dropped on the text is opened too. (Not PDF or the older .doc: copy the text
+    from those and press Read clipboard.)
+  * Save as sound: the text as a WAV file, in the voice and at the speed chosen, made as fast as the
+    voice can (not played). About 2.6 MB a minute.
   * To read later: Save this text to the list, or Add the clipboard to the list. Each text in the
     list remembers where you stopped; Open (or a double click) carries on from there.
   * The text in the box and its place are kept when the Reader is closed.

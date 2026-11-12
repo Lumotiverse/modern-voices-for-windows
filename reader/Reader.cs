@@ -24,7 +24,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.8.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.8.1.0")]
 
 namespace ModernVoicesReader
 {
@@ -356,7 +356,7 @@ namespace ModernVoicesReader
 
         public static string SafeName(string title)
         {
-            string name = Regex.Replace(title, @"[\\/:*?""<>|\r\n\t]+", " ").Trim().TrimEnd('.');
+            string name = Regex.Replace(Regex.Replace(title, @"[\\/:*?""<>|\r\n\t]+", " "), @"\s+", " ").Trim().TrimEnd('.');
             if (name.Length > 60) { name = name.Substring(0, 60).Trim(); }
             return name.Length == 0 ? "Reading" : name;
         }
