@@ -36,8 +36,9 @@ function Invoke-Install([string[]]$Arguments, [int]$Seconds = 1200) {
     $quoted = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$(Join-Path $Kit 'installer\Install.ps1')`"") +
         @($Arguments | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } })
     $run = Start-Process powershell.exe -ArgumentList $quoted -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+    $null = $run.Handle   # (without this, Windows PowerShell has no exit code to give afterwards)
     $finished = $run.WaitForExit($Seconds * 1000)
-    if (-not $finished) { try { $run.Kill() } catch { } }
+    if (-not $finished) { try { $run.Kill() } catch { } } else { $run.WaitForExit() }
     Get-Content $out, $err -ErrorAction SilentlyContinue | Out-Host
     Remove-Item $out, $err -ErrorAction SilentlyContinue
     $code = if ($finished) { $run.ExitCode } else { -1 }
@@ -218,6 +219,7 @@ Check (Test-Path (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Progr
 if (Test-Path $readerExe) {
     Check ((Get-AuthenticodeSignature $readerExe).Status -eq 'Valid') 'the Reader is signed by the build (trusted as the engine is)'
     $readerRun = Start-Process $readerExe -ArgumentList '--selftest', "`"$screens`"" -PassThru
+    $null = $readerRun.Handle
     if (-not $readerRun.WaitForExit(300000)) { $readerRun.Kill(); Check $false "the Reader's own test finished" }
     $readerLog = Join-Path $screens 'reader-selftest.log'
     if (Test-Path $readerLog) { Get-Content $readerLog | Out-Host }
