@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.10.4
+Modern Voices for Windows 0.10.5
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -172,6 +172,8 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
   * The slider with the small speaker (between Save as audio and undo) is how loud the Reader
     speaks: the Reader's own volume, on top of each voice's Volume in Modern Voices Config. It
     applies to Save as audio too.
+  * The bar under the play buttons is what is left to read: full as reading starts, emptying
+    towards the right, empty when the reading has finished.
   * "about 3:20 left" is an estimate: from a typical pace at first, then from how fast the voice is
     actually reading.
   * "Instantly read copy": while the Reader is open (minimised is fine), anything copied in

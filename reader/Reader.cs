@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.10.4.0")]
+[assembly: System.Reflection.AssemblyVersion("0.10.5.0")]
 
 namespace ModernVoicesReader
 {
@@ -925,6 +925,8 @@ namespace ModernVoicesReader
         double playedSeconds;            // before the last pause
         int measuredFrom;
         public int ProgressEvents;       // (for the build's test)
+        bool finished;                   // the reading came to the end of the text (the bar is empty)
+        public int BarValue { get { return progress.Value; } }
         public string LastWord = "";
         public string FirstWord = "";
         public int Misplaced;            // words reported at a place where the text has something else
@@ -1544,6 +1546,9 @@ namespace ModernVoicesReader
             TableLayoutPanel under = NewLine(true);
             Font lineFont = new Font("Segoe UI", 10f);     // (this line a little larger than the buttons' words)
             progress = new ProgressBar();
+            // (What is left to read, in green, against the bar's right end: full as reading starts, emptying
+            // towards the right, empty when the reading has finished.)
+            progress.RightToLeft = RightToLeft.Yes; progress.RightToLeftLayout = true;
             progress.Maximum = 1000; progress.Width = Px(120); progress.Height = Px(18); progress.Anchor = AnchorStyles.Left;
             progress.Margin = new Padding(3, Px(6), Px(6), Px(6));
             timeLabel = NewLabel("", false);
@@ -1788,6 +1793,7 @@ namespace ModernVoicesReader
                 synth.Rate = rateBar.Value;
                 synth.Volume = volumeBar.Value;
                 stopping = false;
+                finished = false;
                 synth.SpeakAsync(prepared.Text.Substring(start));
             }
             catch (Exception e)
@@ -1891,6 +1897,7 @@ namespace ModernVoicesReader
             mode = Mode.Stopped;
             box.ReadOnly = false;
             position = 0;
+            finished = e.Error == null;      // (the bar stays empty until reading starts again or the text changes)
             if (e.Error != null) { Status("Reading stopped: " + e.Error.Message); }
             else { Status("Finished."); }
             box.Select(0, 0);
@@ -1921,7 +1928,8 @@ namespace ModernVoicesReader
             int remaining;
             if (mode != Mode.Stopped && prepared != null) { remaining = prepared.Text.Length - spokenAt; }
             else { remaining = length - Math.Min(length, position); }
-            progress.Value = Math.Max(0, Math.Min(1000, (int)(1000.0 * Math.Min(length, position) / length)));
+            int left = finished ? 0 : 1000 - (int)(1000.0 * Math.Min(length, position) / length);
+            progress.Value = Math.Max(0, Math.Min(1000, left));
             timeLabel.Text = "about " + Clock(remaining / Pace()) + " left";
             if (timeLabel.Width != alignedFor) { AlignLine(); }     // (a longer time: the bar gives way)
         }
@@ -1940,6 +1948,7 @@ namespace ModernVoicesReader
             if (mode != Mode.Stopped || loading) { return; }
             if (box.SelectionLength == 0 && box.SelectionStart != position)
             {
+                finished = false;
                 position = box.SelectionStart;
                 UpdateTime();
             }
@@ -1948,6 +1957,7 @@ namespace ModernVoicesReader
         void TextEdited()
         {
             // Text typed or pasted in: no longer the file's text as it was opened.
+            finished = false;
             store.State.OpenedFile = "";
             if (position > box.TextLength) { position = box.TextLength; }
             UpdateButtons();
@@ -1963,6 +1973,7 @@ namespace ModernVoicesReader
             store.State.OpenedFile = file;
             box.Text = Regex.Replace(text, "\r?\n", "\r\n");   // (the box shows a line break only as CR LF)
             loading = false;
+            finished = false;
             NoteChange(true);
             position = Math.Max(0, Math.Min(box.TextLength, at));
             Remember();
@@ -2614,10 +2625,12 @@ namespace ModernVoicesReader
 
                 if (form.OurVoiceCount > 0 && form.TestChooseOurs())
                 {
+                    int barBefore = form.BarValue;
                     form.Play();
                     Check(form.Reading, "Play starts reading");
                     bool done = WaitWhile(delegate { return form.Reading; }, 90);
                     Check(done, "reading reaches the end");
+                    Check(barBefore == 1000 && form.BarValue == 0, "the bar is full before reading and empty when it has finished (" + barBefore + ", " + form.BarValue + ")");
                     Check(form.ProgressEvents >= 15, "the place is followed word by word (" + form.ProgressEvents + " words reported, first '" + form.FirstWord + "', last '" + form.LastWord + "')");
                     Check(form.Misplaced == 0, "each word is reported at its own place in the text (" + form.Misplaced + " misplaced)");
                     Check(form.FirstWord == "The" && form.LastWord.StartsWith("with", StringComparison.Ordinal), "the first and last words are the text's");

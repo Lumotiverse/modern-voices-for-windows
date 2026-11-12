@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.10.4 (12 Nov 2026).
+Last updated at version 0.10.5 (12 Nov 2026).
 
 ## What it is
 
@@ -16,7 +16,7 @@ with Windows' voices but can't use Narrator's natural voices. It must keep worki
 | Modern Voices Config | The installer and settings window: Voice manager, Speed and pauses, Pronunciation, Add or remove voices. | PowerShell 5.1 + WinForms | `installer/Install.ps1` (plus `VoiceConvert.ps1`, `Test.ps1`, `Speak.ps1`, `Ocr.ps1`, `Uninstall.ps1`) |
 | Modern Voices: Reader | A small app that reads pasted or copied text, files and screen regions. It has play/pause/stop, time left, saves as WAV, and remembers its place per file. | C# 5 (built with Windows' own `csc.exe`, .NET Framework 4) | `reader/Reader.cs`, `reader/Build.ps1` |
 
-The user-facing documentation is `kit/README.txt`, and it is accurate for 0.10.4. Read it to see what
+The user-facing documentation is `kit/README.txt`, and it is accurate for 0.10.5. Read it to see what
 each feature does.
 
 ## Lumoti's standing rules
@@ -24,7 +24,7 @@ each feature does.
 - **Before any build request, say whether it needs Fable (complicated: new features, engine work,
   multi-part changes) or Opus 5.5 (simple and safe changes to working code)**, so he can switch model
   first. If he's already on the right one, say so and proceed.
-- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.10.4.zip`.
+- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.10.5.zip`.
 - Every build must update in place (since 0.9.6): the new kit's Install.cmd run over the installed version
   keeps voices, settings, nicknames and pronunciations, with no uninstall and no re-download. If a build
   changes where or how any of those are stored, it must carry the old ones over. Test-Kit has an 'Update' step.
@@ -126,7 +126,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.10.4)
+## Current state (0.10.5)
 
 Everything above works and is tested on the CI Windows machine. Lumoti has been using it and sending UI
 tweaks one batch at a time; the last batch (0.9.4) is done and delivered: the moon moved and greyed in
@@ -176,6 +176,9 @@ match what is installed (`Update-UiApply`, on a 300 ms timer).
 stays elevated, serving "<token> <nick64>" lines on a named pipe whose ACL admits only the Reader's
 user; it exits when the Reader's process is gone or on "quit". The Reader (`AskNickHelper`) falls back
 to the one-shot script if the helper does not answer.
+0.10.5: Lumoti confirmed the once-per-session admin prompt works. The Reader's progress bar now shows what
+is left (mirrored ProgressBar, value = remaining): full at the start, emptying towards the right, empty
+once finished (`finished` flag, cleared when reading starts or the text changes).
 The owner (GitHub: Lumotiverse) is to be called Lumoti in anything public, never by any other name.
 Not yet confirmed by Lumoti:
 
