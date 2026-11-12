@@ -259,6 +259,28 @@ Check ($code -eq 0) 'repair finished without errors'
 [void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })
 Set-VoiceSettings $albaDir 1 1.5 1
 
+Step 'Update (a kit run over an older version: voices and settings kept)'
+$ourKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows'
+$versionNow = (Get-ItemProperty $ourKey).DisplayVersion
+Set-ItemProperty $ourKey -Name 'DisplayVersion' -Value '0.0.1'
+$oldDll = Join-Path $App 'engine\x64\gone_in_this_version.dll'
+$oldScript = Join-Path $App 'installer\GoneInThisVersion.ps1'
+Set-Content $oldDll 'old'; Set-Content $oldScript '# old'
+Set-GlobalSpeed $settingsFile 115
+Set-VoiceSettings $albaDir 0.8 2 1
+$voiceFile = Get-ChildItem $albaDir -Filter '*.onnx' | Select-Object -First 1
+$voiceWritten = $voiceFile.LastWriteTimeUtc
+$code = Invoke-Install @('-Unattended', '-NoPause')
+Check ($code -eq 0) 'update finished without errors'
+Check ((Get-ItemProperty $ourKey).DisplayVersion -eq $versionNow -and $versionNow -ne '0.0.1') "Installed apps shows this version again ($versionNow)"
+Check (-not (Test-Path $oldDll) -and -not (Test-Path $oldScript)) "the older version's leftover program files are gone"
+Check ((Get-GlobalSpeed $settingsFile) -eq 115) 'the speed set before the update is kept'
+Check ((Get-Item $voiceFile.FullName).LastWriteTimeUtc -eq $voiceWritten) 'the voice files were not downloaded again'
+Check ((Get-ItemProperty $ourKey).DisplayIcon -like '*ModernVoicesReader.exe,0') "Installed apps shows the program's icon (the speaker), not Config's cog"
+[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })
+Set-GlobalSpeed $settingsFile 100
+Set-VoiceSettings $albaDir 1 1.5 1
+
 Step 'Change voices: Alba only'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium', '-Unattended', '-NoPause')
 Check ($code -eq 0) 'change finished without errors'

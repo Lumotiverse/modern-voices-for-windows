@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.9.5'
+$Version = '0.9.6'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -1736,6 +1736,31 @@ function Test-FileFree([string]$Path) {
     catch { return $false }
 }
 
+# An update over an older version: the program files of that kind which this version no longer has go.
+function Remove-Leftovers([string]$From, [string]$Into, [string]$Kind) {
+    foreach ($file in @(Get-ChildItem $Into -Filter $Kind -File -ErrorAction SilentlyContinue)) {
+        if (-not (Test-Path (Join-Path $From $file.Name))) { Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+# Before an update: the Reader and an open Modern Voices Config are closed (the Reader keeps its text
+# and place), as their files are about to be replaced.
+function Close-OurPrograms {
+    foreach ($reader in @(Get-Process 'ModernVoicesReader' -ErrorAction SilentlyContinue)) {
+        Write-Host '  closing the Reader (its text and place are kept)'
+        try {
+            [void]$reader.CloseMainWindow()
+            if (-not $reader.WaitForExit(5000)) { $reader.Kill(); [void]$reader.WaitForExit(5000) }
+        } catch { }
+    }
+    foreach ($shell in @(Get-Process 'powershell' -ErrorAction SilentlyContinue)) {
+        if ($shell.Id -ne $PID -and $shell.MainWindowTitle -like 'Modern Voices Config*') {
+            Write-Host '  closing Modern Voices Config'
+            try { [void]$shell.CloseMainWindow(); [void]$shell.WaitForExit(3000) } catch { }
+        }
+    }
+}
+
 function Install-Engine {
     $source = Join-Path $Root 'engine'
     if (-not (Test-Path (Join-Path $source 'x64\modern_voices.dll'))) { throw "The engine is missing from $source." }
@@ -1749,7 +1774,11 @@ function Install-Engine {
     foreach ($sub in 'x64', 'x86') {
         $from = Join-Path $source $sub
         $into = Join-Path $Engine $sub
-        if (Test-Path $from) { New-Item $into -ItemType Directory -Force | Out-Null; Copy-Item (Join-Path $from '*') $into -Force }
+        if (Test-Path $from) {
+            New-Item $into -ItemType Directory -Force | Out-Null
+            Copy-Item (Join-Path $from '*') $into -Force
+            Remove-Leftovers $from $into '*.dll'
+        }
         elseif (Test-Path $into) { Remove-Item $into -Recurse -Force }
     }
     Copy-Item (Join-Path $source 'modern_voices.cer') $Cer -Force
@@ -1765,6 +1794,8 @@ function Install-Engine {
     New-Item $scripts -ItemType Directory -Force | Out-Null
     Copy-Item (Join-Path $Here '*.ps1') $scripts -Force
     Copy-Item (Join-Path $Here '*.ico') $scripts -Force
+    Remove-Leftovers $Here $scripts '*.ps1'
+    Remove-Leftovers $Here $scripts '*.ico'
     # Modern Voices: Reader (a program of its own, beside this one).
     $readerFrom = Join-Path $Root 'reader'
     if (Test-Path $readerFrom) {
@@ -1772,6 +1803,8 @@ function Install-Engine {
         New-Item $readerInto -ItemType Directory -Force | Out-Null
         try { Copy-Item (Join-Path $readerFrom '*') $readerInto -Force }
         catch { throw "The Reader is open: close it, then run this again. ($($_.Exception.Message))" }
+        Remove-Leftovers $readerFrom $readerInto '*.exe'
+        Remove-Leftovers $readerFrom $readerInto '*.dll'
     }
 }
 
@@ -1834,14 +1867,22 @@ function Register-Voice([string]$TokenRoot, [string]$Id, $Entry, [string]$Speake
     return $display
 }
 
-function New-Shortcut([string]$Path, [string]$Arguments, [string]$Description) {
+# The program's icon (the speech bubble with the speaker: the Reader's own, which Windows' Installed apps
+# and the Start menu show); Modern Voices Config has its own, the bubble with the cog.
+function Get-AppIcon {
+    $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
+    if (Test-Path $readerExe) { return "$readerExe,0" }
+    return "$App\installer\manager.ico,0"
+}
+
+function New-Shortcut([string]$Path, [string]$Arguments, [string]$Description, [string]$Icon = '') {
     $shell = New-Object -ComObject WScript.Shell
     $link = $shell.CreateShortcut($Path)
     $link.TargetPath = $PS64
     $link.Arguments = $Arguments
     $link.WorkingDirectory = $App
     $link.Description = $Description
-    $link.IconLocation = "$App\installer\manager.ico,0"
+    $link.IconLocation = $(if ($Icon) { $Icon } else { Get-AppIcon })
     $link.Save()
 }
 
@@ -1862,14 +1903,14 @@ function Register-Program {
     Set-ItemProperty $OurKey -Name 'DisplayVersion' -Value $Version
     Set-ItemProperty $OurKey -Name 'Publisher' -Value $AppName
     Set-ItemProperty $OurKey -Name 'InstallLocation' -Value $App
-    Set-ItemProperty $OurKey -Name 'DisplayIcon' -Value "$App\installer\manager.ico"
+    Set-ItemProperty $OurKey -Name 'DisplayIcon' -Value (Get-AppIcon)
     Set-ItemProperty $OurKey -Name 'UninstallString' -Value "`"$PS64`" -NoProfile -ExecutionPolicy Bypass -File `"$App\installer\Uninstall.ps1`""
     Set-ItemProperty $OurKey -Name 'ModifyPath' -Value "`"$PS64`" -NoProfile -ExecutionPolicy Bypass -File `"$App\installer\Install.ps1`""
     Set-ItemProperty $OurKey -Name 'NoRepair' -Value 1 -Type DWord
     Set-ItemProperty $OurKey -Name 'EstimatedSize' -Value $sizeKb -Type DWord
     New-Item $StartMenu -ItemType Directory -Force | Out-Null
     $common = "-NoProfile -ExecutionPolicy Bypass -File `"$App\installer\"
-    New-Shortcut (Join-Path $StartMenu 'Modern Voices Config.lnk') ($common + 'Install.ps1"') 'Voices installed, how they sound, add or remove voices'
+    New-Shortcut (Join-Path $StartMenu 'Modern Voices Config.lnk') ($common + 'Install.ps1"') 'Voices installed, how they sound, add or remove voices' "$App\installer\manager.ico,0"
     $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
     if (Test-Path $readerExe) {
         $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $StartMenu 'Modern Voices Reader.lnk'))
@@ -2191,9 +2232,18 @@ try {
     $interactive = -not ($Repair -or $Voices.Count -gt 0 -or $Unattended)
     # Where: the installed folder (running from it, or a kit over it), else the one given or chosen.
     $existing = Get-InstalledFolder
+    $updating = $false
     if ($existing) {
         Set-AppPaths $existing
         $InPlace = ($Root.TrimEnd('\') -eq $existing)
+        # A kit run over the installed program updates it: voices, settings, nicknames and pronunciations stay.
+        $updating = -not $InPlace
+        if ($updating) {
+            $versionWas = [string](Get-ItemProperty $OurKey -ErrorAction SilentlyContinue).DisplayVersion
+            if ($versionWas -and $versionWas -ne $Version) { Write-Host "Updating $versionWas to $Version (voices and settings are kept)" -ForegroundColor Green }
+            else { Write-Host "Installing $Version again over itself (voices and settings are kept)" -ForegroundColor Green }
+            Close-OurPrograms
+        }
     } elseif ($InstallDir) {
         Set-AppPaths (Resolve-AppFolder $InstallDir)
     } elseif ($interactive) {
@@ -2225,6 +2275,15 @@ try {
     foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
 
     $allGood = $true
+    if ($interactive -and $updating) {
+        # The voices already here are registered again, as this version registers them (nothing is downloaded).
+        $have = @(Get-InstalledIds)
+        if ($have.Count -gt 0) {
+            Write-Host "`nVoices"
+            try { [void](Set-InstalledVoices $have $usTags $byKey) }
+            catch { Write-Host "  The voices were left as they were ($($_.Exception.Message)). Repair (Start menu) registers them again." -ForegroundColor Yellow }
+        }
+    }
     if ($interactive) {
         # The window is the program: the console behind it is hidden while it is open.
         $ui = New-ManagerForm $catalogue @(Get-InstalledIds) $usTags $byKey

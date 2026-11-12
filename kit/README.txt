@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.9.5
+Modern Voices for Windows 0.9.6
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -30,6 +30,11 @@ Install
    shown at the bottom of the window.
 
 Restart programs that were open to see the new voices. This folder can then be deleted.
+
+Updating: run Install.cmd from the new version's folder, with the old version still installed. The
+program is replaced where it is; the voices (nothing is downloaded again), their sound settings,
+speed and pauses, nicknames, pronunciations and the Reader's text all stay. An open Reader or
+Modern Voices Config is closed first; other programs that are speaking need closing by hand.
 
 Installed outside Program Files, the folder is set up as Program Files is: only administrators can
 change its files (every program that speaks loads the engine from it).
