@@ -10,12 +10,16 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
+using System.Net;
 using System.Runtime.InteropServices;
+using System.Speech.AudioFormat;
 using System.Speech.Synthesis;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using System.Xml;
 using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
@@ -262,6 +266,102 @@ namespace ModernVoicesReader
         }
     }
 
+    // ---------------------------------------------------------------- text from files
+
+    public static class Files
+    {
+        public const string Filter = "Text and documents (*.txt, *.md, *.docx, *.rtf, *.html)|*.txt;*.md;*.markdown;*.text;*.log;*.docx;*.rtf;*.html;*.htm|All files (*.*)|*.*";
+
+        // The text of a file, by its kind: Word documents (.docx), rich text (.rtf), web pages
+        // (.html); anything else is read as plain text.
+        public static string Read(string path)
+        {
+            if (new FileInfo(path).Length > 30 * 1024 * 1024) { throw new InvalidOperationException("the file is larger than 30 MB"); }
+            string kind = Path.GetExtension(path).ToLowerInvariant();
+            if (kind == ".docx") { return FromWord(path); }
+            if (kind == ".rtf")
+            {
+                using (RichTextBox rich = new RichTextBox()) { rich.Rtf = Plain(path); return rich.Text; }
+            }
+            if (kind == ".html" || kind == ".htm") { return FromHtml(Plain(path)); }
+            if (kind == ".doc" || kind == ".pdf" || kind == ".odt" || kind == ".epub")
+            {
+                throw new InvalidOperationException("files of this kind (" + kind + ") can't be read: copy the text and press Read clipboard");
+            }
+            return Plain(path);
+        }
+
+        // Plain text, whichever way it is stored: as its first bytes say, else UTF-8, else (not
+        // valid UTF-8) Windows' own code page.
+        public static string Plain(string path)
+        {
+            byte[] bytes = File.ReadAllBytes(path);
+            if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) { return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3); }
+            if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) { return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2); }
+            if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) { return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2); }
+            try { return new UTF8Encoding(false, true).GetString(bytes); }
+            catch (DecoderFallbackException) { return Encoding.Default.GetString(bytes); }
+        }
+
+        // A Word document is a zip with its text in word/document.xml: paragraphs (w:p) of runs of
+        // text (w:t), with tabs and line breaks between.
+        public static string FromWord(string path)
+        {
+            StringBuilder text = new StringBuilder();
+            using (ZipArchive zip = ZipFile.OpenRead(path))
+            {
+                ZipArchiveEntry entry = zip.GetEntry("word/document.xml");
+                if (entry == null) { throw new InvalidOperationException("it is not a Word document (no word/document.xml in it)"); }
+                using (Stream stream = entry.Open())
+                using (XmlReader xml = XmlReader.Create(stream))
+                {
+                    bool inText = false;
+                    while (xml.Read())
+                    {
+                        if (xml.NodeType == XmlNodeType.Element)
+                        {
+                            if (xml.LocalName == "t") { inText = !xml.IsEmptyElement; }
+                            else if (xml.LocalName == "tab") { text.Append(' '); }
+                            else if (xml.LocalName == "br" || xml.LocalName == "cr") { text.Append("\r\n"); }
+                        }
+                        else if (xml.NodeType == XmlNodeType.EndElement)
+                        {
+                            if (xml.LocalName == "t") { inText = false; }
+                            else if (xml.LocalName == "p") { text.Append("\r\n"); }
+                        }
+                        else if (inText && (xml.NodeType == XmlNodeType.Text || xml.NodeType == XmlNodeType.Whitespace || xml.NodeType == XmlNodeType.SignificantWhitespace))
+                        {
+                            text.Append(xml.Value);
+                        }
+                    }
+                }
+            }
+            return text.ToString();
+        }
+
+        // A web page's words: scripts and styles left out, a line for each paragraph.
+        public static string FromHtml(string html)
+        {
+            html = Regex.Replace(html, @"<(script|style|head|noscript)\b[\s\S]*?</\1\s*>", "", RegexOptions.IgnoreCase);
+            html = Regex.Replace(html, @"<!--[\s\S]*?-->", "");
+            html = Regex.Replace(html, @"\s+", " ");
+            html = Regex.Replace(html, @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
+            html = Regex.Replace(html, @"</\s*(p|div|li|h[1-6]|tr|blockquote|section|article|title)\s*>", "\n", RegexOptions.IgnoreCase);
+            html = Regex.Replace(html, @"<[^>]+>", "");
+            html = WebUtility.HtmlDecode(html);
+            html = Regex.Replace(html, @"[ \t]*\n[ \t]*", "\n");
+            html = Regex.Replace(html, @"\n{3,}", "\n\n");
+            return html.Trim().Replace("\n", "\r\n");
+        }
+
+        public static string SafeName(string title)
+        {
+            string name = Regex.Replace(title, @"[\\/:*?""<>|\r\n\t]+", " ").Trim().TrimEnd('.');
+            if (name.Length > 60) { name = name.Substring(0, 60).Trim(); }
+            return name.Length == 0 ? "Reading" : name;
+        }
+    }
+
     // ---------------------------------------------------------------- what is kept between runs
 
     public class Saved
@@ -379,7 +479,9 @@ namespace ModernVoicesReader
         Label rateLabel, timeLabel, statusLabel, listLabel;
         TextBox box;
         Button playButton, pauseButton, stopButton, startButton;
-        Button clipboardButton, clearButton, saveButton, addClipboardButton, openButton, removeButton;
+        Button clipboardButton, clearButton, saveButton, addClipboardButton, openButton, removeButton, fileButton, audioButton;
+        SpeechSynthesizer saver;         // while the text is being saved as sound
+        string savingTo = "";
         CheckBox autoBox, tidyBox;
         ProgressBar progress;
         ListBox listBox;
@@ -545,7 +647,21 @@ namespace ModernVoicesReader
             tidyBox.Margin = new Padding(Px(8), Px(6), Px(8), 3);
             tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
             clearButton = NewButton("Clear", delegate { ClearText(); });
-            tools.Controls.Add(clipboardButton); tools.Controls.Add(autoBox); tools.Controls.Add(tidyBox); tools.Controls.Add(clearButton);
+            fileButton = NewButton("Open a file...", delegate { ChooseFile(); });
+            audioButton = NewButton("Save as sound...", delegate { ChooseAudioFile(); });
+            tools.Controls.Add(clipboardButton); tools.Controls.Add(fileButton); tools.Controls.Add(audioButton); tools.Controls.Add(clearButton);
+            tools.Controls.Add(autoBox); tools.Controls.Add(tidyBox);
+            // A file dropped on the text is opened.
+            box.AllowDrop = true;
+            box.DragEnter += delegate(object sender, DragEventArgs e)
+            {
+                if (e.Data.GetDataPresent(DataFormats.FileDrop)) { e.Effect = DragDropEffects.Copy; }
+            };
+            box.DragDrop += delegate(object sender, DragEventArgs e)
+            {
+                string[] dropped = e.Data.GetData(DataFormats.FileDrop) as string[];
+                if (dropped != null && dropped.Length > 0) { OpenFile(dropped[0]); }
+            };
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(tools, 0, row++);
 
             // To read later.
@@ -920,6 +1036,113 @@ namespace ModernVoicesReader
             box.Focus();
         }
 
+        // ---- files
+
+        void ChooseFile()
+        {
+            using (OpenFileDialog dialog = new OpenFileDialog())
+            {
+                dialog.Title = "Open a file to read";
+                dialog.Filter = Files.Filter;
+                if (dialog.ShowDialog(this) == DialogResult.OK) { OpenFile(dialog.FileName); }
+            }
+        }
+
+        public void OpenFile(string path)
+        {
+            string text;
+            try { text = Files.Read(path); }
+            catch (Exception e)
+            {
+                Status("Could not open " + Path.GetFileName(path) + ": " + e.Message + ".");
+                return;
+            }
+            if (text.Trim().Length == 0) { Status(Path.GetFileName(path) + " has no text in it."); return; }
+            LoadText(text, 0, "");
+            Status("Opened " + Path.GetFileName(path) + ". Save it to the list to keep your place in it.");
+        }
+
+        // ---- the text as a sound file (WAV), made as fast as the voice can: not played
+
+        void ChooseAudioFile()
+        {
+            if (saver != null) { CancelSaving(); return; }
+            if (box.TextLength == 0) { Status("Nothing to save: paste some text first."); return; }
+            if (CurrentVoice == null) { Status("Choose a voice first."); return; }
+            using (SaveFileDialog dialog = new SaveFileDialog())
+            {
+                dialog.Title = "Save the text as sound";
+                dialog.Filter = "Sound (*.wav)|*.wav";
+                dialog.FileName = Files.SafeName(Store.TitleOf(box.Text)) + ".wav";
+                if (dialog.ShowDialog(this) == DialogResult.OK) { SaveAudio(dialog.FileName); }
+            }
+        }
+
+        public bool Saving { get { return saver != null; } }
+
+        public void SaveAudio(string path)
+        {
+            if (saver != null) { return; }
+            Prepared whole = Cleaner.Prepare(box.Text, tidyBox.Checked);
+            int length = Math.Max(1, whole.Text.Length);
+            try
+            {
+                saver = new SpeechSynthesizer();
+                saver.SelectVoice(CurrentVoice.Name);
+                saver.Rate = rateBar.Value;
+                saver.SetOutputToWaveFile(path, new SpeechAudioFormatInfo(22050, AudioBitsPerSample.Sixteen, AudioChannel.Mono));
+                savingTo = path;
+                saver.SpeakProgress += delegate(object sender, SpeakProgressEventArgs e)
+                {
+                    if (InvokeRequired || saver == null) { return; }
+                    Status("Saving as sound: " + Math.Min(99, 100 * e.CharacterPosition / length) + "%  (" + Path.GetFileName(savingTo) + ")");
+                };
+                saver.SpeakCompleted += delegate(object sender, SpeakCompletedEventArgs e)
+                {
+                    bool finished = !e.Cancelled && e.Error == null;
+                    string problem = e.Error == null ? "" : e.Error.Message;
+                    // (Tidied up once this event is over: the voice can't be let go from inside it.)
+                    BeginInvoke(new MethodInvoker(delegate { SavingEnded(finished, problem); }));
+                };
+                saver.SpeakAsync(whole.Text);
+            }
+            catch (Exception e)
+            {
+                SavingEnded(false, e.Message);
+                return;
+            }
+            audioButton.Text = "Stop saving";
+            Status("Saving as sound: 0%  (" + Path.GetFileName(path) + ")");
+        }
+
+        void CancelSaving()
+        {
+            if (saver == null) { return; }
+            try { saver.SpeakAsyncCancelAll(); } catch (Exception) { SavingEnded(false, ""); }
+        }
+
+        void SavingEnded(bool finished, string problem)
+        {
+            if (saver != null)
+            {
+                try { saver.SetOutputToNull(); } catch (Exception) { }
+                try { saver.Dispose(); } catch (Exception) { }
+                saver = null;
+            }
+            audioButton.Text = "Save as sound...";
+            if (finished && File.Exists(savingTo))
+            {
+                long bytes = new FileInfo(savingTo).Length;
+                Status("Saved " + Path.GetFileName(savingTo) + ": " + Clock(Math.Max(0, bytes - 44) / 44100.0) + " long, " +
+                    (bytes / 1048576.0).ToString("0.#", CultureInfo.InvariantCulture) + " MB.");
+            }
+            else
+            {
+                try { if (File.Exists(savingTo)) { File.Delete(savingTo); } } catch (Exception) { }
+                Status(problem.Length > 0 ? "Could not save the sound: " + problem : "Saving stopped: no file made.");
+            }
+        }
+
         // ---- the clipboard
 
         static string ClipboardText()
@@ -1057,6 +1280,7 @@ namespace ModernVoicesReader
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             if (mode != Mode.Stopped) { Halt(); }
+            if (saver != null) { try { saver.SpeakAsyncCancelAll(); } catch (Exception) { } SavingEnded(false, ""); }
             Remember();
             try { RemoveClipboardFormatListener(Handle); } catch (Exception) { }
             base.OnFormClosing(e);
@@ -1106,7 +1330,14 @@ namespace ModernVoicesReader
             Application.SetCompatibleTextRenderingDefault(false);
             if (args.Length >= 2 && args[0] == "--selftest") { return SelfTest.Run(args[1]); }
             string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Modern Voices Reader");
-            Application.Run(new MainForm(new Store(folder), false));
+            MainForm form = new MainForm(new Store(folder), false);
+            // A file given to the program (dropped on it, or "Open with") is opened.
+            if (args.Length >= 1 && File.Exists(args[0]))
+            {
+                string given = args[0];
+                form.Shown += delegate { form.OpenFile(given); };
+            }
+            Application.Run(form);
             return 0;
         }
     }
@@ -1153,6 +1384,36 @@ namespace ModernVoicesReader
                     "a sentence's start is found from a place in it");
                 Check(MainForm.Clock(75) == "1:15" && MainForm.Clock(3725) == "1:02:05", "times are shown as m:ss and h:mm:ss");
 
+                // Files: plain text however it is stored, a Word document, a web page.
+                string made = Path.Combine(folder, "files");
+                if (Directory.Exists(made)) { Directory.Delete(made, true); }
+                Directory.CreateDirectory(made);
+                File.WriteAllText(Path.Combine(made, "utf8.txt"), "Caf\u00e9 na\u00efve \u2013 text.", new UTF8Encoding(false));
+                File.WriteAllBytes(Path.Combine(made, "ansi.txt"), Encoding.GetEncoding(1252).GetBytes("Caf\u00e9 na\u00efve text."));
+                File.WriteAllText(Path.Combine(made, "utf16.txt"), "Caf\u00e9 text.", Encoding.Unicode);
+                Check(Files.Read(Path.Combine(made, "utf8.txt")) == "Caf\u00e9 na\u00efve \u2013 text." && Files.Read(Path.Combine(made, "utf16.txt")) == "Caf\u00e9 text.",
+                    "plain text is read as UTF-8 and UTF-16");
+                log.AppendLine("ansi: " + Files.Read(Path.Combine(made, "ansi.txt")) + " (this PC's code page: " + Encoding.Default.CodePage + ")");
+                Check(Encoding.Default.CodePage != 1252 || Files.Read(Path.Combine(made, "ansi.txt")) == "Caf\u00e9 na\u00efve text.", "plain text that is not UTF-8 is read in Windows' own code page");
+                string word = Path.Combine(made, "letter.docx");
+                using (ZipArchive zip = ZipFile.Open(word, ZipArchiveMode.Create))
+                {
+                    using (StreamWriter w = new StreamWriter(zip.CreateEntry("word/document.xml").Open(), new UTF8Encoding(false)))
+                    {
+                        w.Write("<?xml version=\"1.0\" encoding=\"UTF-8\"?><w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body>" +
+                            "<w:p><w:r><w:t>Dear reader,</w:t></w:r></w:p>" +
+                            "<w:p><w:r><w:t xml:space=\"preserve\">This is </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>bold</w:t></w:r><w:r><w:t xml:space=\"preserve\"> and</w:t><w:tab/><w:t>tabbed.</w:t><w:br/><w:t>Next line.</w:t></w:r></w:p>" +
+                            "<w:p><w:r><w:instrText>PAGE</w:instrText></w:r></w:p></w:body></w:document>");
+                    }
+                }
+                string fromWord = Files.Read(word);
+                log.AppendLine("docx: " + fromWord.Replace("\r\n", " / "));
+                Check(fromWord == "Dear reader,\r\nThis is bold and tabbed.\r\nNext line.\r\n\r\n", "a Word document's paragraphs, runs, tabs and line breaks are read (not its field codes)");
+                string fromHtml = Files.FromHtml("<html><head><title>T</title><style>p{color:red}</style></head><body><h1>Heading</h1><p>One &amp; two<br>three.</p><script>x()</script><p>Last&nbsp;one.</p></body></html>");
+                log.AppendLine("html: " + fromHtml.Replace("\r\n", " / "));
+                Check(fromHtml == "Heading\r\nOne & two\r\nthree.\r\nLast\u00a0one.", "a web page's words are read (not its scripts or styles)");
+                Check(Files.SafeName("What: is/this? ") == "What is this", "a file name is made from a title");
+
                 // The window, with nothing kept from before.
                 string data = Path.Combine(folder, "data");
                 if (Directory.Exists(data)) { Directory.Delete(data, true); }
@@ -1190,6 +1451,17 @@ namespace ModernVoicesReader
                     Check(form.Reading, "Pause keeps the reading");
                     form.Stop();
                     Check(!form.Reading && form.Position == paused && paused > 0, "Stop keeps the place (" + paused + ")");
+
+                    // A file opened into the box; the text saved as sound.
+                    form.OpenFile(word);
+                    Check(form.BoxText == fromWord && form.Position == 0, "Open a file puts its text in the box");
+                    form.TestLoad(text, paused);
+                    string wav = Path.Combine(made, "saved.wav");
+                    form.SaveAudio(wav);
+                    Check(form.Saving, "saving as sound starts");
+                    bool saved = WaitWhile(delegate { return form.Saving; }, 120);
+                    double seconds = File.Exists(wav) ? (new FileInfo(wav).Length - 44) / 44100.0 : 0;
+                    Check(saved && seconds > 4 && seconds < 40, "the text is saved as a WAV file (" + seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s of sound)");
 
                     // Kept between runs: the text, its place, and the list.
                     form.TestSave();
