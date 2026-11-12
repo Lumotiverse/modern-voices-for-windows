@@ -749,7 +749,7 @@ namespace ModernVoicesReader
             Text = "Modern Voices: Reader";
             Font = new Font("Segoe UI", 9f);
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(Px(560), Px(380));
+            MinimumSize = new Size(Px(840), Px(380));
             Size = new Size(Px(900), Px(640));
             Padding = new Padding(Px(8));
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception) { }
@@ -891,8 +891,9 @@ namespace ModernVoicesReader
             // How far, how long is left; what is read; the theme.
             TableLayoutPanel under = NewLine(true, false, false);
             FlowLayoutPanel left = NewFlow();
+            left.WrapContents = false;     // (one line: the window is never narrower than it needs)
             progress = new ProgressBar();
-            progress.Maximum = 1000; progress.Width = Px(150); progress.Height = Px(16); progress.Anchor = AnchorStyles.Left;
+            progress.Maximum = 1000; progress.Width = Px(120); progress.Height = Px(16); progress.Anchor = AnchorStyles.Left;
             progress.Margin = new Padding(3, Px(6), Px(6), Px(6));
             timeLabel = NewLabel("", false);
             timeLabel.MinimumSize = new Size(Px(112), 0);
