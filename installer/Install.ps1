@@ -1120,7 +1120,12 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $defaultButton.add_Click({ Set-UiDefaultVoice })
     $sapiButton.add_Click({ Start-Process "$env:SystemRoot\System32\Speech\SpeechUX\sapi.cpl" })
     $wordList.add_SelectedIndexChanged({ Update-UiWordFields })
-    $wordList.add_ItemChecked({ if (-not $script:Ui.Filling) { Save-UiWords } })
+    # (A tick that differs from its rule: one the person made. Windows also reports every ticked row as the
+    # list is first drawn, which changes nothing and saves nothing.)
+    $wordList.add_ItemChecked({
+        param($sender, $e)
+        if (-not $script:Ui.Filling -and $null -ne $e.Item.Tag -and ([bool]$e.Item.Tag.On -ne $e.Item.Checked)) { Save-UiWords }
+    })
     $wordSave.add_Click({ Save-UiWord })
     $wordNew.add_Click({ Clear-UiWordFields })
     $wordRemove.add_Click({ Remove-UiWord })
@@ -1521,7 +1526,8 @@ function Add-UiWordRow($Rule) {
     $item = New-Object System.Windows.Forms.ListViewItem([string]$Rule.From)
     [void]$item.SubItems.Add([string]$Rule.To)
     [void]$item.SubItems.Add((Format-UiWordMatch $Rule))
-    $item.Tag = $Rule
+    # (A table of its own: what the row holds must not depend on how PowerShell wraps the rule it came from.)
+    $item.Tag = @{ On = [bool]$Rule.On; Whole = [bool]$Rule.Whole; Case = [bool]$Rule.Case; From = [string]$Rule.From; To = [string]$Rule.To }
     $item.Checked = [bool]$Rule.On
     [void]$script:Ui.WordList.Items.Add($item)
     return $item
@@ -1541,7 +1547,11 @@ function Update-UiWordList {
 function Save-UiWords {
     $ui = $script:Ui
     $rules = @()
-    foreach ($item in $ui.WordList.Items) { $item.Tag.On = $item.Checked; $rules += $item.Tag }
+    foreach ($item in $ui.WordList.Items) {
+        if ($null -eq $item.Tag) { return }      # (a row not yet whole: nothing is written, so nothing is lost)
+        $item.Tag.On = $item.Checked
+        $rules += $item.Tag
+    }
     try { Set-Dictionary $DictionaryFile $rules }
     catch { $ui.Status.Text = "Could not save the pronunciation rules: $($_.Exception.Message)" }
 }
@@ -1570,7 +1580,7 @@ function Save-UiWord {
     $from = ($ui.WordFrom.Text -replace '\s+', ' ').Trim()
     $to = ($ui.WordTo.Text -replace '\s+', ' ').Trim()
     if (-not $from) { $ui.Status.Text = 'Type the word or phrase first.'; return }
-    $rule = [pscustomobject]@{ On = $true; Whole = $ui.WordWhole.Checked; Case = $ui.WordCase.Checked; From = $from; To = $to }
+    $rule = @{ On = $true; Whole = [bool]$ui.WordWhole.Checked; Case = [bool]$ui.WordCase.Checked; From = $from; To = $to }
     $target = if ($ui.WordList.SelectedItems.Count) { $ui.WordList.SelectedItems[0] } else { $null }
     if (-not $target) {
         foreach ($item in $ui.WordList.Items) {
