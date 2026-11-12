@@ -1,14 +1,14 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.9.9 (12 Nov 2026).
+Last updated at version 0.10.0 (12 Nov 2026).
 
 ## What it is
 
-A private project for Luke (GitHub: Lumotiverse). It is not published for others. It adds modern,
+A private project for Lumoti (GitHub: Lumotiverse). It is not published for others. It adds modern,
 offline Piper voices (English only for now) to Windows as SAPI 5 voices, for any program that speaks
 with Windows' voices but can't use Narrator's natural voices. It must keep working in World of Warcraft
-(WoW Forever, with Luke's TTS Enhanced addon), though WoW isn't the focus. It has three parts:
+(WoW Forever, with Lumoti's TTS Enhanced addon), though WoW isn't the focus. It has three parts:
 
 | Part | What | Language | Where |
 |---|---|---|---|
@@ -16,20 +16,20 @@ with Windows' voices but can't use Narrator's natural voices. It must keep worki
 | Modern Voices Config | The installer and settings window: Voice manager, Speed and pauses, Pronunciation, Add or remove voices. | PowerShell 5.1 + WinForms | `installer/Install.ps1` (plus `VoiceConvert.ps1`, `Test.ps1`, `Speak.ps1`, `Ocr.ps1`, `Uninstall.ps1`) |
 | Modern Voices: Reader | A small app that reads pasted or copied text, files and screen regions. It has play/pause/stop, time left, saves as WAV, and remembers its place per file. | C# 5 (built with Windows' own `csc.exe`, .NET Framework 4) | `reader/Reader.cs`, `reader/Build.ps1` |
 
-The user-facing documentation is `kit/README.txt`, and it is accurate for 0.9.9. Read it to see what
+The user-facing documentation is `kit/README.txt`, and it is accurate for 0.10.0. Read it to see what
 each feature does.
 
-## Luke's standing rules
+## Lumoti's standing rules
 
 - **Before any build request, say whether it needs Fable (complicated: new features, engine work,
   multi-part changes) or Opus 5.5 (simple and safe changes to working code)**, so he can switch model
   first. If he's already on the right one, say so and proceed.
-- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.9.9.zip`.
+- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.10.0.zip`.
 - Every build must update in place (since 0.9.6): the new kit's Install.cmd run over the installed version
   keeps voices, settings, nicknames and pronunciations, with no uninstall and no re-download. If a build
   changes where or how any of those are stored, it must carry the old ones over. Test-Kit has an 'Update' step.
 - The GitHub `README.md` must not mention World of Warcraft; it credits the Spoken Players voicepack engine,
-  says Claude wrote all the code, and keeps Luke's two lines ("All work ... Claude.ai" / "Code provided by ...").
+  says Claude wrote all the code, and keeps Lumoti's two lines ("All work ... Claude.ai" / "Code provided by ...").
 - Icons: the speech bubble with the speaker (the Reader's exe icon) is the program's default icon (Installed
   apps, Start menu entries); the bubble with the cog (`manager.ico`) is for Modern Voices Config only; the bubble with the wrench
   (`repair.ico`) is Modern Voices Repair's. All three are drawn by `tools/make_icons.py`.
@@ -126,9 +126,9 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.9.9)
+## Current state (0.10.0)
 
-Everything above works and is tested on the CI Windows machine. Luke has been using it and sending UI
+Everything above works and is tested on the CI Windows machine. Lumoti has been using it and sending UI
 tweaks one batch at a time; the last batch (0.9.4) is done and delivered: the moon moved and greyed in
 both windows, and the clipped last word fixed in the engine (`with_end_mark` in `text.rs` adds a full
 stop to an unmarked sentence end; `TAIL_MS` of silence is written after a Speak call's last word).
@@ -137,20 +137,27 @@ clipboard's "HTML Format" bytes itself as UTF-8 (`CopiedHtml`; .NET's `Clipboard
 them in the ANSI code page, which turned ' and ... into mojibake); the engine says sums of money aloud
 (`money` in `text.rs`, applied after the dictionary); the Reader's moon became a cog that opens Config,
 and the Reader follows Config's moon by re-reading the registry `Theme` value on its 500 ms tick.
-Luke confirmed 0.9.5 works. 0.9.6: update in place (`$updating` in Install.ps1's main flow,
+Lumoti confirmed 0.9.5 works. 0.9.6: update in place (`$updating` in Install.ps1's main flow,
 `Close-OurPrograms`, `Remove-Leftovers`) and the default icon (`Get-AppIcon`).
 0.9.7: Start menu entries renamed Modern Voices Repair (wrench icon) and Modern Voices Test; the
 Reader asks before a second instance (`AnotherWanted` in `Program`) and no longer keeps the box's text
 between runs; `Loading program...` is said by Install.cmd and Install.ps1; the README was rewritten.
 Default pronunciation rules: `$DefaultRuleSets` / `Add-DefaultRules` in Install.ps1 add each named set
 once (registry `RuleSets`), never overwriting or re-adding. Sets: `smileys1`, `chat1` (rn, np, wp, lf
-installed switched off, at Luke's say) and `trade1`, from his old TTS Enhanced addon. He said to leave
+installed switched off, at Lumoti's say) and `trade1`, from his old TTS Enhanced addon. He said to leave
 the game-instance abbreviations out. A changed or extra default rule needs a NEW set name.
 0.9.8: the Reader's undo and redo (`NoteChange`, `StepBack` in `MainForm`; ten steps; Ctrl+Z, Ctrl+Y,
 the two buttons left of Clear); the window's least width is now 920.
 0.9.9: the Reader's button row is start, play, stop, a wider gap, Open a file, Read clipboard, a
 magnifying glass (E721: read an area of the screen), Save as audio.
-Not yet confirmed by Luke:
+0.10.0, in the Reader: the voice list is owner-drawn with a dot per row (filled: Windows' default voice);
+`DotList` subclasses the dropped list's window to take clicks on the dots (the list stays open) and to
+show the tooltip. A nickname box and tick beside Voice run `installer/Nickname.ps1` elevated (UAC), which
+renames the token and writes the Nicknames key without needing the catalogue. The row under the buttons
+is a Panel placed by `AlignLine` against the buttons above. Read clipboard is now Paste and read. The
+wrench is double-ended and is also Test's and Uninstall's Start menu icon.
+The owner (GitHub: Lumotiverse) is to be called Lumoti in anything public, never by any other name.
+Not yet confirmed by Lumoti:
 
 - the 0.9.7 and 0.9.8 items above on his machine;
 
@@ -164,17 +171,17 @@ Not yet confirmed by Luke:
 - the Reader's progress row lining up with the buttons on his screen;
 - pasting from real browsers keeping paragraphs and bullets.
 
-## Ideas discussed but not built (only when Luke asks)
+## Ideas discussed but not built (only when Lumoti asks)
 
 - **Accurate time-left countdown:** run the text through the voice silently in the background and
   measure the real length. Also remember each voice's measured pace for the initial estimate. Agreed in
   principle (the estimate said 1:27 where the real audio was 1:22); Opus-sized.
 - **MP3 export:** needs a bundled encoder. Save as sound is WAV only for now.
 - **PDF and old .doc support** in the Reader.
-- **A "save text to a file" button** in the Reader (it replaced the removed read-later list; Luke saves
+- **A "save text to a file" button** in the Reader (it replaced the removed read-later list; Lumoti saves
   files himself for now).
 - **More TTS Enhanced features:** the addon's source is at `/home/claude/reference/TTSEnhanced0.36.1-source.txt`
-  in the original session; ask Luke for it if needed. Pauses and the pronunciation dictionary are done.
+  in the original session; ask Lumoti for it if needed. Pauses and the pronunciation dictionary are done.
   Raid-icon stripping was left out as WoW-only.
-- Ruled out by Luke: a browser extension, double right-click or double Ctrl+C triggers, LM Studio
+- Ruled out by Lumoti: a browser extension, double right-click or double Ctrl+C triggers, LM Studio
   integration (for now), and a tray icon.

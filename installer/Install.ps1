@@ -59,7 +59,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.9.9'
+$Version = '0.10.0'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -1925,7 +1925,8 @@ function Register-Voice([string]$TokenRoot, [string]$Id, $Entry, [string]$Speake
 }
 
 # The program's icon (the speech bubble with the speaker: the Reader's own, which Windows' Installed apps
-# and the Start menu show); Modern Voices Config has its own, the bubble with the cog.
+# shows); Modern Voices Config has its own, the bubble with the cog, and Repair, Test and Uninstall in the
+# Start menu the bubble with the wrench.
 function Get-AppIcon {
     $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
     if (Test-Path $readerExe) { return "$readerExe,0" }
@@ -1982,8 +1983,8 @@ function Register-Program {
         $link.Save()      # (its icon is the program's own)
     }
     New-Shortcut (Join-Path $StartMenu 'Modern Voices Repair.lnk') ($common + 'Install.ps1" -Repair') 'Register the voices again (if one went missing from programs)' "$App\installer\repair.ico,0"
-    New-Shortcut (Join-Path $StartMenu 'Modern Voices Test.lnk') ($common + 'Test.ps1"') 'Hear each Modern Voice, with each word shown as the engine reports it'
-    New-Shortcut (Join-Path $StartMenu 'Uninstall.lnk') ($common + 'Uninstall.ps1"') "Uninstall $AppName"
+    New-Shortcut (Join-Path $StartMenu 'Modern Voices Test.lnk') ($common + 'Test.ps1"') 'Hear each Modern Voice, with each word shown as the engine reports it' "$App\installer\repair.ico,0"
+    New-Shortcut (Join-Path $StartMenu 'Uninstall.lnk') ($common + 'Uninstall.ps1"') "Uninstall $AppName" "$App\installer\repair.ico,0"
 }
 
 # Runs a program with no window and returns what it printed; the manager window keeps responding meanwhile.

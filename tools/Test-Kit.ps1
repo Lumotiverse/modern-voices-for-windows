@@ -265,6 +265,32 @@ Check ($code -eq 0) 'repair finished without errors'
 [void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })
 Set-VoiceSettings $albaDir 1 1.5 1
 
+Step 'A nickname from the Reader (Nickname.ps1, which it runs as administrator)'
+$nickScript = Join-Path $App 'installer\Nickname.ps1'
+$albaToken = 'ModernVoices_en_GB-alba-medium'
+$nameWas = (Get-ItemProperty (Join-Path $Tokens64 $albaToken)).'(default)'
+$nick64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes(' Story (teller) '))
+& $PS64 -NoProfile -ExecutionPolicy Bypass -File $nickScript -Token $albaToken -Nick64 $nick64
+Check ($LASTEXITCODE -eq 0) 'the nickname script finished without errors'
+$nameNow = (Get-ItemProperty (Join-Path $Tokens64 $albaToken)).'(default)'
+$name32 = if ($has32) { (Get-ItemProperty (Join-Path $Tokens32 "$albaToken\Attributes")).Name } else { $nameNow }
+$nameWanted = $nameWas -replace '\([^()]*\)\s*$', '(Story teller)'
+$kept = (Get-ItemProperty 'HKLM:\SOFTWARE\Modern Voices for Windows\Nicknames').'en_GB-alba-medium'
+Check ($nameNow -eq $nameWanted -and $nameNow -ne $nameWas -and $name32 -eq $nameNow -and $kept -eq 'Story teller') "the voice is renamed for 64- and 32-bit programs, and Config knows the nickname ($nameWas -> $nameNow)"
+& $PS64 -NoProfile -ExecutionPolicy Bypass -File $nickScript -Token 'TTS_MS_EN-US_DAVID_11.0' -Nick64 $nick64
+Check ($LASTEXITCODE -eq 2) "a voice that is not a Modern Voice is refused"
+& $PS64 -NoProfile -ExecutionPolicy Bypass -File $nickScript -Token $albaToken -Nick64 ([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes('  ')))
+Check ($LASTEXITCODE -eq 2) "an empty nickname is refused"
+# (As it was.)
+foreach ($root in $Tokens64, $Tokens32) {
+    Set-ItemProperty (Join-Path $root $albaToken) -Name '(default)' -Value $nameWas
+    Set-ItemProperty (Join-Path $root "$albaToken\Attributes") -Name 'Name' -Value $nameWas
+}
+Remove-ItemProperty 'HKLM:\SOFTWARE\Modern Voices for Windows\Nicknames' -Name 'en_GB-alba-medium' -ErrorAction SilentlyContinue
+$menuTest = (New-Object -ComObject WScript.Shell).CreateShortcut("$menu\Modern Voices Test.lnk").IconLocation
+$menuGone = (New-Object -ComObject WScript.Shell).CreateShortcut("$menu\Uninstall.lnk").IconLocation
+Check ($menuTest -like '*repair.ico,0' -and $menuGone -like '*repair.ico,0') "Start menu: Modern Voices Test and Uninstall have the wrench"
+
 Step 'Update (a kit run over an older version: voices and settings kept)'
 $ourKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows'
 $versionNow = (Get-ItemProperty $ourKey).DisplayVersion

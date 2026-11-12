@@ -53,14 +53,13 @@ def wrench():
     def along(t, across=0.0):                # a point t along the wrench from the middle, and across it
         return (cx + (t - across) * u, cy - (t + across) * u)
 
-    d.line([along(-215), along(120)], fill=BLACK, width=96)                       # the handle
-    foot = along(-215)
-    d.ellipse((foot[0] - 48, foot[1] - 48, foot[0] + 48, foot[1] + 48), fill=BLACK)
-    head = along(165)
-    d.ellipse((head[0] - 150, head[1] - 150, head[0] + 150, head[1] + 150), fill=BLACK)
-    d.polygon([along(150, -62), along(340, -62), along(340, 62), along(150, 62)], fill=WHITE)   # the jaws' gap
-    gap = along(150)
-    d.ellipse((gap[0] - 62, gap[1] - 62, gap[0] + 62, gap[1] + 62), fill=WHITE)
+    d.line([along(-150), along(150)], fill=BLACK, width=88)                       # the handle
+    for way in (1, -1):                                                           # a head with open jaws at each end
+        head = along(way * 185)
+        d.ellipse((head[0] - 128, head[1] - 128, head[0] + 128, head[1] + 128), fill=BLACK)
+        d.polygon([along(way * 180, -50), along(way * 360, -50), along(way * 360, 50), along(way * 180, 50)], fill=WHITE)
+        gap = along(way * 180)
+        d.ellipse((gap[0] - 50, gap[1] - 50, gap[0] + 50, gap[1] + 50), fill=WHITE)
     return image
 
 

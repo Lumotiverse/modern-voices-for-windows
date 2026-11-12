@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.9.9.0")]
+[assembly: System.Reflection.AssemblyVersion("0.10.0.0")]
 
 namespace ModernVoicesReader
 {
@@ -722,8 +722,64 @@ namespace ModernVoicesReader
     {
         public string Name;      // what Windows calls it (what is asked for)
         public string Shown;     // its nickname, if it has one
+        public string TokenId;   // its name in Windows' list of voices (the registry)
         public bool Ours;
         public override string ToString() { return Shown; }
+    }
+
+    // ---------------------------------------------------------------- the voice list's dots
+
+    // The dropped-down list of voices: each row starts with a dot, filled for Windows' default voice. A
+    // click on a dot makes that voice the default (the list stays open, and the voice read with stays as
+    // it is); a click on a name chooses the voice, as in any list.
+    public class DotList : NativeWindow
+    {
+        public int Zone;                     // how wide the dots' column is
+        public Action<int> DotClicked;       // (the row)
+        public Action<bool> OverDot;         // the pointer came over a dot, or left
+
+        [DllImport("user32.dll")]
+        static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr w, IntPtr l);
+        [DllImport("user32.dll")]
+        static extern bool GetClientRect(IntPtr hwnd, out DotRect r);
+        [DllImport("user32.dll")]
+        static extern bool InvalidateRect(IntPtr hwnd, IntPtr r, bool erase);
+        [StructLayout(LayoutKind.Sequential)]
+        public struct DotRect { public int Left, Top, Right, Bottom; }
+
+        bool over;
+
+        // The row whose dot the pointer is on (-1: none).
+        int RowAt(IntPtr l)
+        {
+            int x = (short)((long)l & 0xFFFF), y = (short)(((long)l >> 16) & 0xFFFF);
+            DotRect r;
+            if (!GetClientRect(Handle, out r) || x < 0 || x >= Zone || y < 0 || y >= r.Bottom) { return -1; }
+            long found = (long)SendMessage(Handle, 0x01A9, IntPtr.Zero, l);          // LB_ITEMFROMPOINT
+            return ((found >> 16) & 0xFFFF) != 0 ? -1 : (int)(found & 0xFFFF);
+        }
+
+        public void Redraw() { if (Handle != IntPtr.Zero) { InvalidateRect(Handle, IntPtr.Zero, false); } }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == 0x0201 || m.Msg == 0x0202 || m.Msg == 0x0203)                 // left button: down, up, double
+            {
+                int row = RowAt(m.LParam);
+                if (row >= 0)
+                {
+                    if (m.Msg != 0x0202 && DotClicked != null) { DotClicked(row); }
+                    m.Result = IntPtr.Zero;
+                    return;                                                        // (not the list's: nothing is chosen, it stays open)
+                }
+            }
+            else if (m.Msg == 0x0200)                                              // the pointer moves
+            {
+                bool now = RowAt(m.LParam) >= 0;
+                if (now != over) { over = now; if (OverDot != null) { OverDot(now); } }
+            }
+            base.WndProc(ref m);
+        }
     }
 
     // ---------------------------------------------------------------- the window
@@ -763,6 +819,26 @@ namespace ModernVoicesReader
         public readonly float Dpi;
 
         ComboBox voiceBox;
+        TextBox nickBox;                 // a new nickname for the voice chosen
+        Button nickButton;
+        Panel underPanel;                // the line under the buttons: its four things are placed by AlignLine
+        readonly DotList dots = new DotList();
+        readonly ToolTip dotTip = new ToolTip();
+        string defaultToken = "";        // Windows' default voice (its name in the registry)
+        const string DefaultVoiceKey = @"Software\Microsoft\Speech\Voices";
+        const string TokensPath = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\";
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr w, string l);
+        [DllImport("user32.dll")]
+        static extern bool GetComboBoxInfo(IntPtr combo, ref ComboInfo info);
+        [StructLayout(LayoutKind.Sequential)]
+        struct ComboInfo
+        {
+            public int Size;
+            public DotList.DotRect Item, Button;
+            public int ButtonState;
+            public IntPtr Combo, Edit, List;
+        }
         Label configButton;              // a cog to click: opens Modern Voices Config
         string shownTheme;               // the theme the window wears (Config changes it: the tick follows)
         int alignedFor;                  // the time's width the line under the buttons was laid out for
@@ -891,16 +967,166 @@ namespace ModernVoicesReader
             return b;
         }
 
-        // The line under the buttons is as wide as the buttons from the first to "Save as audio": the
-        // progress bar takes up the difference.
+        // The line under the buttons is placed against them: the progress bar and the time under the first
+        // buttons, "Read copied text instantly" starting where Paste and read does, and "Don't read links,
+        // code or symbols" ending where the undo button begins.
+        bool aligning;
         void AlignLine()
         {
-            if (audioButton == null || tidyBox == null || !IsHandleCreated) { return; }
-            int others = progress.Margin.Right + timeLabel.Width + timeLabel.Margin.Horizontal + autoBox.Width + autoBox.Margin.Horizontal +
-                tidyBox.Width + tidyBox.Margin.Left;
-            int wanted = audioButton.Right - startButton.Left - others;
-            progress.Width = Math.Max(Px(50), wanted);
-            alignedFor = timeLabel.Width;
+            if (underPanel == null || undoButton == null || !IsHandleCreated || aligning) { return; }
+            aligning = true;
+            try
+            {
+                Func<Control, int> leftOf = delegate(Control c) { return underPanel.PointToClient(c.Parent.PointToScreen(c.Location)).X; };
+                int start = leftOf(startButton), paste = leftOf(clipboardButton), undo = leftOf(undoButton);
+                autoBox.Left = paste;
+                tidyBox.Left = undo - tidyBox.Width;
+                progress.Left = start;
+                progress.Width = Math.Max(Px(50), paste - Px(10) - timeLabel.Width - Px(6) - start);
+                timeLabel.Left = progress.Right + Px(6);
+                foreach (Control c in new Control[] { progress, timeLabel, autoBox, tidyBox }) { c.Top = Math.Max(0, (underPanel.Height - c.Height) / 2); }
+                alignedFor = timeLabel.Width;
+                // (Never one over the other: the window is no narrower than they need.)
+                int lacking = autoBox.Right + Px(10) - tidyBox.Left;
+                if (lacking > 0 && WindowState == FormWindowState.Normal) { MinimumSize = new Size(Width + lacking, MinimumSize.Height); }
+            }
+            finally { aligning = false; }
+        }
+
+        // ---- the voice list's dots, and the nickname
+
+        void HookVoiceList()
+        {
+            try
+            {
+                ComboInfo info = new ComboInfo();
+                info.Size = Marshal.SizeOf(typeof(ComboInfo));
+                dots.ReleaseHandle();
+                if (GetComboBoxInfo(voiceBox.Handle, ref info) && info.List != IntPtr.Zero) { dots.AssignHandle(info.List); }
+            }
+            catch (Exception) { }
+        }
+
+        void ReadDefaultVoice()
+        {
+            defaultToken = "";
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(DefaultVoiceKey))
+                {
+                    string id = key == null ? "" : Convert.ToString(key.GetValue("DefaultTokenId", ""));
+                    int cut = id.LastIndexOf('\\');
+                    defaultToken = cut >= 0 ? id.Substring(cut + 1) : id;
+                }
+            }
+            catch (Exception) { }
+        }
+        public string DefaultToken { get { ReadDefaultVoice(); return defaultToken; } }
+
+        // Makes a voice Windows' default (what programs that don't choose a voice speak with).
+        public void SetDefaultVoice(VoiceChoice voice)
+        {
+            if (voice == null || string.IsNullOrEmpty(voice.TokenId)) { return; }
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(DefaultVoiceKey))
+                {
+                    key.SetValue("DefaultTokenId", TokensPath + voice.TokenId, RegistryValueKind.String);
+                }
+                defaultToken = voice.TokenId;
+                dots.Redraw();
+                Status("Windows' default voice is now " + voice.Shown + ". Programs that were open use it once restarted.");
+            }
+            catch (Exception e) { Status("Windows' default voice was not changed: " + e.Message); }
+        }
+        public void TestSetDefault(int row) { SetDefaultVoice((VoiceChoice)voiceBox.Items[row]); }
+        public string TestToken(int row) { return ((VoiceChoice)voiceBox.Items[row]).TokenId; }
+
+        void DrawVoice(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= voiceBox.Items.Count) { return; }
+            VoiceChoice voice = (VoiceChoice)voiceBox.Items[e.Index];
+            Palette p = Theme.Get(Theme.IsDark());
+            bool closed = (e.State & DrawItemState.ComboBoxEdit) != 0;       // (the box itself: the name alone)
+            bool lit = !closed && (e.State & DrawItemState.Selected) != 0;
+            Color back = lit ? p.Accent : p.Input, fore = lit ? Color.White : p.Text;
+            using (SolidBrush fill = new SolidBrush(back)) { e.Graphics.FillRectangle(fill, e.Bounds); }
+            int x = e.Bounds.Left + Px(2);
+            if (!closed)
+            {
+                int size = Px(12), left = e.Bounds.Left + (dots.Zone - size) / 2, topAt = e.Bounds.Top + (e.Bounds.Height - size) / 2;
+                SmoothingMode was = e.Graphics.SmoothingMode;
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                using (Pen ring = new Pen(lit ? Color.White : p.Muted, Math.Max(1f, Dpi * 1.2f))) { e.Graphics.DrawEllipse(ring, left, topAt, size, size); }
+                if (string.Equals(voice.TokenId, defaultToken, StringComparison.OrdinalIgnoreCase))
+                {
+                    int inner = size - Px(6);
+                    using (SolidBrush dot = new SolidBrush(fore)) { e.Graphics.FillEllipse(dot, left + (size - inner) / 2f, topAt + (size - inner) / 2f, inner, inner); }
+                }
+                e.Graphics.SmoothingMode = was;
+                x = e.Bounds.Left + dots.Zone;
+            }
+            TextRenderer.DrawText(e.Graphics, voice.Shown, voiceBox.Font, new Rectangle(x, e.Bounds.Top, e.Bounds.Right - x, e.Bounds.Height), fore,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+
+        void UpdateNickButton()
+        {
+            VoiceChoice voice = CurrentVoice;
+            bool ours = voice != null && voice.Ours;
+            nickBox.Enabled = ours;
+            nickButton.Enabled = ours && CleanNickname(nickBox.Text).Length > 0;
+        }
+
+        public static string CleanNickname(string typed)
+        {
+            return Regex.Replace(Regex.Replace(typed ?? "", @"[()\r\n]", " "), @"\s+", " ").Trim();
+        }
+
+        // Gives the voice chosen the nickname typed: Windows keeps voices' names where only an administrator
+        // may write, so a small script beside Modern Voices Config does it, with Windows' permission prompt.
+        void ChangeNickname()
+        {
+            VoiceChoice voice = CurrentVoice;
+            string nick = CleanNickname(nickBox.Text);
+            if (voice == null || !voice.Ours || nick.Length == 0) { return; }
+            try
+            {
+                string app = Path.GetDirectoryName(Path.GetDirectoryName(Application.ExecutablePath));
+                string script = Path.Combine(app, "installer", "Nickname.ps1");
+                if (!File.Exists(script)) { Status("The nickname was not changed: " + script + " was not found."); return; }
+                string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                bool narrow = Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess;
+                string shell = Path.Combine(windows, narrow ? "Sysnative" : "System32", @"WindowsPowerShell\v1.0\powershell.exe");
+                System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(shell,
+                    "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\" -Token " + voice.TokenId +
+                    " -Nick64 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(nick)));
+                start.UseShellExecute = true; start.Verb = "runas";
+                start.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+                int code;
+                using (System.Diagnostics.Process run = System.Diagnostics.Process.Start(start))
+                {
+                    if (!run.WaitForExit(30000)) { Status("The nickname was not changed (it took too long)."); return; }
+                    code = run.ExitCode;
+                }
+                if (code == 3) { Status("Another voice is already named that."); return; }
+                if (code != 0) { Status("The nickname was not changed (error " + code + ")."); return; }
+            }
+            catch (System.ComponentModel.Win32Exception) { Status("The nickname was not changed: Windows' permission was not given."); return; }
+            catch (Exception e) { Status("The nickname was not changed: " + e.Message); return; }
+            // The list again, with the same voice chosen under its new name.
+            string token = voice.TokenId;
+            FillVoices();
+            loading = true;
+            for (int i = 0; i < voiceBox.Items.Count; i++)
+            {
+                if (((VoiceChoice)voiceBox.Items[i]).TokenId == token) { voiceBox.SelectedIndex = i; }
+            }
+            if (voiceBox.SelectedIndex < 0 && voiceBox.Items.Count > 0) { voiceBox.SelectedIndex = 0; }
+            loading = false;
+            nickBox.Text = "";
+            VoiceChanged();
+            Status("Now named " + (CurrentVoice == null ? nick : CurrentVoice.Name) + ". Programs that were open show the new name once restarted.");
         }
 
         protected override void OnShown(EventArgs e)
@@ -964,23 +1190,53 @@ namespace ModernVoicesReader
             int row = 0;
 
             // The voice (left) and the speed (right).
-            TableLayoutPanel top = NewLine(false, false, true, false, false, false);
+            TableLayoutPanel top = NewLine(false, false, false, false, true, false, false, false);
             voiceBox = new ComboBox();
             voiceBox.DropDownStyle = ComboBoxStyle.DropDownList; voiceBox.Width = Px(260); voiceBox.Anchor = AnchorStyles.Left;
             voiceBox.SelectedIndexChanged += delegate { if (!loading) { VoiceChanged(); } };
+            // Each row drawn here: a dot (filled: Windows' default voice), then the voice's name.
+            voiceBox.DrawMode = DrawMode.OwnerDrawFixed;
+            voiceBox.ItemHeight = voiceBox.Font.Height + Px(5);
+            voiceBox.DrawItem += DrawVoice;
+            voiceBox.DropDown += delegate { ReadDefaultVoice(); };
+            voiceBox.DropDownClosed += delegate { dotTip.Hide(voiceBox); };
+            voiceBox.HandleCreated += delegate { HookVoiceList(); };
+            voiceBox.HandleDestroyed += delegate { dots.ReleaseHandle(); };
+            dots.Zone = Px(26);
+            dots.DotClicked = delegate(int row) { if (row < voiceBox.Items.Count) { SetDefaultVoice((VoiceChoice)voiceBox.Items[row]); } };
+            dots.OverDot = delegate(bool over)
+            {
+                if (!over) { dotTip.Hide(voiceBox); return; }
+                Point at = voiceBox.PointToClient(Cursor.Position);
+                dotTip.Show("Set Windows default voice", voiceBox, at.X + Px(18), at.Y + Px(18), 4000);
+            };
             top.Controls.Add(voiceBox, 0, 0);
             top.Controls.Add(NewLabel("Voice", false), 1, 0);
-            top.Controls.Add(NewLabel("Speed", false), 3, 0);
+            // A nickname for the voice chosen (its box says what it is for, in grey, while empty).
+            nickBox = new TextBox();
+            nickBox.Width = Px(170); nickBox.MaxLength = 40; nickBox.Anchor = AnchorStyles.Left;
+            nickBox.Margin = new Padding(Px(14), 3, 3, 3);
+            nickBox.HandleCreated += delegate { SendMessage(nickBox.Handle, 0x1501, (IntPtr)1, "Change nickname"); };   // EM_SETCUEBANNER
+            nickBox.TextChanged += delegate { UpdateNickButton(); };
+            nickBox.KeyDown += delegate(object sender, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; if (nickButton.Enabled) { ChangeNickname(); } }
+            };
+            nickButton = NewSymbolButton("\uE73E", "Set", "Give the voice chosen this nickname (Windows asks for permission)", delegate { ChangeNickname(); });
+            nickButton.Enabled = false;
+            top.Controls.Add(nickBox, 2, 0);
+            top.Controls.Add(nickButton, 3, 0);
+            top.Controls.Add(NewLabel("Speed", false), 5, 0);
             rateBar = new TrackBar();
             rateBar.Minimum = -10; rateBar.Maximum = 10; rateBar.TickFrequency = 5; rateBar.LargeChange = 1;
             rateBar.AutoSize = false; rateBar.Width = Px(150); rateBar.Height = Px(30); rateBar.Anchor = AnchorStyles.Left;
             rateBar.Margin = new Padding(3, Px(13), 3, 0);     // (its bar is drawn above its middle: lowered to line up with the labels)
             rateBar.TickStyle = TickStyle.None;
             rateBar.ValueChanged += delegate { RateChanged(); };
-            top.Controls.Add(rateBar, 4, 0);
+            top.Controls.Add(rateBar, 6, 0);
             rateLabel = NewLabel("0", false);
             rateLabel.MinimumSize = new Size(Px(26), 0);
-            top.Controls.Add(rateLabel, 5, 0);
+            top.Controls.Add(rateLabel, 7, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(top, 0, row++);
 
             // The text.
@@ -1014,7 +1270,7 @@ namespace ModernVoicesReader
             startButton = NewSymbolButton("\uE892", "From the start", "Read from the start", delegate { FromStart(); });
             playButton = NewSymbolButton("\uE768", "Play", "Play", delegate { PlayOrPause(); });
             stopButton = NewSymbolButton("\uE71A", "Stop", "Stop (Play goes on from the same place)", delegate { Stop(); });
-            clipboardButton = NewButton("Read clipboard", delegate { ReadClipboard(false); });
+            clipboardButton = NewButton("Paste and read", delegate { ReadClipboard(false); });
             fileButton = NewButton("Open a file...", delegate { ChooseFile(); });
             screenButton = NewSymbolButton("\uE721", "Read screen...", "Select an area of the screen to read with TTS", delegate { ReadScreen(); });
             audioButton = NewButton("Save as audio...", delegate { ChooseAudioFile(); });
@@ -1044,8 +1300,6 @@ namespace ModernVoicesReader
 
             // How far, how long is left; what is read.
             TableLayoutPanel under = NewLine(true);
-            FlowLayoutPanel left = NewFlow();
-            left.WrapContents = false;     // (one line: the window is never narrower than it needs)
             Font lineFont = new Font("Segoe UI", 10f);     // (this line a little larger than the buttons' words)
             progress = new ProgressBar();
             progress.Maximum = 1000; progress.Width = Px(120); progress.Height = Px(18); progress.Anchor = AnchorStyles.Left;
@@ -1061,8 +1315,16 @@ namespace ModernVoicesReader
             tidyBox.Text = "Don't read links, code or symbols"; tidyBox.AutoSize = true; tidyBox.Anchor = AnchorStyles.Left; tidyBox.Font = lineFont;
             tidyBox.Margin = new Padding(Px(4), 3, 0, 3);
             tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
-            left.Controls.Add(progress); left.Controls.Add(timeLabel); left.Controls.Add(autoBox); left.Controls.Add(tidyBox);
-            under.Controls.Add(left, 0, 0);
+            // (Placed by AlignLine, against the buttons above: the bar and the time under the first buttons,
+            // "Read copied text instantly" from the left of Paste and read, the last ending where undo begins.)
+            underPanel = new Panel();
+            underPanel.Dock = DockStyle.Fill; underPanel.Margin = new Padding(0);
+            foreach (Control c in new Control[] { progress, timeLabel, autoBox, tidyBox }) { c.Anchor = AnchorStyles.Left | AnchorStyles.Top; underPanel.Controls.Add(c); }
+            underPanel.Height = Math.Max(autoBox.PreferredSize.Height, progress.Height) + Px(8);
+            under.Controls.Add(underPanel, 0, 0);
+            ends.LocationChanged += delegate { AlignLine(); };
+            buttons.SizeChanged += delegate { AlignLine(); };
+            underPanel.SizeChanged += delegate { AlignLine(); };
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(under, 0, row++);
 
             // The last line: what is happening (left) and, in grey at the far right, a cog to click (no
@@ -1105,6 +1367,7 @@ namespace ModernVoicesReader
                 VoiceChoice choice = new VoiceChoice();
                 choice.Name = v.VoiceInfo.Name;
                 choice.Shown = choice.Name;
+                choice.TokenId = v.VoiceInfo.Id;
                 choice.Ours = v.VoiceInfo.Id.StartsWith("ModernVoices_", StringComparison.OrdinalIgnoreCase);
                 if (choice.Ours)
                 {
@@ -1120,6 +1383,10 @@ namespace ModernVoicesReader
             voiceBox.Items.Clear();
             foreach (VoiceChoice c in ours) { voiceBox.Items.Add(c); }
             foreach (VoiceChoice c in others) { voiceBox.Items.Add(c); }
+            // (The list as wide as its longest name, with its dot.)
+            int widest = voiceBox.Width;
+            foreach (VoiceChoice c in voiceBox.Items) { widest = Math.Max(widest, TextRenderer.MeasureText(c.Shown, voiceBox.Font).Width + dots.Zone + Px(28)); }
+            voiceBox.DropDownWidth = widest;
             loading = false;
         }
 
@@ -1141,6 +1408,7 @@ namespace ModernVoicesReader
             if (v == null) { return; }
             store.State.Voice = v.Name;
             store.Save();
+            UpdateNickButton();
             charsPerSecond = 0;
             if (mode != Mode.Stopped) { Restart(); }   // goes on with the new voice from the sentence being read
         }
@@ -1179,6 +1447,8 @@ namespace ModernVoicesReader
             for (int i = 0; i < voiceBox.Items.Count; i++) { if (((VoiceChoice)voiceBox.Items[i]).Name == s.Voice) { chosen = i; } }
             if (chosen < 0 && voiceBox.Items.Count > 0) { chosen = 0; }
             voiceBox.SelectedIndex = chosen;
+            ReadDefaultVoice();
+            UpdateNickButton();
             // The box starts empty: its text is not kept when the program is closed (nor what an older version kept).
             box.Text = ""; position = 0; s.Position = 0; s.OpenedFile = "";
             try { if (File.Exists(store.CurrentFile)) { File.Delete(store.CurrentFile); } } catch (Exception) { }
@@ -1989,6 +2259,20 @@ namespace ModernVoicesReader
                 Application.DoEvents();
                 log.AppendLine("voices: " + form.VoicesShown);
                 Check(form.VoiceCount > 0, "voices are listed (" + form.VoiceCount + ", " + form.OurVoiceCount + " Modern Voices)");
+                if (form.VoiceCount > 0)
+                {
+                    // The dot of a voice in the list: Windows' default voice (put back as it was).
+                    object was = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Speech\Voices", "DefaultTokenId", null);
+                    int last = form.VoiceCount - 1;
+                    form.TestSetDefault(last);
+                    string now = Convert.ToString(Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Speech\Voices", "DefaultTokenId", ""));
+                    Check(form.DefaultToken == form.TestToken(last) && now == @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\" + form.TestToken(last), "a voice's dot makes it Windows' default voice (" + form.DefaultToken + ")");
+                    using (RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Speech\Voices"))
+                    {
+                        if (was == null) { key.DeleteValue("DefaultTokenId", false); } else { key.SetValue("DefaultTokenId", was); }
+                    }
+                }
+                Check(MainForm.CleanNickname("  My (best)\r\n voice ") == "My best voice", "a nickname is tidied (no brackets or line ends)");
                 // Text in a picture (where this PC has Windows' text recognition).
                 string picture = Path.Combine(made, "words.png");
                 using (Bitmap drawn = new Bitmap(900, 300))

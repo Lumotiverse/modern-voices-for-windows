@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.9.9
+Modern Voices for Windows 0.10.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -151,12 +151,19 @@ The Reader
 ----------
 Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Reader) reads text aloud:
 
-  * Paste text into the box (or press Read clipboard) and press the play button. While it reads,
+  * Paste text into the box (or press Paste and read) and press the play button. While it reads,
     that button is pause. Stop keeps the place, and play goes on from the start of the sentence it
     was in. Click in the text to read from somewhere else; the first button reads from the start.
     The word being read is marked.
   * What is pasted (or read from the clipboard) is laid out as it was where it was copied: an empty
     line between paragraphs, lists with their bullets and numbers.
+  * In the Voice list each voice has a dot before its name; the filled one is Windows' default
+    voice (what programs that don't choose a voice speak with). Click another voice's dot to make
+    it the default; click a name to read with that voice.
+  * Change nickname: type a name in the box beside Voice and press the tick (or Enter) to give the
+    voice chosen that nickname, in every program and in Modern Voices Config. Windows asks for
+    permission, as voices' names are kept where only an administrator may write. (To remove a
+    nickname, use Modern Voices Config.)
   * Voice lists the Modern Voices (by nickname, where one has a nickname), then Windows' other
     voices. Speed is the program's own rate (as other programs have), on top of the Dictation speed.
   * "about 3:20 left" is an estimate: from a typical pace at first, then from how fast the voice is
@@ -168,7 +175,7 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
   * Open a file: plain text (.txt, .md), Word documents (.docx), rich text (.rtf) and web pages
     (.html). A file dropped on the text is opened too. A file opened again goes on from where you
     stopped in it (while its text is unchanged). (Not PDF or the older .doc: copy the text from those
-    and press Read clipboard.)
+    and press Paste and read.)
   * Read the screen (the magnifying glass): for text that can't be selected or copied (a
     picture, a game, some PDFs).
     The screen dims; drag a box around the text, and Windows' own text recognition reads it into the
