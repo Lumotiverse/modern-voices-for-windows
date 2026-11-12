@@ -564,11 +564,13 @@ function Get-UiPalette([bool]$Dark) {
     $rgb = { param($r, $g, $b) [System.Drawing.Color]::FromArgb($r, $g, $b) }
     if ($Dark) {
         return @{ Dark = $true; Back = (& $rgb 32 32 32); Raised = (& $rgb 51 51 51); Input = (& $rgb 24 24 24); Text = (& $rgb 240 240 240)
-                  Muted = (& $rgb 160 160 160); Warn = (& $rgb 255 128 128); Border = (& $rgb 90 90 90); Tab = (& $rgb 20 20 20) }
+                  Muted = (& $rgb 160 160 160); Warn = (& $rgb 255 128 128); Border = (& $rgb 90 90 90); Tab = (& $rgb 20 20 20)
+                  Selected = (& $rgb 0 84 153) }
     }
     return @{ Dark = $false; Back = [System.Drawing.SystemColors]::Control; Raised = [System.Drawing.SystemColors]::Control
               Input = [System.Drawing.SystemColors]::Window; Text = [System.Drawing.SystemColors]::ControlText; Muted = [System.Drawing.Color]::DimGray
-              Warn = [System.Drawing.Color]::Firebrick; Border = [System.Drawing.SystemColors]::ControlDark; Tab = [System.Drawing.SystemColors]::ControlLight }
+              Warn = [System.Drawing.Color]::Firebrick; Border = [System.Drawing.SystemColors]::ControlDark; Tab = [System.Drawing.SystemColors]::ControlLight
+              Selected = [System.Drawing.SystemColors]::Highlight }
 }
 
 function Set-UiThemeOn($Control, $P) {
@@ -593,7 +595,12 @@ function Set-UiThemeOn($Control, $P) {
     elseif ($Control -is [System.Windows.Forms.CheckBox]) { $Control.ForeColor = $P.Text }
     elseif ($Control -is [System.Windows.Forms.TrackBar]) { $Control.BackColor = $P.Back }
     elseif ($Control -is [System.Windows.Forms.ProgressBar]) { }
-    else { $Control.BackColor = $P.Back; $Control.ForeColor = $P.Text }
+    else {
+        $Control.BackColor = $P.Back; $Control.ForeColor = $P.Text
+        if ($Control.Tag -is [string] -and $Control.Tag -eq 'page') {   # a page's own scroll bar
+            try { [void][ModernVoices.Look]::SetWindowTheme($Control.Handle, $(if ($P.Dark) { 'DarkMode_Explorer' } else { 'Explorer' }), [NullString]::Value) } catch { }
+        }
+    }
     foreach ($child in $Control.Controls) { Set-UiThemeOn $child $P }
 }
 
@@ -657,8 +664,29 @@ function Enable-UiDarkHeader($View) {
         $inside = New-Object System.Drawing.Rectangle(($e.Bounds.X + 4), $e.Bounds.Y, ($e.Bounds.Width - 8), $e.Bounds.Height)
         [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $e.Header.Text, $sender.Font, $inside, $p.Text, $flags)
     })
-    $View.add_DrawItem({ param($sender, $e) $e.DrawDefault = $true })
-    $View.add_DrawSubItem({ param($sender, $e) $e.DrawDefault = $true })
+    # ...and so are its rows (Windows would draw the selected one unreadably on a dark list).
+    $View.add_DrawItem({ param($sender, $e) })
+    $View.add_DrawSubItem({
+        param($sender, $e)
+        $p = $script:UiPalette
+        $column = $sender.Columns[$e.ColumnIndex]
+        $cell = New-Object System.Drawing.Rectangle($e.Bounds.X, $e.Bounds.Y, $column.Width, $e.Bounds.Height)
+        $fill = New-Object System.Drawing.SolidBrush $(if ($e.Item.Selected) { $p.Selected } else { $p.Input })
+        $e.Graphics.FillRectangle($fill, $cell)
+        $fill.Dispose()
+        $left = $cell.X + 4
+        if ($e.ColumnIndex -eq 0 -and $sender.CheckBoxes) {
+            $state = if ($e.Item.Checked) { [System.Windows.Forms.VisualStyles.CheckBoxState]::CheckedNormal } else { [System.Windows.Forms.VisualStyles.CheckBoxState]::UncheckedNormal }
+            $size = [System.Windows.Forms.CheckBoxRenderer]::GetGlyphSize($e.Graphics, $state)
+            $at = New-Object System.Drawing.Point($left, ($cell.Y + [int](($cell.Height - $size.Height) / 2)))
+            [System.Windows.Forms.CheckBoxRenderer]::DrawCheckBox($e.Graphics, $at, $state)
+            $left += $size.Width + 4
+        }
+        $flags = [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix
+        if ($column.TextAlign -eq 'Center') { $flags = $flags -bor [System.Windows.Forms.TextFormatFlags]::HorizontalCenter }
+        $inside = New-Object System.Drawing.Rectangle($left, $cell.Y, [math]::Max(0, $cell.Right - $left - 4), $cell.Height)
+        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $e.SubItem.Text, $e.Item.Font, $inside, $p.Text, $flags)
+    })
 }
 
 # The names Windows has for this program's voices (what Preview asks for).

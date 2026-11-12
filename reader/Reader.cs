@@ -412,8 +412,8 @@ namespace ModernVoicesReader
             Text = "Modern Voices: Reader";
             Font = new Font("Segoe UI", 9f);
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(Px(460), Px(420));
-            Size = new Size(Px(640), Px(680));
+            MinimumSize = new Size(Px(480), Px(440));
+            Size = new Size(Px(760), Px(680));
             Padding = new Padding(Px(8));
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception) { }
             synth = new SpeechSynthesizer();
