@@ -1203,7 +1203,7 @@ namespace ModernVoicesReader
             voiceBox.HandleCreated += delegate { HookVoiceList(); };
             voiceBox.HandleDestroyed += delegate { dots.ReleaseHandle(); };
             dots.Zone = Px(26);
-            dots.DotClicked = delegate(int row) { if (row < voiceBox.Items.Count) { SetDefaultVoice((VoiceChoice)voiceBox.Items[row]); } };
+            dots.DotClicked = delegate(int at) { if (at < voiceBox.Items.Count) { SetDefaultVoice((VoiceChoice)voiceBox.Items[at]); } };
             dots.OverDot = delegate(bool over)
             {
                 if (!over) { dotTip.Hide(voiceBox); return; }
@@ -2262,14 +2262,14 @@ namespace ModernVoicesReader
                 if (form.VoiceCount > 0)
                 {
                     // The dot of a voice in the list: Windows' default voice (put back as it was).
-                    object was = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Speech\Voices", "DefaultTokenId", null);
+                    object defaultWas = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Speech\Voices", "DefaultTokenId", null);
                     int last = form.VoiceCount - 1;
                     form.TestSetDefault(last);
                     string now = Convert.ToString(Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Speech\Voices", "DefaultTokenId", ""));
                     Check(form.DefaultToken == form.TestToken(last) && now == @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\" + form.TestToken(last), "a voice's dot makes it Windows' default voice (" + form.DefaultToken + ")");
                     using (RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Speech\Voices"))
                     {
-                        if (was == null) { key.DeleteValue("DefaultTokenId", false); } else { key.SetValue("DefaultTokenId", was); }
+                        if (defaultWas == null) { key.DeleteValue("DefaultTokenId", false); } else { key.SetValue("DefaultTokenId", defaultWas); }
                     }
                 }
                 Check(MainForm.CleanNickname("  My (best)\r\n voice ") == "My best voice", "a nickname is tidied (no brackets or line ends)");
