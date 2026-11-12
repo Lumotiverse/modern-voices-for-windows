@@ -281,6 +281,32 @@ Check ($nameNow -eq $nameWanted -and $nameNow -ne $nameWas -and $name32 -eq $nam
 Check ($LASTEXITCODE -eq 2) "a voice that is not a Modern Voice is refused"
 & $PS64 -NoProfile -ExecutionPolicy Bypass -File $nickScript -Token $albaToken -Nick64 ([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes('  ')))
 Check ($LASTEXITCODE -eq 2) "an empty nickname is refused"
+# The same script staying, as the Reader starts it once: nicknames asked for over its pipe, one after another.
+function Send-NickRequest([string]$PipeName, [string]$Line) {
+    $client = New-Object System.IO.Pipes.NamedPipeClientStream('.', $PipeName, [System.IO.Pipes.PipeDirection]::InOut)
+    try {
+        $client.Connect(15000)
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes("$Line`n")
+        $client.Write($bytes, 0, $bytes.Length); $client.Flush()
+        $answer = ''
+        while (($b = $client.ReadByte()) -ge 0 -and $b -ne 10) { $answer += [char]$b }
+        return $answer.Trim()
+    } catch { return "no answer ($($_.Exception.Message))" } finally { $client.Dispose() }
+}
+$pipeName = 'ModernVoicesNickname_' + [guid]::NewGuid().ToString('N')
+$mySid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$helper = Start-Process $PS64 -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$nickScript`" -Serve $pipeName -OwnerPid $PID -OwnerSid $mySid" -PassThru -WindowStyle Hidden
+$first = Send-NickRequest $pipeName "$albaToken $([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes('First')))"
+$nameFirst = (Get-ItemProperty (Join-Path $Tokens64 $albaToken)).'(default)'
+$second = Send-NickRequest $pipeName "$albaToken $([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes('Second')))"
+$nameSecond = (Get-ItemProperty (Join-Path $Tokens64 $albaToken)).'(default)'
+$refused = Send-NickRequest $pipeName "TTS_MS_EN-US_DAVID_11.0 $nick64"
+$junk = Send-NickRequest $pipeName 'something else entirely'
+Check ($first -eq '0' -and $nameFirst -like '*(First)' -and $second -eq '0' -and $nameSecond -like '*(Second)' -and -not $helper.HasExited) "the staying helper gives two nicknames, one after the other, without being started again ($nameFirst, $nameSecond)"
+Check ($refused -eq '2' -and $junk -eq '2') "the staying helper refuses anything but a Modern Voice's nickname ($refused, $junk)"
+[void](Send-NickRequest $pipeName 'quit')
+Check ($helper.WaitForExit(5000)) 'the staying helper ends when told to (as it does when the Reader closes)'
+if (-not $helper.HasExited) { $helper.Kill() }
 # (As it was.)
 foreach ($root in $Tokens64, $Tokens32) {
     Set-ItemProperty (Join-Path $root $albaToken) -Name '(default)' -Value $nameWas

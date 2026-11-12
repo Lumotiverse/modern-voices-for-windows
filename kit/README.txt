@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.10.3
+Modern Voices for Windows 0.10.4
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -162,7 +162,9 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     it the default (the list stays open); click a name to read with that voice.
   * Change nickname: type a name in the box beside Voice and press the tick (or Enter) to give the
     voice chosen that nickname, in every program and in Modern Voices Config. Windows asks for
-    permission, as voices' names are kept where only an administrator may write. A voice renamed,
+    permission the first time (voices' names are kept where only an administrator may write), and
+    not again until the Reader has been closed and opened: a small hidden helper, which can do
+    nothing but rename a Modern Voice, stays until the Reader closes. A voice renamed,
     added or removed in Modern Voices Config shows in the Reader's list when you come back to it. (To remove a
     nickname, use Modern Voices Config.)
   * Voice lists the Modern Voices (by nickname, where one has a nickname), then Windows' other

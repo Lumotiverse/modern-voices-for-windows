@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.10.3.0")]
+[assembly: System.Reflection.AssemblyVersion("0.10.4.0")]
 
 namespace ModernVoicesReader
 {
@@ -1260,6 +1260,33 @@ namespace ModernVoicesReader
 
         // Gives the voice chosen the nickname typed: Windows keeps voices' names where only an administrator
         // may write, so a small script beside Modern Voices Config does it, with Windows' permission prompt.
+        // The helper that renames voices for this window (installer\Nickname.ps1, staying): started with
+        // Windows' permission prompt at the first nickname, then asked over a pipe of its own, so that
+        // Windows asks once while the Reader is open. It ends when the Reader does.
+        readonly string nickPipe = "ModernVoicesNickname_" + Guid.NewGuid().ToString("N");
+        bool nickHelper;                 // started (it may have ended since: then it is started again)
+
+        // Asks the helper for a nickname: its answer (0 done, 2 refused, 3 another voice has the name, 1 failed),
+        // or -1 when it is not there.
+        int AskNickHelper(string request, int waitMs)
+        {
+            try
+            {
+                using (System.IO.Pipes.NamedPipeClientStream pipe = new System.IO.Pipes.NamedPipeClientStream(".", nickPipe, System.IO.Pipes.PipeDirection.InOut))
+                {
+                    pipe.Connect(waitMs);
+                    byte[] line = Encoding.UTF8.GetBytes(request + "\n");
+                    pipe.Write(line, 0, line.Length);
+                    pipe.Flush();
+                    StringBuilder answer = new StringBuilder();
+                    for (int b = pipe.ReadByte(); b >= 0 && b != '\n'; b = pipe.ReadByte()) { answer.Append((char)b); }
+                    int code;
+                    return int.TryParse(answer.ToString().Trim(), out code) ? code : -1;
+                }
+            }
+            catch (Exception) { return -1; }
+        }
+
         void ChangeNickname()
         {
             VoiceChoice voice = CurrentVoice;
@@ -1267,22 +1294,37 @@ namespace ModernVoicesReader
             if (voice == null || !voice.Ours || nick.Length == 0) { return; }
             try
             {
-                string app = Path.GetDirectoryName(Path.GetDirectoryName(Application.ExecutablePath));
-                string script = Path.Combine(app, "installer", "Nickname.ps1");
-                if (!File.Exists(script)) { Status("The nickname was not changed: " + script + " was not found."); return; }
-                string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-                bool narrow = Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess;
-                string shell = Path.Combine(windows, narrow ? "Sysnative" : "System32", @"WindowsPowerShell\v1.0\powershell.exe");
-                System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(shell,
-                    "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\" -Token " + voice.TokenId +
-                    " -Nick64 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(nick)));
-                start.UseShellExecute = true; start.Verb = "runas";
-                start.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
-                int code;
-                using (System.Diagnostics.Process run = System.Diagnostics.Process.Start(start))
+                string request = voice.TokenId + " " + Convert.ToBase64String(Encoding.UTF8.GetBytes(nick));
+                int code = nickHelper ? AskNickHelper(request, 1500) : -1;
+                if (code < 0)
                 {
-                    if (!run.WaitForExit(30000)) { Status("The nickname was not changed (it took too long)."); return; }
-                    code = run.ExitCode;
+                    string app = Path.GetDirectoryName(Path.GetDirectoryName(Application.ExecutablePath));
+                    string script = Path.Combine(app, "installer", "Nickname.ps1");
+                    if (!File.Exists(script)) { Status("The nickname was not changed: " + script + " was not found."); return; }
+                    string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+                    bool narrow = Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess;
+                    string shell = Path.Combine(windows, narrow ? "Sysnative" : "System32", @"WindowsPowerShell\v1.0\powershell.exe");
+                    System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(shell,
+                        "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\" -Serve " + nickPipe +
+                        " -OwnerPid " + System.Diagnostics.Process.GetCurrentProcess().Id +
+                        " -OwnerSid " + System.Security.Principal.WindowsIdentity.GetCurrent().User.Value);
+                    start.UseShellExecute = true; start.Verb = "runas";
+                    start.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+                    using (System.Diagnostics.Process.Start(start)) { }
+                    nickHelper = true;
+                    code = AskNickHelper(request, 20000);
+                    if (code < 0)
+                    {
+                        // (The helper did not answer: the same script, once, as before. Windows asks again.)
+                        nickHelper = false;
+                        start.Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\" -Token " + voice.TokenId +
+                            " -Nick64 " + Convert.ToBase64String(Encoding.UTF8.GetBytes(nick));
+                        using (System.Diagnostics.Process once = System.Diagnostics.Process.Start(start))
+                        {
+                            if (!once.WaitForExit(30000)) { Status("The nickname was not changed (it took too long)."); return; }
+                            code = once.ExitCode;
+                        }
+                    }
                 }
                 if (code == 3) { Status("Another voice is already named that."); return; }
                 if (code != 0) { Status("The nickname was not changed (error " + code + ")."); return; }
@@ -1398,7 +1440,7 @@ namespace ModernVoicesReader
             {
                 if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; if (nickButton.Enabled) { ChangeNickname(); } }
             };
-            nickButton = NewSymbolButton("\uE73E", "Set", "Give the voice chosen this nickname (Windows asks for permission)", delegate { ChangeNickname(); });
+            nickButton = NewSymbolButton("\uE73E", "Set", "Give the voice chosen this nickname (Windows asks for permission the first time)", delegate { ChangeNickname(); });
             nickButton.Enabled = false;
             // (Both as tall as the voice list beside them; the tick's button square.)
             nickBox.AutoSize = false; nickBox.Height = voiceBox.Height;
@@ -2276,6 +2318,7 @@ namespace ModernVoicesReader
             if (saver != null) { try { saver.SpeakAsyncCancelAll(); } catch (Exception) { } SavingEnded(false, ""); }
             Remember();
             try { RemoveClipboardFormatListener(Handle); } catch (Exception) { }
+            if (nickHelper) { AskNickHelper("quit", 300); }      // (it would end by itself within a second too)
             base.OnFormClosing(e);
         }
 
