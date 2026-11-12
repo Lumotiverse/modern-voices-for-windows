@@ -885,6 +885,7 @@ namespace ModernVoicesReader
             // From the start, play or pause, stop; the clipboard, a file, the screen; as sound. Clear at the far end.
             TableLayoutPanel buttonLine = NewLine(true, false);
             FlowLayoutPanel buttons = NewFlow();
+            buttons.WrapContents = false;     // (one line: the window is never narrower than it needs)
             startButton = NewSymbolButton("\uE892", "From the start", "Read from the start", delegate { FromStart(); });
             playButton = NewSymbolButton("\uE768", "Play", "Play", delegate { PlayOrPause(); });
             stopButton = NewSymbolButton("\uE71A", "Stop", "Stop (Play goes on from the same place)", delegate { Stop(); });
