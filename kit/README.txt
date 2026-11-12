@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.10.0
+Modern Voices for Windows 0.10.1
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -159,18 +159,19 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     line between paragraphs, lists with their bullets and numbers.
   * In the Voice list each voice has a dot before its name; the filled one is Windows' default
     voice (what programs that don't choose a voice speak with). Click another voice's dot to make
-    it the default; click a name to read with that voice.
+    it the default (the list stays open); click a name to read with that voice.
   * Change nickname: type a name in the box beside Voice and press the tick (or Enter) to give the
     voice chosen that nickname, in every program and in Modern Voices Config. Windows asks for
-    permission, as voices' names are kept where only an administrator may write. (To remove a
+    permission, as voices' names are kept where only an administrator may write. A voice renamed,
+    added or removed in Modern Voices Config shows in the Reader's list when you come back to it. (To remove a
     nickname, use Modern Voices Config.)
   * Voice lists the Modern Voices (by nickname, where one has a nickname), then Windows' other
     voices. Speed is the program's own rate (as other programs have), on top of the Dictation speed.
   * "about 3:20 left" is an estimate: from a typical pace at first, then from how fast the voice is
     actually reading.
-  * "Read copied text instantly": while the Reader is open (minimised is fine), anything copied in
+  * "Instantly read copy": while the Reader is open (minimised is fine), anything copied in
     another program is read straight away.
-  * "Don't read links, code or symbols": web addresses are read as "link", blocks of code are
+  * "Don't read links" (which also leaves out code and symbols): web addresses are read as "link", blocks of code are
     skipped, and bullets and the marks of formatted text (#, **, `, table lines) aren't read out.
   * Open a file: plain text (.txt, .md), Word documents (.docx), rich text (.rtf) and web pages
     (.html). A file dropped on the text is opened too. A file opened again goes on from where you

@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.10.0 (12 Nov 2026).
+Last updated at version 0.10.1 (12 Nov 2026).
 
 ## What it is
 
@@ -16,7 +16,7 @@ with Windows' voices but can't use Narrator's natural voices. It must keep worki
 | Modern Voices Config | The installer and settings window: Voice manager, Speed and pauses, Pronunciation, Add or remove voices. | PowerShell 5.1 + WinForms | `installer/Install.ps1` (plus `VoiceConvert.ps1`, `Test.ps1`, `Speak.ps1`, `Ocr.ps1`, `Uninstall.ps1`) |
 | Modern Voices: Reader | A small app that reads pasted or copied text, files and screen regions. It has play/pause/stop, time left, saves as WAV, and remembers its place per file. | C# 5 (built with Windows' own `csc.exe`, .NET Framework 4) | `reader/Reader.cs`, `reader/Build.ps1` |
 
-The user-facing documentation is `kit/README.txt`, and it is accurate for 0.10.0. Read it to see what
+The user-facing documentation is `kit/README.txt`, and it is accurate for 0.10.1. Read it to see what
 each feature does.
 
 ## Lumoti's standing rules
@@ -24,7 +24,7 @@ each feature does.
 - **Before any build request, say whether it needs Fable (complicated: new features, engine work,
   multi-part changes) or Opus 5.5 (simple and safe changes to working code)**, so he can switch model
   first. If he's already on the right one, say so and proceed.
-- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.10.0.zip`.
+- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.10.1.zip`.
 - Every build must update in place (since 0.9.6): the new kit's Install.cmd run over the installed version
   keeps voices, settings, nicknames and pronunciations, with no uninstall and no re-download. If a build
   changes where or how any of those are stored, it must carry the old ones over. Test-Kit has an 'Update' step.
@@ -126,7 +126,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.10.0)
+## Current state (0.10.1)
 
 Everything above works and is tested on the CI Windows machine. Lumoti has been using it and sending UI
 tweaks one batch at a time; the last batch (0.9.4) is done and delivered: the moon moved and greyed in
@@ -156,6 +156,14 @@ show the tooltip. A nickname box and tick beside Voice run `installer/Nickname.p
 renames the token and writes the Nicknames key without needing the catalogue. The row under the buttons
 is a Panel placed by `AlignLine` against the buttons above. Read clipboard is now Paste and read. The
 wrench is double-ended and is also Test's and Uninstall's Start menu icon.
+0.10.1: on Lumoti's machine the dots took no clicks and showed no tooltip in 0.10.0 (cause not found:
+the `DotList` hook passes the build's simulated click). Now there are two ways in: the hook, and
+`VoiceChosen` (a row chosen with the pointer on its dot counts as a click on the dot; the list is
+dropped again). The tooltip is a `TipWindow` (own topmost no-activate window) driven by a timer that
+watches the pointer, not by the hook. `RefreshVoices` makes a new SpeechSynthesizer (the old one keeps
+the voice list it was made with), after a nickname and when the window is activated and `VoicesNow`
+differs. Under the buttons: the bar is as wide as the first two buttons; "Instantly read copy" and
+"Don't read links" (it still leaves out code and symbols) start where the buttons above them do.
 The owner (GitHub: Lumotiverse) is to be called Lumoti in anything public, never by any other name.
 Not yet confirmed by Lumoti:
 

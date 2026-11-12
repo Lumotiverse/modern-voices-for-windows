@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.10.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.10.1.0")]
 
 namespace ModernVoicesReader
 {
@@ -729,6 +729,44 @@ namespace ModernVoicesReader
 
     // ---------------------------------------------------------------- the voice list's dots
 
+    // A small note beside the pointer, over everything (the dropped-down list included), that never takes
+    // the keyboard or the mouse from what is under it.
+    public class TipWindow : Form
+    {
+        readonly Label words = new Label();
+        [DllImport("user32.dll")]
+        static extern bool ShowWindow(IntPtr hwnd, int how);
+        [DllImport("user32.dll")]
+        static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int w, int h, uint flags);
+
+        public TipWindow(string text, Font font)
+        {
+            FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; StartPosition = FormStartPosition.Manual;
+            AutoScaleMode = AutoScaleMode.None;
+            BackColor = SystemColors.Info; ForeColor = SystemColors.InfoText; Font = font;
+            words.AutoSize = true; words.Text = text; words.Location = new Point(5, 3);
+            Controls.Add(words);
+            ClientSize = new Size(words.PreferredWidth + 10, words.PreferredHeight + 6);
+        }
+        protected override bool ShowWithoutActivation { get { return true; } }
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams p = base.CreateParams;
+                p.ExStyle |= 0x08000000 | 0x00000008 | 0x00000080;     // no activation, topmost, a tool window
+                return p;
+            }
+        }
+        public void ShowAt(Point screen)
+        {
+            IntPtr handle = Handle;
+            SetWindowPos(handle, (IntPtr)(-1), screen.X, screen.Y, 0, 0, 0x0001 | 0x0010);     // topmost; no size, no activation
+            ShowWindow(handle, 4);                                                             // shown, not activated
+        }
+        public void HideTip() { if (IsHandleCreated && Visible) { ShowWindow(Handle, 0); } }
+    }
+
     // The dropped-down list of voices: each row starts with a dot, filled for Windows' default voice. A
     // click on a dot makes that voice the default (the list stays open, and the voice read with stays as
     // it is); a click on a name chooses the voice, as in any list.
@@ -736,7 +774,7 @@ namespace ModernVoicesReader
     {
         public int Zone;                     // how wide the dots' column is
         public Action<int> DotClicked;       // (the row)
-        public Action<bool> OverDot;         // the pointer came over a dot, or left
+        public int Clicks;                   // how many clicks on dots were taken here
 
         [DllImport("user32.dll")]
         static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr w, IntPtr l);
@@ -746,8 +784,6 @@ namespace ModernVoicesReader
         static extern bool InvalidateRect(IntPtr hwnd, IntPtr r, bool erase);
         [StructLayout(LayoutKind.Sequential)]
         public struct DotRect { public int Left, Top, Right, Bottom; }
-
-        bool over;
 
         // The row whose dot the pointer is on (-1: none).
         int RowAt(IntPtr l)
@@ -768,15 +804,10 @@ namespace ModernVoicesReader
                 int row = RowAt(m.LParam);
                 if (row >= 0)
                 {
-                    if (m.Msg != 0x0202 && DotClicked != null) { DotClicked(row); }
+                    if (m.Msg != 0x0202) { Clicks++; if (DotClicked != null) { DotClicked(row); } }
                     m.Result = IntPtr.Zero;
                     return;                                                        // (not the list's: nothing is chosen, it stays open)
                 }
-            }
-            else if (m.Msg == 0x0200)                                              // the pointer moves
-            {
-                bool now = RowAt(m.LParam) >= 0;
-                if (now != over) { over = now; if (OverDot != null) { OverDot(now); } }
             }
             base.WndProc(ref m);
         }
@@ -823,7 +854,16 @@ namespace ModernVoicesReader
         Button nickButton;
         Panel underPanel;                // the line under the buttons: its four things are placed by AlignLine
         readonly DotList dots = new DotList();
-        readonly ToolTip dotTip = new ToolTip();
+        TipWindow dotTip;                // "Set Windows default voice", while the pointer is on a dot
+        Timer dotTimer;                  // watches the pointer while the list is down
+        IntPtr voiceList;                // the dropped-down list's own window
+        int voiceIndex = -1;             // the voice read with (the list's row)
+        DateTime listClosedAt = DateTime.MinValue, voiceKeyAt = DateTime.MinValue;
+        string voicesSeen = "";          // Windows' voices and their names, as last listed
+        [DllImport("user32.dll")]
+        static extern bool GetWindowRect(IntPtr hwnd, out DotList.DotRect r);
+        [DllImport("user32.dll")]
+        static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr w, IntPtr l);
         string defaultToken = "";        // Windows' default voice (its name in the registry)
         const string DefaultVoiceKey = @"Software\Microsoft\Speech\Voices";
         const string TokensPath = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\";
@@ -967,9 +1007,9 @@ namespace ModernVoicesReader
             return b;
         }
 
-        // The line under the buttons is placed against them: the progress bar and the time under the first
-        // buttons, "Read copied text instantly" starting where Paste and read does, and "Don't read links,
-        // code or symbols" ending where the undo button begins.
+        // The line under the buttons is placed against them: the progress bar as wide as the first two
+        // buttons, the time after it, "Instantly read copy" starting where Paste and read does, and "Don't
+        // read links" where Save as audio does.
         bool aligning;
         void AlignLine()
         {
@@ -978,33 +1018,146 @@ namespace ModernVoicesReader
             try
             {
                 Func<Control, int> leftOf = delegate(Control c) { return underPanel.PointToClient(c.Parent.PointToScreen(c.Location)).X; };
-                int start = leftOf(startButton), paste = leftOf(clipboardButton), undo = leftOf(undoButton);
-                autoBox.Left = paste;
-                tidyBox.Left = undo - tidyBox.Width;
+                int start = leftOf(startButton);
                 progress.Left = start;
-                progress.Width = Math.Max(Px(50), paste - Px(10) - timeLabel.Width - Px(6) - start);
-                timeLabel.Left = progress.Right + Px(6);
+                progress.Width = Math.Max(Px(50), leftOf(playButton) + playButton.Width - start);     // as wide as the first two buttons
+                timeLabel.Left = progress.Right + Px(8);
+                autoBox.Left = leftOf(clipboardButton);
+                tidyBox.Left = leftOf(audioButton);
                 foreach (Control c in new Control[] { progress, timeLabel, autoBox, tidyBox }) { c.Top = Math.Max(0, (underPanel.Height - c.Height) / 2); }
                 alignedFor = timeLabel.Width;
-                // (Never one over the other: the window is no narrower than they need.)
-                int lacking = autoBox.Right + Px(10) - tidyBox.Left;
-                if (lacking > 0 && WindowState == FormWindowState.Normal) { MinimumSize = new Size(Width + lacking, MinimumSize.Height); }
             }
             finally { aligning = false; }
         }
 
         // ---- the voice list's dots, and the nickname
 
+        // The dropped-down list's own window: found, and its clicks on dots taken (DotList).
         void HookVoiceList()
         {
             try
             {
+                if (!voiceBox.IsHandleCreated) { return; }
                 ComboInfo info = new ComboInfo();
                 info.Size = Marshal.SizeOf(typeof(ComboInfo));
-                dots.ReleaseHandle();
-                if (GetComboBoxInfo(voiceBox.Handle, ref info) && info.List != IntPtr.Zero) { dots.AssignHandle(info.List); }
+                if (!GetComboBoxInfo(voiceBox.Handle, ref info) || info.List == IntPtr.Zero) { return; }
+                voiceList = info.List;
+                if (dots.Handle != info.List) { dots.ReleaseHandle(); dots.AssignHandle(info.List); }
             }
             catch (Exception) { }
+        }
+
+        // The row whose dot the pointer is on, in the dropped-down list (-1: none).
+        int DotUnderPointer()
+        {
+            DotList.DotRect r;
+            if (voiceList == IntPtr.Zero || !GetWindowRect(voiceList, out r)) { return -1; }
+            Point at = Cursor.Position;
+            int x = at.X - r.Left - 1, y = at.Y - r.Top - 1;       // (inside the list's one-pixel border)
+            if (x < 0 || x >= dots.Zone || y < 0 || at.Y >= r.Bottom - 1) { return -1; }
+            long found = (long)SendMessage(voiceList, 0x01A9, IntPtr.Zero, (IntPtr)((y << 16) | (x & 0xFFFF)));     // LB_ITEMFROMPOINT
+            return ((found >> 16) & 0xFFFF) != 0 ? -1 : (int)(found & 0xFFFF);
+        }
+
+        // A row of the list was chosen. With the mouse on the row's dot, that is a click on the dot (should
+        // the list have taken the click as its own): Windows' default voice is set, the voice read with
+        // stays, and the list comes down again to show it.
+        void VoiceChosen()
+        {
+            bool byMouse = (DateTime.UtcNow - voiceKeyAt).TotalMilliseconds > 300 &&
+                (voiceBox.DroppedDown || (DateTime.UtcNow - listClosedAt).TotalMilliseconds < 400);
+            int row = voiceBox.SelectedIndex;
+            if (byMouse && row >= 0 && DotUnderPointer() == row)
+            {
+                loading = true;
+                voiceBox.SelectedIndex = voiceIndex;
+                loading = false;
+                SetDefaultVoice((VoiceChoice)voiceBox.Items[row]);
+                BeginInvoke((MethodInvoker)delegate { if (!voiceBox.DroppedDown) { voiceBox.DroppedDown = true; } });
+                return;
+            }
+            voiceIndex = row;
+            VoiceChanged();
+        }
+
+        // What Windows lists as voices now, and under what names (to notice a voice added, removed or renamed
+        // in Modern Voices Config while this window was open).
+        static string VoicesNow()
+        {
+            StringBuilder all = new StringBuilder();
+            try
+            {
+                using (RegistryKey tokens = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Speech\Voices\Tokens"))
+                {
+                    if (tokens != null)
+                    {
+                        foreach (string name in tokens.GetSubKeyNames())
+                        {
+                            using (RegistryKey token = tokens.OpenSubKey(name)) { all.Append(name).Append('=').Append(token == null ? "" : Convert.ToString(token.GetValue(""))).Append('|'); }
+                        }
+                    }
+                }
+            }
+            catch (Exception) { }
+            return all.ToString();
+        }
+
+        // Windows' voices read afresh (the speech object keeps the list it found when it was made, so a new
+        // one is made), with the same voice chosen: by its place in Windows' list, as its name may be new.
+        void RefreshVoices()
+        {
+            VoiceChoice chosen = CurrentVoice;
+            string token = chosen == null ? "" : chosen.TokenId;
+            if (mode != Mode.Stopped) { Halt(); }
+            try
+            {
+                synth.SpeakProgress -= OnProgress; synth.SpeakCompleted -= OnCompleted;
+                synth.Dispose();
+            }
+            catch (Exception) { }
+            synth = new SpeechSynthesizer();
+            synth.SpeakProgress += OnProgress;
+            synth.SpeakCompleted += OnCompleted;
+            FillVoices();
+            loading = true;
+            for (int i = 0; i < voiceBox.Items.Count; i++)
+            {
+                if (((VoiceChoice)voiceBox.Items[i]).TokenId == token) { voiceBox.SelectedIndex = i; }
+            }
+            if (voiceBox.SelectedIndex < 0 && voiceBox.Items.Count > 0) { voiceBox.SelectedIndex = 0; }
+            loading = false;
+            voiceIndex = voiceBox.SelectedIndex;
+            ReadDefaultVoice();
+            VoiceChanged();
+            UpdateButtons();
+        }
+
+        protected override void OnActivated(EventArgs e)
+        {
+            base.OnActivated(e);
+            // (Back from Modern Voices Config, perhaps: its voices and their names as they are now.)
+            if (synth != null && voiceBox != null && saver == null && mode == Mode.Stopped && voicesSeen.Length > 0 && VoicesNow() != voicesSeen)
+            {
+                RefreshVoices();
+            }
+        }
+
+        // A click on a row's dot, as the mouse makes it (for the build's test): what came of it.
+        public string TestDotClick(int row)
+        {
+            int chosenWas = voiceBox.SelectedIndex, clicksWas = dots.Clicks;
+            voiceBox.DroppedDown = true;
+            Application.DoEvents();
+            HookVoiceList();
+            IntPtr at = (IntPtr)(((row * voiceBox.ItemHeight + voiceBox.ItemHeight / 2) << 16) | (dots.Zone / 2));
+            SendMessage(voiceList, 0x0201, (IntPtr)1, at);
+            SendMessage(voiceList, 0x0202, IntPtr.Zero, at);
+            Application.DoEvents();
+            string result = "default " + DefaultToken + "; list " + (voiceBox.DroppedDown ? "open" : "closed") +
+                "; chosen " + (voiceBox.SelectedIndex == chosenWas ? "unchanged" : "changed") + "; taken " + (dots.Clicks - clicksWas);
+            voiceBox.DroppedDown = false;
+            Application.DoEvents();
+            return result;
         }
 
         void ReadDefaultVoice()
@@ -1115,17 +1268,8 @@ namespace ModernVoicesReader
             catch (System.ComponentModel.Win32Exception) { Status("The nickname was not changed: Windows' permission was not given."); return; }
             catch (Exception e) { Status("The nickname was not changed: " + e.Message); return; }
             // The list again, with the same voice chosen under its new name.
-            string token = voice.TokenId;
-            FillVoices();
-            loading = true;
-            for (int i = 0; i < voiceBox.Items.Count; i++)
-            {
-                if (((VoiceChoice)voiceBox.Items[i]).TokenId == token) { voiceBox.SelectedIndex = i; }
-            }
-            if (voiceBox.SelectedIndex < 0 && voiceBox.Items.Count > 0) { voiceBox.SelectedIndex = 0; }
-            loading = false;
+            RefreshVoices();
             nickBox.Text = "";
-            VoiceChanged();
             Status("Now named " + (CurrentVoice == null ? nick : CurrentVoice.Name) + ". Programs that were open show the new name once restarted.");
         }
 
@@ -1193,22 +1337,31 @@ namespace ModernVoicesReader
             TableLayoutPanel top = NewLine(false, false, false, false, true, false, false, false);
             voiceBox = new ComboBox();
             voiceBox.DropDownStyle = ComboBoxStyle.DropDownList; voiceBox.Width = Px(260); voiceBox.Anchor = AnchorStyles.Left;
-            voiceBox.SelectedIndexChanged += delegate { if (!loading) { VoiceChanged(); } };
+            voiceBox.SelectedIndexChanged += delegate { if (!loading) { VoiceChosen(); } };
+            voiceBox.KeyDown += delegate { voiceKeyAt = DateTime.UtcNow; };
             // Each row drawn here: a dot (filled: Windows' default voice), then the voice's name.
             voiceBox.DrawMode = DrawMode.OwnerDrawFixed;
             voiceBox.ItemHeight = voiceBox.Font.Height + Px(5);
             voiceBox.DrawItem += DrawVoice;
-            voiceBox.DropDown += delegate { ReadDefaultVoice(); };
-            voiceBox.DropDownClosed += delegate { dotTip.Hide(voiceBox); };
+            voiceBox.DropDown += delegate { ReadDefaultVoice(); HookVoiceList(); dotTimer.Start(); };
+            voiceBox.DropDownClosed += delegate { listClosedAt = DateTime.UtcNow; dotTimer.Stop(); if (dotTip != null) { dotTip.HideTip(); } };
             voiceBox.HandleCreated += delegate { HookVoiceList(); };
-            voiceBox.HandleDestroyed += delegate { dots.ReleaseHandle(); };
+            voiceBox.HandleDestroyed += delegate { dots.ReleaseHandle(); voiceList = IntPtr.Zero; };
             dots.Zone = Px(26);
             dots.DotClicked = delegate(int at) { if (at < voiceBox.Items.Count) { SetDefaultVoice((VoiceChoice)voiceBox.Items[at]); } };
-            dots.OverDot = delegate(bool over)
+            // While the list is down: the note beside the pointer when it is on a dot.
+            dotTimer = new Timer();
+            dotTimer.Interval = 80;
+            dotTimer.Tick += delegate
             {
-                if (!over) { dotTip.Hide(voiceBox); return; }
-                Point at = voiceBox.PointToClient(Cursor.Position);
-                dotTip.Show("Set Windows default voice", voiceBox, at.X + Px(18), at.Y + Px(18), 4000);
+                bool on = voiceBox.DroppedDown && DotUnderPointer() >= 0;
+                if (on)
+                {
+                    if (dotTip == null) { dotTip = new TipWindow("Set Windows default voice", Font); }
+                    Point at = Cursor.Position;
+                    dotTip.ShowAt(new Point(at.X + Px(16), at.Y + Px(20)));
+                }
+                else if (dotTip != null) { dotTip.HideTip(); }
             };
             top.Controls.Add(voiceBox, 0, 0);
             top.Controls.Add(NewLabel("Voice", false), 1, 0);
@@ -1308,15 +1461,16 @@ namespace ModernVoicesReader
             timeLabel.Font = lineFont;
             timeLabel.MinimumSize = new Size(Px(104), 0);
             autoBox = new CheckBox();
-            autoBox.Text = "Read copied text instantly"; autoBox.AutoSize = true; autoBox.Anchor = AnchorStyles.Left; autoBox.Font = lineFont;
+            autoBox.Text = "Instantly read copy"; autoBox.AutoSize = true; autoBox.Anchor = AnchorStyles.Left; autoBox.Font = lineFont;
             autoBox.Margin = new Padding(Px(4), 3, Px(4), 3);
             autoBox.CheckedChanged += delegate { if (!loading) { store.State.AutoRead = autoBox.Checked; store.Save(); } };
             tidyBox = new CheckBox();
-            tidyBox.Text = "Don't read links, code or symbols"; tidyBox.AutoSize = true; tidyBox.Anchor = AnchorStyles.Left; tidyBox.Font = lineFont;
+            tidyBox.Text = "Don't read links"; tidyBox.AutoSize = true; tidyBox.Anchor = AnchorStyles.Left; tidyBox.Font = lineFont;
             tidyBox.Margin = new Padding(Px(4), 3, 0, 3);
             tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
-            // (Placed by AlignLine, against the buttons above: the bar and the time under the first buttons,
-            // "Read copied text instantly" from the left of Paste and read, the last ending where undo begins.)
+            tips.SetToolTip(autoBox, "Reads whatever you copy, in any program, as soon as you copy it");
+            tips.SetToolTip(tidyBox, "Leaves out links, code and the symbols of formatted text");
+            // (Placed by AlignLine, against the buttons above.)
             underPanel = new Panel();
             underPanel.Dock = DockStyle.Fill; underPanel.Margin = new Padding(0);
             foreach (Control c in new Control[] { progress, timeLabel, autoBox, tidyBox }) { c.Anchor = AnchorStyles.Left | AnchorStyles.Top; underPanel.Controls.Add(c); }
@@ -1387,6 +1541,7 @@ namespace ModernVoicesReader
             int widest = voiceBox.Width;
             foreach (VoiceChoice c in voiceBox.Items) { widest = Math.Max(widest, TextRenderer.MeasureText(c.Shown, voiceBox.Font).Width + dots.Zone + Px(28)); }
             voiceBox.DropDownWidth = widest;
+            voicesSeen = VoicesNow();
             loading = false;
         }
 
@@ -1447,6 +1602,7 @@ namespace ModernVoicesReader
             for (int i = 0; i < voiceBox.Items.Count; i++) { if (((VoiceChoice)voiceBox.Items[i]).Name == s.Voice) { chosen = i; } }
             if (chosen < 0 && voiceBox.Items.Count > 0) { chosen = 0; }
             voiceBox.SelectedIndex = chosen;
+            voiceIndex = chosen;
             ReadDefaultVoice();
             UpdateNickButton();
             // The box starts empty: its text is not kept when the program is closed (nor what an older version kept).
@@ -2270,6 +2426,16 @@ namespace ModernVoicesReader
                     using (RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Speech\Voices"))
                     {
                         if (defaultWas == null) { key.DeleteValue("DefaultTokenId", false); } else { key.SetValue("DefaultTokenId", defaultWas); }
+                    }
+                }
+                if (form.VoiceCount > 0)
+                {
+                    object defaultThen = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Speech\Voices", "DefaultTokenId", null);
+                    string came = form.TestDotClick(0);
+                    Check(came == "default " + form.TestToken(0) + "; list open; chosen unchanged; taken 1", "a click on a row's dot in the dropped list: that voice is the default, the list stays open, the voice read with stays (" + came + ")");
+                    using (RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Speech\Voices"))
+                    {
+                        if (defaultThen == null) { key.DeleteValue("DefaultTokenId", false); } else { key.SetValue("DefaultTokenId", defaultThen); }
                     }
                 }
                 Check(MainForm.CleanNickname("  My (best)\r\n voice ") == "My best voice", "a nickname is tidied (no brackets or line ends)");
