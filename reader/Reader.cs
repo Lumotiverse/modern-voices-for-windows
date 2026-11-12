@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.9.2.0")]
+[assembly: System.Reflection.AssemblyVersion("0.9.3.0")]
 
 namespace ModernVoicesReader
 {
@@ -40,8 +40,7 @@ namespace ModernVoicesReader
 
     public static class Theme
     {
-        // Shared with the Voice manager: light or dark, as last chosen with the moon button (until one is
-        // chosen, "auto": as Windows is).
+        // Shared with Modern Voices Config: light or dark, as last chosen with the moon (dark until then).
         const string OurKey = @"Software\Modern Voices for Windows";
 
         public static string Choice
@@ -85,8 +84,7 @@ namespace ModernVoicesReader
 
         public static bool IsDark()
         {
-            string choice = Choice;
-            return choice == "dark" || (choice == "auto" && WindowsIsDark());
+            return Choice != "light";      // dark until light is chosen
         }
 
         public static Palette Get(bool dark)
@@ -705,7 +703,7 @@ namespace ModernVoicesReader
         public readonly float Dpi;
 
         ComboBox voiceBox;
-        Button themeButton;
+        Label themeButton;               // a moon to click: light to dark and back
         TrackBar rateBar;
         Label rateLabel, timeLabel, statusLabel;
         PasteBox box;
@@ -824,6 +822,23 @@ namespace ModernVoicesReader
             return b;
         }
 
+        // The line under the buttons is as wide as the buttons from the first to "Save as sound": the
+        // progress bar takes up the difference.
+        void AlignLine()
+        {
+            if (audioButton == null || tidyBox == null || !IsHandleCreated) { return; }
+            int others = progress.Margin.Right + timeLabel.Width + timeLabel.Margin.Horizontal + autoBox.Width + autoBox.Margin.Horizontal +
+                tidyBox.Width + tidyBox.Margin.Left;
+            int wanted = audioButton.Right - startButton.Left - others;
+            progress.Width = Math.Max(Px(80), wanted);
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            AlignLine();
+        }
+
         // The moon button says which way it goes (where there are no symbols, in words).
         void ShowTheme()
         {
@@ -891,7 +906,7 @@ namespace ModernVoicesReader
             stopButton = NewSymbolButton("\uE71A", "Stop", "Stop (Play goes on from the same place)", delegate { Stop(); });
             clipboardButton = NewButton("Read clipboard", delegate { ReadClipboard(false); });
             fileButton = NewButton("Open a file...", delegate { ChooseFile(); });
-            screenButton = NewButton("Read from the screen...", delegate { ReadScreen(); });
+            screenButton = NewButton("Screen reader...", delegate { ReadScreen(); });
             audioButton = NewButton("Save as sound...", delegate { ChooseAudioFile(); });
             clearButton = NewButton("Clear", delegate { ClearText(); });
             foreach (Button b in new Button[] { startButton, playButton, stopButton, clipboardButton, fileButton, screenButton, audioButton })
@@ -900,6 +915,7 @@ namespace ModernVoicesReader
                 buttons.Controls.Add(b);
             }
             clearButton.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
+            clearButton.MinimumSize = new Size((int)(clearButton.PreferredSize.Width * 1.3), 0);
             buttonLine.Controls.Add(buttons, 0, 0);
             buttonLine.Controls.Add(clearButton, 1, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(buttonLine, 0, row++);
@@ -908,29 +924,36 @@ namespace ModernVoicesReader
             TableLayoutPanel under = NewLine(true, false);
             FlowLayoutPanel left = NewFlow();
             left.WrapContents = false;     // (one line: the window is never narrower than it needs)
+            Font lineFont = new Font("Segoe UI", 10f);     // (this line a little larger than the buttons' words)
             progress = new ProgressBar();
-            progress.Maximum = 1000; progress.Width = Px(120); progress.Height = Px(16); progress.Anchor = AnchorStyles.Left;
+            progress.Maximum = 1000; progress.Width = Px(120); progress.Height = Px(18); progress.Anchor = AnchorStyles.Left;
             progress.Margin = new Padding(3, Px(6), Px(6), Px(6));
             timeLabel = NewLabel("", false);
-            timeLabel.MinimumSize = new Size(Px(112), 0);
+            timeLabel.Font = lineFont;
+            timeLabel.MinimumSize = new Size(Px(126), 0);
             autoBox = new CheckBox();
-            autoBox.Text = "Read copied text instantly"; autoBox.AutoSize = true; autoBox.Anchor = AnchorStyles.Left;
+            autoBox.Text = "Read copied text instantly"; autoBox.AutoSize = true; autoBox.Anchor = AnchorStyles.Left; autoBox.Font = lineFont;
             autoBox.Margin = new Padding(Px(6), 3, Px(6), 3);
             autoBox.CheckedChanged += delegate { if (!loading) { store.State.AutoRead = autoBox.Checked; store.Save(); } };
             tidyBox = new CheckBox();
-            tidyBox.Text = "Don't read links, code or symbols"; tidyBox.AutoSize = true; tidyBox.Anchor = AnchorStyles.Left;
-            tidyBox.Margin = new Padding(Px(6), 3, Px(6), 3);
+            tidyBox.Text = "Don't read links, code or symbols"; tidyBox.AutoSize = true; tidyBox.Anchor = AnchorStyles.Left; tidyBox.Font = lineFont;
+            tidyBox.Margin = new Padding(Px(6), 3, 0, 3);
             tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
             left.Controls.Add(progress); left.Controls.Add(timeLabel); left.Controls.Add(autoBox); left.Controls.Add(tidyBox);
             under.Controls.Add(left, 0, 0);
-            // A moon: light to dark and back (shared with the Voice manager).
-            themeButton = NewSymbolButton("\uE708", "Dark", "Light or dark", delegate
+            // A moon to click (no button around it): light to dark and back, shared with Modern Voices Config.
+            themeButton = new Label();
+            themeButton.AutoSize = true; themeButton.Anchor = AnchorStyles.Right; themeButton.Cursor = Cursors.Hand;
+            themeButton.Margin = new Padding(Px(6), 0, Px(4), 0);
+            if (symbols) { themeButton.Font = new Font("Segoe MDL2 Assets", 15f); themeButton.Text = "\uE708"; }
+            else { themeButton.Font = lineFont; themeButton.Text = "Dark"; }
+            themeButton.Click += delegate
             {
                 Theme.Choice = Theme.IsDark() ? "light" : "dark";
                 Theme.Apply(this, Theme.IsDark());
                 ShowTheme();
-            });
-            themeButton.Anchor = AnchorStyles.Right;
+                AlignLine();
+            };
             under.Controls.Add(themeButton, 1, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(under, 0, row++);
 
@@ -1041,7 +1064,7 @@ namespace ModernVoicesReader
             loading = false;
             RateChanged();
             ShowPlace();
-            if (voiceBox.Items.Count == 0) { Status("Windows has no voices to read with: add some in Modern Voices."); }
+            if (voiceBox.Items.Count == 0) { Status("Windows has no voices to read with: add some in Modern Voices Config."); }
             else if (position > 0 && position < box.TextLength) { Status("Play goes on from where you stopped."); }
         }
 
@@ -1515,12 +1538,13 @@ namespace ModernVoicesReader
             try { AddClipboardFormatListener(Handle); } catch (Exception) { }
             Theme.Apply(this, Theme.IsDark());
             ShowTheme();
+            AlignLine();
         }
 
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == WM_CLIPBOARDUPDATE && autoBox != null && autoBox.Checked && !ContainsFocus) { ReadClipboard(true); }
-            else if (m.Msg == WM_SETTINGCHANGE && Theme.Choice == "auto") { Theme.Apply(this, Theme.IsDark()); ShowTheme(); }
+            
             base.WndProc(ref m);
         }
 

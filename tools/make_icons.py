@@ -46,5 +46,6 @@ def gear():
 
 SIZES = [(16, 16), (20, 20), (24, 24), (32, 32), (40, 40), (48, 48), (64, 64), (256, 256)]
 for name, image in (('reader/reader.ico', speaker()), ('installer/manager.ico', gear())):
-    image.save(name, sizes=SIZES)
+    # (as plain bitmaps: Windows does not show the small sizes of a program's icon when they are PNG)
+    image.save(name, sizes=SIZES, bitmap_format='bmp')
     print(name)

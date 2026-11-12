@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.9.2'
+$Version = '0.9.3'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -550,7 +550,7 @@ function Add-UiNote($Grid, $Label) {
 }
 
 # ---- light and dark: as last chosen with the moon button (kept for the Windows user and shared with the
-# Reader); until one is chosen, as Windows is (Settings > Personalisation > Colours: the mode for apps).
+# Reader); dark until light is chosen.
 $ThemeKey = 'HKCU:\Software\Modern Voices for Windows'
 function Get-ThemeChoice {
     $found = Get-ItemProperty $ThemeKey -Name Theme -ErrorAction SilentlyContinue
@@ -563,10 +563,7 @@ function Set-ThemeChoice([string]$Choice) {
 }
 function Test-DarkTheme {
     $choice = if ($script:UiThemeOverride) { $script:UiThemeOverride } else { Get-ThemeChoice }
-    if ($choice -eq 'dark') { return $true }
-    if ($choice -eq 'light') { return $false }
-    $windows = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name AppsUseLightTheme -ErrorAction SilentlyContinue
-    return ($null -ne $windows) -and ($windows.AppsUseLightTheme -eq 0)
+    return ($choice -ne 'light')      # dark until light is chosen
 }
 function Get-UiPalette([bool]$Dark) {
     $rgb = { param($r, $g, $b) [System.Drawing.Color]::FromArgb($r, $g, $b) }
@@ -747,7 +744,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     [System.Windows.Forms.Application]::EnableVisualStyles()
 
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "$AppName $Version"
+    $form.Text = "Modern Voices Config $Version"
     Set-UiIcon $form
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
     # Sizes here are for a display at 100%; one scaled up (125%, 150%, ...) gets them scaled with its
@@ -845,25 +842,31 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     }
 
     # The selected voice (a row for each installed speaker): hear it, make it Windows' default.
-    $voiceLine = New-UiFlow
+    $voiceLine = New-UiLine @('fill', 'auto', 'auto')
+    $voiceTools = New-UiFlow
+    $voiceTools.WrapContents = $false
     $previewButton = New-UiButton 'Preview'
     $stopButton = New-UiButton 'Stop'
+    $nickBox = New-Object System.Windows.Forms.TextBox
+    $nickBox.Width = Get-Px 190; $nickBox.MaxLength = 40; $nickBox.Anchor = 'Left'; $nickBox.Enabled = $false
+    $nickBox.Margin = New-Object System.Windows.Forms.Padding((Get-Px 12), 3, 3, 3)
+    $nickButton = New-UiButton 'Set nickname'
+    $nickButton.Enabled = $false
     $defaultButton = New-UiButton 'Make default voice'
     $sapiButton = New-UiButton 'Windows speech settings'
     $previewButton.Enabled = $false; $defaultButton.Enabled = $false
-    foreach ($c in $previewButton, $stopButton, $defaultButton, $sapiButton) { $voiceLine.Controls.Add($c) }
+    foreach ($c in $previewButton, $stopButton, $nickBox, $nickButton) { $voiceTools.Controls.Add($c) }
+    $defaultButton.Anchor = 'Right'; $sapiButton.Anchor = 'Right'
+    $voiceLine.Controls.Add($voiceTools, 0, 0); $voiceLine.Controls.Add($defaultButton, 1, 0); $voiceLine.Controls.Add($sapiButton, 2, 0)
     Add-UiRow $page $voiceLine
-    $nickLine = New-UiFlow
-    $nickLabel = New-UiLabel 'Nickname'
-    $nickLabel.Dock = 'None'; $nickLabel.Anchor = 'Left'
-    $nickBox = New-Object System.Windows.Forms.TextBox
-    $nickBox.Width = Get-Px 170; $nickBox.MaxLength = 40; $nickBox.Anchor = 'Left'; $nickBox.Enabled = $false
-    $nickButton = New-UiButton 'Set nickname'
-    $nickButton.Enabled = $false
-    $nickHint = New-UiLabel "shown in brackets in the voice's name: VCTK p262 (Irish Female). Empty: its accent." -Grey
-    $nickHint.Dock = 'None'; $nickHint.Anchor = 'Left'
-    foreach ($c in $nickLabel, $nickBox, $nickButton, $nickHint) { $nickLine.Controls.Add($c) }
-    Add-UiRow $page $nickLine
+    $nickTip = New-Object System.Windows.Forms.ToolTip
+    $nickTip.AutoPopDelay = 20000
+    foreach ($c in $nickButton, $nickBox) {
+        $nickTip.SetToolTip($c, ("A name of your own for the selected voice, shown in brackets in place of its accent:`r`n" +
+            "VCTK p262 (British) becomes VCTK p262 (Irish Female).`r`n" +
+            "Type it in the box and press Set nickname; with the box empty, the accent is put back.`r`n" +
+            "Programs that were open show the new name after a restart."))
+    }
     $previewLine = New-UiLine @('auto', 'fill')
     $previewLabel = New-UiLabel 'Preview says'
     $previewLabel.Dock = 'None'; $previewLabel.Anchor = 'Top, Left'
@@ -1844,7 +1847,7 @@ function Write-Launcher([string]$Destination, [string]$Script, [string]$Extra, [
 }
 
 function Register-Program {
-    Write-Launcher (Join-Path $App 'Modern Voices.cmd') 'Install.ps1' ''
+    Write-Launcher (Join-Path $App 'Modern Voices Config.cmd') 'Install.ps1' ''
     Write-Launcher (Join-Path $App 'Repair.cmd') 'Install.ps1' '-Repair'
     Write-Launcher (Join-Path $App 'Test voices.cmd') 'Test.ps1' ''
     Write-Launcher (Join-Path $App 'Uninstall.cmd') 'Uninstall.ps1' '' -LeaveFolder
@@ -1861,7 +1864,7 @@ function Register-Program {
     Set-ItemProperty $OurKey -Name 'EstimatedSize' -Value $sizeKb -Type DWord
     New-Item $StartMenu -ItemType Directory -Force | Out-Null
     $common = "-NoProfile -ExecutionPolicy Bypass -File `"$App\installer\"
-    New-Shortcut (Join-Path $StartMenu 'Modern Voices.lnk') ($common + 'Install.ps1"') 'Voices installed, how they sound, add or remove voices'
+    New-Shortcut (Join-Path $StartMenu 'Modern Voices Config.lnk') ($common + 'Install.ps1"') 'Voices installed, how they sound, add or remove voices'
     $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
     if (Test-Path $readerExe) {
         $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $StartMenu 'Modern Voices Reader.lnk'))

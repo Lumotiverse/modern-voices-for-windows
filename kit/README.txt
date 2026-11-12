@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.9.2
+Modern Voices for Windows 0.9.3
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -20,7 +20,7 @@ Install
 1. Double-click Install.cmd and say yes to the administrator prompt.
 2. Choose where to install (C:\Program Files\Modern Voices for Windows unless you change it; a folder
    named Modern Voices for Windows is made in the folder you choose) and press Install.
-3. The Modern Voices window opens (if you can't see it, it's on the taskbar). On "Add or remove
+3. The Modern Voices Config window opens (if you can't see it, it's on the taskbar). On "Add or remove
    voices", tick the voices you want. Select one and press Play sample to hear it first. Voices with
    several speakers (VCTK, LibriTTS, ...) list their speakers in name order: click a name to hear
    that speaker (Play sample plays it again); tick a speaker's box to install it. Each ticked speaker
@@ -35,8 +35,9 @@ Installed outside Program Files, the folder is set up as Program Files is: only 
 change its files (every program that speaks loads the engine from it).
 
 Afterwards, from the Start menu (Modern Voices for Windows):
-  Modern Voices   the window: Voice manager (installed voices, how they sound, Windows' default
-                  voice), Speed and pauses, Pronunciation, and Add or remove voices
+  Modern Voices Config
+                  the window: Voice manager (installed voices, how they sound, Windows'
+                  default voice), Speed and pauses, Pronunciation, and Add or remove voices
   Modern Voices Reader
                   reads text aloud with the voices: pasted or copied text, files, text on the
                   screen (see "The Reader" below)
@@ -47,7 +48,7 @@ Afterwards, from the Start menu (Modern Voices for Windows):
 
 How each voice sounds
 ---------------------
-In the Modern Voices window, on "Voice manager", select a voice:
+In the Modern Voices Config window, on "Voice manager", select a voice:
 
   Volume   how loud each sentence's loudest moment is: 100% = full volume. 0 = as Piper
            made it (quieter: the model's own level).
@@ -63,9 +64,10 @@ gap); Reset puts back 100%, 1.5x, 100%. Each installed speaker of a voice has it
 voice named on the first): Preview, Make default voice and Nickname act on the row selected. A voice's speakers share its sliders (add or remove speakers on "Add or remove
 voices"). A program's own volume and speed still adjust from there.
 
-Nickname gives the selected row's voice a name of your own, shown in brackets in the voice's name in place of
-its accent: "VCTK p262 (Irish Female)" for "VCTK p262 (British)". Set nickname renames the voice where
-Windows lists it (restart programs that were open to see it); with the box empty, it puts the accent back.
+Set nickname gives the selected row's voice the name typed in the box beside it, shown in brackets in
+the voice's name in place of its accent: "VCTK p262 (Irish Female)" for "VCTK p262 (British)". It
+renames the voice where Windows lists it (restart programs that were open to see it); with the box
+empty, it puts the accent back.
 
 Make default voice sets the selected voice as Windows' default speech voice: the one programs speak
 with when they don't choose a voice (what Windows' Speech control panel, sapi.cpl, sets; Windows
@@ -153,7 +155,7 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     (.html). A file dropped on the text is opened too. A file opened again goes on from where you
     stopped in it (while its text is unchanged). (Not PDF or the older .doc: copy the text from those
     and press Read clipboard.)
-  * Read from the screen: for text that can't be selected or copied (a picture, a game, some PDFs).
+  * Screen reader: for text that can't be selected or copied (a picture, a game, some PDFs).
     The screen dims; drag a box around the text, and Windows' own text recognition reads it into the
     box and starts reading. Recognition is not perfect, small or fancy print least of all. It works
     for the languages Windows has text recognition for (Settings > Time & language > Language).
@@ -166,9 +168,8 @@ Its text and places are kept in %APPDATA%\Modern Voices Reader (removed by Unins
 
 Light and dark
 --------------
-The moon button in either window switches between light and dark; the choice is shared by both and
-kept. Until you choose, they are as Windows is (Settings > Personalisation > Colours: the mode for
-apps). A few parts are Windows' own and stay as Windows draws them (the ticks of tick boxes, the
+The moon in either window switches between dark and light; the choice is shared by both and kept.
+They are dark until you choose light. A few parts are Windows' own and stay as Windows draws them (the ticks of tick boxes, the
 sliders' tracks).
 
 

@@ -98,7 +98,7 @@ if ($has32) { Check ((Get-OurTokens $Tokens32).Count -eq 3) '3 voices for 32-bit
 $signature = Get-AuthenticodeSignature (Join-Path $App 'engine\x64\modern_voices.dll')
 Check ($signature.Status -eq 'Valid') "64-bit engine signature trusted ($($signature.Status))"
 $menu = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Modern Voices for Windows'
-Check ((Test-Path "$menu\Modern Voices.lnk") -and (Test-Path "$menu\Repair.lnk")) 'Start menu: Modern Voices, Repair'
+Check ((Test-Path "$menu\Modern Voices Config.lnk") -and (Test-Path "$menu\Repair.lnk")) 'Start menu: Modern Voices Config, Repair'
 Check (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows') 'Installed apps entry'
 $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"
