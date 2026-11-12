@@ -582,7 +582,7 @@ function Set-UiThemeOn($Control, $P) {
     elseif ($Control -is [System.Windows.Forms.TextBox] -or $Control -is [System.Windows.Forms.ListView] -or $Control -is [System.Windows.Forms.ListBox]) {
         $Control.BackColor = $P.Input; $Control.ForeColor = $P.Text
         if ($Control -is [System.Windows.Forms.ListView]) { $Control.OwnerDraw = $P.Dark }
-        try { [void][ModernVoices.Look]::SetWindowTheme($Control.Handle, $(if ($P.Dark) { 'DarkMode_Explorer' } else { 'Explorer' }), $null) } catch { }
+        try { [void][ModernVoices.Look]::SetWindowTheme($Control.Handle, $(if ($P.Dark) { 'DarkMode_Explorer' } else { 'Explorer' }), [NullString]::Value) } catch { }
     }
     elseif ($Control -is [System.Windows.Forms.ComboBox]) {
         $Control.FlatStyle = $(if ($P.Dark) { 'Flat' } else { 'Standard' }); $Control.BackColor = $P.Input; $Control.ForeColor = $P.Text
@@ -1802,6 +1802,15 @@ if ($FunctionsOnly) { return }
 try {
     if ($PickerSelfTest) {
         # The window built (not shown) and driven as clicks would: the build's test of it.
+        # An error in one of the window's handlers is reported and ends the test (Windows would otherwise
+        # show a box and wait for a click that never comes).
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.Application]::add_ThreadException({
+            param($sender, $e)
+            [Console]::Out.WriteLine("ERROR in the window: $($e.Exception)")
+            [Console]::Out.Flush()
+            [Environment]::Exit(3)
+        })
         $existing = Get-InstalledFolder
         if ($existing) { Set-AppPaths $existing }
         $bad = @()

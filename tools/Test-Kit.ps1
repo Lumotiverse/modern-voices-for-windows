@@ -28,12 +28,20 @@ function Get-OurTokens([string]$Root) {
     if (-not (Test-Path $Root)) { return @() }
     return @(Get-ChildItem $Root | Where-Object { (Get-ItemProperty $_.PSPath).ModernVoice -eq 1 } | ForEach-Object { $_.PSChildName })
 }
-function Invoke-Install([string[]]$Arguments) {
-    $global:LASTEXITCODE = 0
+# Runs the installer with a time limit (a window waiting for a click would otherwise stop the build
+# for hours), shows what it printed, and returns its exit code (-1 when it had to be stopped).
+function Invoke-Install([string[]]$Arguments, [int]$Seconds = 1200) {
     $started = Get-Date
-    # Out-Host: the installer's output is shown, not returned along with the exit code.
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') @Arguments | Out-Host
-    $code = $LASTEXITCODE
+    $out = [System.IO.Path]::GetTempFileName(); $err = [System.IO.Path]::GetTempFileName()
+    $quoted = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$(Join-Path $Kit 'installer\Install.ps1')`"") +
+        @($Arguments | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } })
+    $run = Start-Process powershell.exe -ArgumentList $quoted -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+    $finished = $run.WaitForExit($Seconds * 1000)
+    if (-not $finished) { try { $run.Kill() } catch { } }
+    Get-Content $out, $err -ErrorAction SilentlyContinue | Out-Host
+    Remove-Item $out, $err -ErrorAction SilentlyContinue
+    $code = if ($finished) { $run.ExitCode } else { -1 }
+    if (-not $finished) { Write-Host "  STOPPED after $Seconds s: it was waiting for something" -ForegroundColor Red }
     Write-Host ("  (exit code {0}, {1:N0} s)" -f $code, ((Get-Date) - $started).TotalSeconds)
     return $code
 }
@@ -68,8 +76,8 @@ $albaDir = Join-Path $App 'voices\en_GB-alba-medium'
 $albaName = 'Alba (British)'
 
 Step 'Manager window (before installing)'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest
-Check ($LASTEXITCODE -eq 0) 'the window builds from the real catalogue; speakers and duplicate warning work'
+$code = Invoke-Install @('-PickerSelfTest') 300
+Check ($code -eq 0) 'the window builds from the real catalogue; speakers and duplicate warning work'
 
 Step 'Install: Alba, Northern English Male, VCTK speaker p239'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium,en_GB-northern_english_male-medium,en_GB-vctk-medium#p239', '-Unattended', '-NoPause',
@@ -102,8 +110,8 @@ $normal = Test-Speech $PS64 64 3
 if ($has32) { [void](Test-Speech $PS32 32 3) }
 
 Step 'Manager window (installed voices: sliders save to voice.json)'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest
-Check ($LASTEXITCODE -eq 0) 'sliders save the settings'
+$code = Invoke-Install @('-PickerSelfTest') 300
+Check ($code -eq 0) 'sliders save the settings'
 
 Step 'Settings take effect: volume, speed'
 . (Join-Path $App 'installer\VoiceConvert.ps1')
@@ -200,8 +208,8 @@ Set-GlobalSpeed $settingsFile 100
 [void](Set-Noise $albaDir $albaNoise)
 [void](Set-Noise $maleDir $maleNoise)
 $screens = Join-Path (Split-Path (Resolve-Path $Kit).Path -Parent) 'screens'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest -ScreenshotDir $screens | Out-Host
-Check ($LASTEXITCODE -eq 0) 'window: pause sliders save (Speed and pauses tab and a voice of its own), preview voices, pictures'
+$code = Invoke-Install @('-PickerSelfTest', '-ScreenshotDir', $screens) 300
+Check ($code -eq 0) 'window: pause sliders save (Speed and pauses tab and a voice of its own), preview voices, pictures'
 
 Step 'The Reader'
 $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
