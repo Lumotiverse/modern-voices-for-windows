@@ -44,6 +44,7 @@ if ($Reader -and (Test-Path $Reader)) {
 }
 Copy-Item (Join-Path $repo 'engine\espeak-ng-data') "$kit\engine\espeak-ng-data" -Recurse
 Copy-Item (Join-Path $repo 'installer\*.ps1') "$kit\installer"
+Copy-Item (Join-Path $repo 'installer\*.ico') "$kit\installer"
 Copy-Item (Join-Path $repo 'kit\*') $kit
 Copy-Item (Join-Path $repo 'LICENSE'), (Join-Path $repo 'THIRD-PARTY-NOTICES.md') $kit
 Copy-Item (Join-Path $repo 'licenses') "$kit\licenses" -Recurse

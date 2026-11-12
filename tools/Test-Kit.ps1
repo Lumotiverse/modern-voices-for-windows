@@ -228,6 +228,7 @@ Check ($code -eq 0) 'window: pause sliders save (Speed and pauses tab and a voic
 Step 'The Reader'
 $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
 Check (Test-Path $readerExe) 'the Reader is installed'
+Check (Test-Path (Join-Path $App 'installer\manager.ico')) "the Voice manager's icon is installed"
 Check (Test-Path (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Modern Voices for Windows\Modern Voices Reader.lnk")) 'Start menu: Modern Voices Reader'
 if (Test-Path $readerExe) {
     Check ((Get-AuthenticodeSignature $readerExe).Status -eq 'Valid') 'the Reader is signed by the build (trusted as the engine is)'

@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.9.1'
+$Version = '0.9.2'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -261,12 +261,19 @@ function Get-InstalledIds {
 
 # The first screen of a fresh install: where the program goes, with Change... to choose another folder.
 # Returns the program's folder, or '' when cancelled.
+# The program's icon (a speech bubble with a gear) on a window: its title bar and the taskbar.
+function Set-UiIcon($Form) {
+    $icon = Join-Path $Here 'manager.ico'
+    if (Test-Path $icon) { try { $Form.Icon = New-Object System.Drawing.Icon $icon } catch { } }
+}
+
 function New-LocationForm([string]$Default) {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "$AppName $Version - install"
+    Set-UiIcon $form
     $form.Size = New-Object System.Drawing.Size(640, 300)
     $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false; $form.MinimizeBox = $false
     $form.StartPosition = 'CenterScreen'
@@ -542,8 +549,8 @@ function Add-UiNote($Grid, $Label) {
     $Grid.Controls.Add($Label, 1, $row)
 }
 
-# ---- light and dark. The choice (As Windows, Light, Dark) is kept for the Windows user and shared
-# with the Reader; "As Windows" follows Settings > Personalisation > Colours (the mode for apps).
+# ---- light and dark: as last chosen with the moon button (kept for the Windows user and shared with the
+# Reader); until one is chosen, as Windows is (Settings > Personalisation > Colours: the mode for apps).
 $ThemeKey = 'HKCU:\Software\Modern Voices for Windows'
 function Get-ThemeChoice {
     $found = Get-ItemProperty $ThemeKey -Name Theme -ErrorAction SilentlyContinue
@@ -628,6 +635,7 @@ function Set-UiTheme {
         if ([ModernVoices.Look]::DwmSetWindowAttribute($form.Handle, 20, [ref]$on, 4) -ne 0) { [void][ModernVoices.Look]::DwmSetWindowAttribute($form.Handle, 19, [ref]$on, 4) }
     } catch { }
     foreach ($child in $form.Controls) { Set-UiThemeOn $child $p }
+    if ($script:Ui.ThemeButton.Text.Length -gt 1) { $script:Ui.ThemeButton.Text = $(if ($dark) { 'Light' } else { 'Dark' }) }
     Show-UiPage $script:Ui.PageIndex
     $form.ResumeLayout()
     $form.Refresh()
@@ -740,6 +748,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "$AppName $Version"
+    Set-UiIcon $form
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
     # Sizes here are for a display at 100%; one scaled up (125%, 150%, ...) gets them scaled with its
     # text. Rows are laid out by what is in them, so nothing overlaps at any text size; the window never
@@ -783,7 +792,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $tabInstalled = $pages[0]; $tabPauses = $pages[1]; $tabWords = $pages[2]; $tabAdd = $pages[3]
 
     # ---- bottom of the window: progress while applying changes
-    $bottom = New-UiLine @('auto', 'auto', 'fill', 'auto', 'auto')
+    $bottom = New-UiLine @('auto', 'fill', 'auto', 'auto')
     $bottom.Dock = 'Bottom'
     $bottom.RowStyles.Clear()
     [void]$bottom.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, (Get-Px 20))))
@@ -792,21 +801,24 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $progress = New-Object System.Windows.Forms.ProgressBar
     $progress.Dock = 'Fill'; $progress.Visible = $false
     $progress.Margin = New-Object System.Windows.Forms.Padding(3, (Get-Px 6), 3, 0)
-    $bottom.Controls.Add($progress, 0, 0); $bottom.SetColumnSpan($progress, 5)
+    $bottom.Controls.Add($progress, 0, 0); $bottom.SetColumnSpan($progress, 4)
     $status = New-UiLabel '' -Grey
     $status.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 34))
     $apply = New-UiButton 'Apply changes'
     $close = New-UiButton 'Close'
     $close.DialogResult = 'Cancel'
-    $themeLabel = New-UiLabel 'Theme'
-    $themeLabel.Dock = 'None'; $themeLabel.Anchor = 'Left'
-    $themeBox = New-Object System.Windows.Forms.ComboBox
-    $themeBox.DropDownStyle = 'DropDownList'; $themeBox.Width = Get-Px 110; $themeBox.Anchor = 'Left'
-    foreach ($name in 'As Windows', 'Light', 'Dark') { [void]$themeBox.Items.Add($name) }
-    $themeBox.SelectedIndex = [math]::Max(0, [array]::IndexOf(@('auto', 'light', 'dark'), (Get-ThemeChoice)))
-    $themeBox.add_SelectedIndexChanged({ Set-ThemeChoice (@('auto', 'light', 'dark')[$script:Ui.ThemeBox.SelectedIndex]); Set-UiTheme })
-    $bottom.Controls.Add($themeLabel, 0, 1); $bottom.Controls.Add($themeBox, 1, 1)
-    $bottom.Controls.Add($status, 2, 1); $bottom.Controls.Add($apply, 3, 1); $bottom.Controls.Add($close, 4, 1)
+    # A moon: light to dark and back (the choice is shared with the Reader).
+    $themeButton = New-UiButton 'Dark'
+    $moonFont = New-Object System.Drawing.Font('Segoe MDL2 Assets', 11)
+    if ($moonFont.Name -eq 'Segoe MDL2 Assets') {      # Windows' own symbols, where it has them
+        $themeButton.Font = $moonFont; $themeButton.Text = [string][char]0xE708
+        $themeButton.Padding = New-Object System.Windows.Forms.Padding((Get-Px 8), (Get-Px 5), (Get-Px 8), (Get-Px 3))
+    }
+    $themeTip = New-Object System.Windows.Forms.ToolTip
+    $themeTip.SetToolTip($themeButton, 'Light or dark')
+    $themeButton.add_Click({ Set-ThemeChoice $(if (Test-DarkTheme) { 'light' } else { 'dark' }); Set-UiTheme })
+    $bottom.Controls.Add($themeButton, 0, 1)
+    $bottom.Controls.Add($status, 1, 1); $bottom.Controls.Add($apply, 2, 1); $bottom.Controls.Add($close, 3, 1)
     $form.Controls.Add($bottom)
     $form.CancelButton = $close
 
@@ -1054,7 +1066,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $globalTimer.Interval = 350
     $globalTimer.add_Tick({ $script:Ui.GlobalTimer.Stop(); Save-UiGlobalSettings })
 
-    $script:Ui = @{ Form = $form; Pages = $pages; TabButtons = $tabButtons; TabStrip = $tabStrip; PageHost = $pageHost; PageIndex = 0; ThemeBox = $themeBox; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
+    $script:Ui = @{ Form = $form; Pages = $pages; TabButtons = $tabButtons; TabStrip = $tabStrip; PageHost = $pageHost; PageIndex = 0; ThemeButton = $themeButton; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
         Speakers = $chosenSpeakers; Current = $null; Player = $null; Filling = $false; InstalledKeys = @($speakersOf.Keys)
         InstalledList = $installedList; SoundLabel = $soundLabel; Sliders = $sliders; PreviewBox = $previewBox
         PreviewButton = $previewButton; ResetButton = $resetButton; CurrentInstalled = $null; SaveTimer = $timer
@@ -1126,7 +1138,12 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     Update-UiSummary
     # Dark or light: as chosen, or as Windows is (looked at again whenever the window comes to the front).
     $script:UiDark = $null
-    foreach ($view in $installedList, $list, $wordList) { Enable-UiDarkHeader $view }
+    foreach ($view in $installedList, $list, $wordList) {
+        Enable-UiDarkHeader $view
+        # The last column takes the width left over (so that no strip of plain heading shows beside it).
+        $view.Columns[$view.Columns.Count - 1].Width = -2
+        $view.add_Resize({ param($sender, $e) $sender.Columns[$sender.Columns.Count - 1].Width = -2 })
+    }
     Set-UiTheme
     $form.add_Activated({ Set-UiTheme })
     Show-UiPage $(if ($installedList.Items.Count -eq 0) { 3 } else { 0 })
@@ -1734,6 +1751,7 @@ function Install-Engine {
     $scripts = Join-Path $App 'installer'
     New-Item $scripts -ItemType Directory -Force | Out-Null
     Copy-Item (Join-Path $Here '*.ps1') $scripts -Force
+    Copy-Item (Join-Path $Here '*.ico') $scripts -Force
     # Modern Voices: Reader (a program of its own, beside this one).
     $readerFrom = Join-Path $Root 'reader'
     if (Test-Path $readerFrom) {
@@ -1810,7 +1828,7 @@ function New-Shortcut([string]$Path, [string]$Arguments, [string]$Description) {
     $link.Arguments = $Arguments
     $link.WorkingDirectory = $App
     $link.Description = $Description
-    $link.IconLocation = "$env:SystemRoot\System32\SpeechUX\sapi.cpl,0"
+    $link.IconLocation = "$App\installer\manager.ico,0"
     $link.Save()
 }
 
@@ -1831,7 +1849,7 @@ function Register-Program {
     Set-ItemProperty $OurKey -Name 'DisplayVersion' -Value $Version
     Set-ItemProperty $OurKey -Name 'Publisher' -Value $AppName
     Set-ItemProperty $OurKey -Name 'InstallLocation' -Value $App
-    Set-ItemProperty $OurKey -Name 'DisplayIcon' -Value "$env:SystemRoot\System32\SpeechUX\sapi.cpl,0"
+    Set-ItemProperty $OurKey -Name 'DisplayIcon' -Value "$App\installer\manager.ico"
     Set-ItemProperty $OurKey -Name 'UninstallString' -Value "`"$PS64`" -NoProfile -ExecutionPolicy Bypass -File `"$App\installer\Uninstall.ps1`""
     Set-ItemProperty $OurKey -Name 'ModifyPath' -Value "`"$PS64`" -NoProfile -ExecutionPolicy Bypass -File `"$App\installer\Install.ps1`""
     Set-ItemProperty $OurKey -Name 'NoRepair' -Value 1 -Type DWord
@@ -1845,8 +1863,7 @@ function Register-Program {
         $link.TargetPath = $readerExe
         $link.WorkingDirectory = Split-Path $readerExe -Parent
         $link.Description = 'Reads text aloud with the Modern Voices: pasted or copied text, files, and text on the screen'
-        $link.IconLocation = "$env:SystemRoot\System32\SpeechUX\sapi.cpl,0"
-        $link.Save()
+        $link.Save()      # (its icon is the program's own)
     }
     New-Shortcut (Join-Path $StartMenu 'Repair.lnk') ($common + 'Install.ps1" -Repair') 'Register the voices again'
     New-Shortcut (Join-Path $StartMenu 'Test voices.lnk') ($common + 'Test.ps1"') 'Hear each Modern Voice'

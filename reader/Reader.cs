@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.9.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.9.2.0")]
 
 namespace ModernVoicesReader
 {
@@ -40,7 +40,8 @@ namespace ModernVoicesReader
 
     public static class Theme
     {
-        // Shared with the Voice manager: auto (follow Windows), light or dark.
+        // Shared with the Voice manager: light or dark, as last chosen with the moon button (until one is
+        // chosen, "auto": as Windows is).
         const string OurKey = @"Software\Modern Voices for Windows";
 
         public static string Choice
@@ -703,7 +704,8 @@ namespace ModernVoicesReader
         readonly bool silent;            // the build's test: speech goes nowhere
         public readonly float Dpi;
 
-        ComboBox voiceBox, themeBox;
+        ComboBox voiceBox;
+        Button themeButton;
         TrackBar rateBar;
         Label rateLabel, timeLabel, statusLabel;
         PasteBox box;
@@ -822,6 +824,14 @@ namespace ModernVoicesReader
             return b;
         }
 
+        // The moon button says which way it goes (where there are no symbols, in words).
+        void ShowTheme()
+        {
+            bool dark = Theme.IsDark();
+            if (!symbols) { themeButton.Text = dark ? "Light" : "Dark"; }
+            tips.SetToolTip(themeButton, dark ? "Light theme" : "Dark theme");
+        }
+
         void Build()
         {
             TableLayoutPanel page = new TableLayoutPanel();
@@ -841,6 +851,7 @@ namespace ModernVoicesReader
             rateBar = new TrackBar();
             rateBar.Minimum = -10; rateBar.Maximum = 10; rateBar.TickFrequency = 5; rateBar.LargeChange = 1;
             rateBar.AutoSize = false; rateBar.Width = Px(150); rateBar.Height = Px(30); rateBar.Anchor = AnchorStyles.Left;
+            rateBar.Margin = new Padding(3, Px(13), 3, 0);     // (its bar is drawn above its middle: lowered to line up with the labels)
             rateBar.TickStyle = TickStyle.None;
             rateBar.ValueChanged += delegate { RateChanged(); };
             top.Controls.Add(rateBar, 4, 0);
@@ -871,25 +882,29 @@ namespace ModernVoicesReader
             };
             page.RowStyles.Add(new RowStyle(SizeType.Percent, 100f)); page.Controls.Add(box, 0, row++);
 
-            // From the start, play or pause, stop; files; the clipboard and the screen.
+            // From the start, play or pause, stop; the clipboard, a file, the screen; as sound. Clear at the far end.
+            TableLayoutPanel buttonLine = NewLine(true, false);
             FlowLayoutPanel buttons = NewFlow();
             startButton = NewSymbolButton("\uE892", "From the start", "Read from the start", delegate { FromStart(); });
             playButton = NewSymbolButton("\uE768", "Play", "Play", delegate { PlayOrPause(); });
             stopButton = NewSymbolButton("\uE71A", "Stop", "Stop (Play goes on from the same place)", delegate { Stop(); });
+            clipboardButton = NewButton("Read clipboard", delegate { ReadClipboard(false); });
             fileButton = NewButton("Open a file...", delegate { ChooseFile(); });
+            screenButton = NewButton("Read from the screen...", delegate { ReadScreen(); });
             audioButton = NewButton("Save as sound...", delegate { ChooseAudioFile(); });
             clearButton = NewButton("Clear", delegate { ClearText(); });
-            clipboardButton = NewButton("Read clipboard", delegate { ReadClipboard(false); });
-            screenButton = NewButton("Read from the screen...", delegate { ReadScreen(); });
-            foreach (Button b in new Button[] { startButton, playButton, stopButton, fileButton, audioButton, clearButton, clipboardButton, screenButton })
+            foreach (Button b in new Button[] { startButton, playButton, stopButton, clipboardButton, fileButton, screenButton, audioButton })
             {
                 b.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;    // (all one height)
                 buttons.Controls.Add(b);
             }
-            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(buttons, 0, row++);
+            clearButton.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
+            buttonLine.Controls.Add(buttons, 0, 0);
+            buttonLine.Controls.Add(clearButton, 1, 0);
+            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(buttonLine, 0, row++);
 
-            // How far, how long is left; what is read; the theme.
-            TableLayoutPanel under = NewLine(true, false, false);
+            // How far, how long is left; what is read; light or dark.
+            TableLayoutPanel under = NewLine(true, false);
             FlowLayoutPanel left = NewFlow();
             left.WrapContents = false;     // (one line: the window is never narrower than it needs)
             progress = new ProgressBar();
@@ -907,17 +922,15 @@ namespace ModernVoicesReader
             tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
             left.Controls.Add(progress); left.Controls.Add(timeLabel); left.Controls.Add(autoBox); left.Controls.Add(tidyBox);
             under.Controls.Add(left, 0, 0);
-            under.Controls.Add(NewLabel("Theme", false), 1, 0);
-            themeBox = new ComboBox();
-            themeBox.DropDownStyle = ComboBoxStyle.DropDownList; themeBox.Width = Px(110); themeBox.Anchor = AnchorStyles.Left;
-            themeBox.Items.AddRange(new object[] { "As Windows", "Light", "Dark" });
-            themeBox.SelectedIndex = Theme.Choice == "light" ? 1 : Theme.Choice == "dark" ? 2 : 0;
-            themeBox.SelectedIndexChanged += delegate
+            // A moon: light to dark and back (shared with the Voice manager).
+            themeButton = NewSymbolButton("\uE708", "Dark", "Light or dark", delegate
             {
-                Theme.Choice = themeBox.SelectedIndex == 1 ? "light" : themeBox.SelectedIndex == 2 ? "dark" : "auto";
+                Theme.Choice = Theme.IsDark() ? "light" : "dark";
                 Theme.Apply(this, Theme.IsDark());
-            };
-            under.Controls.Add(themeBox, 2, 0);
+                ShowTheme();
+            });
+            themeButton.Anchor = AnchorStyles.Right;
+            under.Controls.Add(themeButton, 1, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(under, 0, row++);
 
             statusLabel = NewLabel("", true);
@@ -1500,12 +1513,13 @@ namespace ModernVoicesReader
             base.OnHandleCreated(e);
             try { AddClipboardFormatListener(Handle); } catch (Exception) { }
             Theme.Apply(this, Theme.IsDark());
+            ShowTheme();
         }
 
         protected override void WndProc(ref Message m)
         {
             if (m.Msg == WM_CLIPBOARDUPDATE && autoBox != null && autoBox.Checked && !ContainsFocus) { ReadClipboard(true); }
-            else if (m.Msg == WM_SETTINGCHANGE && Theme.Choice == "auto") { Theme.Apply(this, Theme.IsDark()); }
+            else if (m.Msg == WM_SETTINGCHANGE && Theme.Choice == "auto") { Theme.Apply(this, Theme.IsDark()); ShowTheme(); }
             base.WndProc(ref m);
         }
 

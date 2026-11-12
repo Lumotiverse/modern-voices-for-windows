@@ -4,3 +4,5 @@
 *.sh text eol=lf
 # espeak-ng's data is read byte for byte: never convert line ends
 engine/espeak-ng-data/** -text
+*.ico binary
+*.exe binary

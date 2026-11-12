@@ -14,7 +14,7 @@ $source = [regex]::Replace($source, 'AssemblyVersion\("[^"]+"\)', "AssemblyVersi
 $stamped = Join-Path (Resolve-Path $Out) 'Reader.stamped.cs'
 [System.IO.File]::WriteAllText($stamped, $source, (New-Object System.Text.UTF8Encoding($true)))
 $exe = Join-Path (Resolve-Path $Out) 'ModernVoicesReader.exe'
-& $csc /nologo /target:winexe /platform:anycpu /optimize+ /warn:4 "/out:$exe" "/lib:$framework,$framework\WPF" `
+& $csc /nologo /target:winexe /platform:anycpu /optimize+ /warn:4 "/out:$exe" "/win32icon:$(Join-Path $PSScriptRoot 'reader.ico')" "/lib:$framework,$framework\WPF" `
     /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Speech.dll /r:System.Web.Extensions.dll /r:System.Xml.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll $stamped
 if ($LASTEXITCODE -ne 0) { throw "The Reader did not compile (csc exit code $LASTEXITCODE)." }
 Remove-Item $stamped
