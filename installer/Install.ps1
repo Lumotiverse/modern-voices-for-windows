@@ -59,7 +59,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.9.7'
+$Version = '0.9.8'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -1758,6 +1758,21 @@ $DefaultRuleSets = [ordered]@{
         @(':D', 'big grin'), @('xD', 'laughing'), @(':P', 'tongue out'), @(':)', 'smiley face'),
         @(':(', 'sad face'), @(';)', 'wink'), @('<3', 'love heart')
     )
+    # Chat abbreviations (a third value of $false: in the list, but switched off, as it is also an ordinary
+    # abbreviation: RN, NP, WP, LF).
+    chat1 = @(
+        @('lol', 'haha'), @('lmao', 'hahaha'), @('lmfao', 'ah hahaha'), @('rofl', 'ahh haha, hahahahaha'),
+        @('ty', 'thank you'), @('thx', 'thanks'), @('tyvm', 'thank you very much'),
+        @('np', 'no problem', $false), @('pls', 'please'), @('plz', 'please'),
+        @('gg', 'good game'), @('wp', 'well played', $false), @('gl', 'good luck'), @('hf', 'have fun'),
+        @('brb', 'be right back'), @('afk', 'A F K'), @('omw', 'on my way'),
+        @('wb', 'welcome back'), @('rn', 'right now', $false), @('imo', 'in my opinion'),
+        @('idk', "I don't know"), @('ikr', 'I know right'), @('inv', 'invite'),
+        @('lfg', 'looking for group'), @('lf', 'looking for', $false), @('iirc', 'if I recall correctly')
+    )
+    trade1 = @(
+        @('wtb', 'want to buy'), @('wts', 'want to sell'), @('lfw', 'looking for work'), @('lvl', 'level')
+    )
 }
 function Add-DefaultRules {
     if (-not (Test-Path $Settings)) { New-Item $Settings -Force | Out-Null }
@@ -1769,7 +1784,7 @@ function Add-DefaultRules {
     foreach ($set in $new) {
         foreach ($pair in $DefaultRuleSets[$set]) {
             if (@($rules | Where-Object { $_.From -ieq $pair[0] }).Count -gt 0) { continue }
-            $rules += [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = $pair[0]; To = $pair[1] }
+            $rules += [pscustomobject]@{ On = ($pair.Count -lt 3 -or [bool]$pair[2]); Whole = $true; Case = $false; From = $pair[0]; To = $pair[1] }
             $added++
         }
     }

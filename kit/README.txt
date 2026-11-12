@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.9.7
+Modern Voices for Windows 0.9.8
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -133,8 +133,10 @@ these voices (the Reader, World of Warcraft, a screen reader...).
   * Type the word or phrase and how to say it, spelt as it sounds (Niamh as Neev; GIF as jif), then
     Add rule. Hear it says the "Say it as" text with the voice selected on the Voice manager, to try
     a spelling before saving.
-  * The list starts with a few rules for smileys (:) is said as "smiley face"): change or remove
-    them as you like.
+  * The list starts with rules for smileys (:) is said as "smiley face") and for chat and trade
+    abbreviations (ty as "thank you", lol as "haha", wts as "want to sell"): change, untick or
+    remove them as you like. Four are there but unticked, as they are ordinary abbreviations too:
+    rn, np, wp and lf.
   * To change a rule, select it, edit, and Save rule. Untick a rule to switch it off; Remove deletes it.
   * Whole words only (the usual): "cat" changes "the cat's" but not "catalogue". Unticked, parts of
     words change too. Match capitals: "US" but not "us".
@@ -173,6 +175,8 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     for the languages Windows has text recognition for (Settings > Time & language > Language).
   * Save as sound: the text as a WAV file, in the voice and at the speed chosen, made as fast as the
     voice can (not played). About 2.6 MB a minute.
+  * Undo (Ctrl+Z) and redo (Ctrl+Y), or the two arrow buttons beside Clear, take back and put
+    back the last ten changes to the text: typing, a paste, a file opened, Clear.
   * The box starts empty each time: its text is not kept when the Reader is closed (a file's
     place is: open the file again and Play goes on from where you stopped).
   * Opened while it is already running, the Reader asks whether to start a second one; Cancel

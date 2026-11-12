@@ -103,6 +103,8 @@ Check (Test-Path (Join-Path $App 'installer\repair.ico')) "Repair's icon (the wr
 $rulesFile = Join-Path $App 'dictionary.txt'
 $rulesText = if (Test-Path $rulesFile) { Get-Content $rulesFile -Raw } else { '' }
 Check ($rulesText.Contains("1`tw`ti`t<3`tlove heart") -and $rulesText.Contains("1`tw`ti`t:D`tbig grin")) 'the pronunciation rules the program comes with (smileys) are in the list'
+Check ($rulesText.Contains("1`tw`ti`tty`tthank you") -and $rulesText.Contains("1`tw`ti`twts`twant to sell") -and $rulesText.Contains("0`tw`ti`trn`tright now") -and $rulesText.Contains("0`tw`ti`tlf`tlooking for") -and
+    @($rulesText -split "`n" | Where-Object { $_ -match '^[01]\t' }).Count -eq 37 -and @($rulesText -split "`n" | Where-Object { $_ -match '^0\t' }).Count -eq 4) 'chat and trade rules are in the list (37 rules in all; rn, np, wp and lf switched off)'
 Check (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows') 'Installed apps entry'
 $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"

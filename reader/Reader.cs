@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.9.7.0")]
+[assembly: System.Reflection.AssemblyVersion("0.9.8.0")]
 
 namespace ModernVoicesReader
 {
@@ -678,12 +678,34 @@ namespace ModernVoicesReader
     }
 
     // The text box: what is pasted into it is laid out as it was where it was copied.
+    // Undo and redo are the window's own (the box's own undo has one step, and forgets it when the
+    // program changes the text): Ctrl+Z, Ctrl+Y (and Ctrl+Shift+Z), and Undo in the right-click menu.
     public class PasteBox : TextBox
     {
         public Func<string> Pasting;
+        public Action UndoAsked, RedoAsked;
+        public Func<bool> CanUndoAsked;
+
+        protected override bool ProcessCmdKey(ref Message m, Keys keyData)
+        {
+            if (keyData == (Keys.Control | Keys.Z)) { if (UndoAsked != null) { UndoAsked(); } return true; }
+            if (keyData == (Keys.Control | Keys.Y) || keyData == (Keys.Control | Keys.Shift | Keys.Z)) { if (RedoAsked != null) { RedoAsked(); } return true; }
+            return base.ProcessCmdKey(ref m, keyData);
+        }
 
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == 0x0304 || m.Msg == 0x00C7)                    // WM_UNDO, EM_UNDO
+            {
+                if (UndoAsked != null) { UndoAsked(); }
+                m.Result = (IntPtr)1;
+                return;
+            }
+            if (m.Msg == 0x00C6 && CanUndoAsked != null)               // EM_CANUNDO (the menu's Undo: greyed or not)
+            {
+                m.Result = (IntPtr)(CanUndoAsked() ? 1 : 0);
+                return;
+            }
             if (m.Msg == 0x0302 && Pasting != null && !ReadOnly)      // WM_PASTE
             {
                 string text = Pasting();
@@ -748,7 +770,14 @@ namespace ModernVoicesReader
         Label rateLabel, timeLabel, statusLabel;
         PasteBox box;
         Button playButton, stopButton, startButton;
-        Button clipboardButton, clearButton, fileButton, audioButton;
+        Button clipboardButton, clearButton, fileButton, audioButton, undoButton, redoButton;
+        // Undo: the texts the box held before each of its last changes (newest last), and those undone (for redo).
+        const int UndoSteps = 10;
+        class Held { public string Text; public int Caret; }
+        readonly List<Held> undone = new List<Held>(), before = new List<Held>();
+        string heldText = "";            // the box's text after its last change
+        int heldCaret;                   // and where the caret was then
+        DateTime typedAt = DateTime.MinValue;
         Font symbolFont;                 // Windows' own symbols (play, pause, stop), where it has them
         bool symbols;
         ToolTip tips = new ToolTip();
@@ -789,8 +818,8 @@ namespace ModernVoicesReader
             Text = "Modern Voices: Reader";
             Font = new Font("Segoe UI", 9f);
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(Px(840), Px(380));
-            Size = new Size(Px(900), Px(640));
+            MinimumSize = new Size(Px(920), Px(380));
+            Size = new Size(Px(920), Px(640));
             Padding = new Padding(Px(8));
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception) { }
             synth = new SpeechSynthesizer();
@@ -960,9 +989,11 @@ namespace ModernVoicesReader
             box.ScrollBars = ScrollBars.Vertical; box.HideSelection = false; box.MaxLength = 0;
             box.Dock = DockStyle.Fill; box.Font = new Font("Segoe UI", 10.5f);
             box.Pasting = ClipboardText;
-            box.TextChanged += delegate { if (!loading) { TextEdited(); } };
-            box.MouseUp += delegate { CaretMoved(); };
-            box.KeyUp += delegate { CaretMoved(); };
+            box.UndoAsked = Undo; box.RedoAsked = Redo;
+            box.CanUndoAsked = delegate { return before.Count > 0; };
+            box.TextChanged += delegate { if (!loading) { NoteChange(false); TextEdited(); } };
+            box.MouseUp += delegate { heldCaret = box.SelectionStart; CaretMoved(); };
+            box.KeyUp += delegate { heldCaret = box.SelectionStart; CaretMoved(); };
             // A file dropped on the text is opened.
             box.AllowDrop = true;
             box.DragEnter += delegate(object sender, DragEventArgs e)
@@ -988,15 +1019,25 @@ namespace ModernVoicesReader
             screenButton = NewButton("Screen reader...", delegate { ReadScreen(); });
             audioButton = NewButton("Save as sound...", delegate { ChooseAudioFile(); });
             clearButton = NewButton("Clear", delegate { ClearText(); });
+            undoButton = NewSymbolButton("\uE7A7", "Undo", "Undo (Ctrl+Z)", delegate { Undo(); box.Focus(); });
+            redoButton = NewSymbolButton("\uE7A6", "Redo", "Redo (Ctrl+Y)", delegate { Redo(); box.Focus(); });
             foreach (Button b in new Button[] { startButton, playButton, stopButton, clipboardButton, fileButton, screenButton, audioButton })
             {
                 b.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;    // (all one height)
                 buttons.Controls.Add(b);
             }
-            clearButton.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
             clearButton.MinimumSize = new Size((int)(clearButton.PreferredSize.Width * 1.3), 0);
+            // At the far end: undo, redo, Clear (with a gap always left before them).
+            FlowLayoutPanel ends = NewFlow();
+            ends.WrapContents = false; ends.Dock = DockStyle.None; ends.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
+            ends.Margin = new Padding(Px(28), 0, 0, 0);
+            foreach (Button b in new Button[] { undoButton, redoButton, clearButton })
+            {
+                b.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
+                ends.Controls.Add(b);
+            }
             buttonLine.Controls.Add(buttons, 0, 0);
-            buttonLine.Controls.Add(clearButton, 1, 0);
+            buttonLine.Controls.Add(ends, 1, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(buttonLine, 0, row++);
 
             // How far, how long is left; what is read.
@@ -1365,6 +1406,7 @@ namespace ModernVoicesReader
             store.State.OpenedFile = file;
             box.Text = Regex.Replace(text, "\r?\n", "\r\n");   // (the box shows a line break only as CR LF)
             loading = false;
+            NoteChange(true);
             position = Math.Max(0, Math.Min(box.TextLength, at));
             Remember();
             ShowPlace();
@@ -1665,6 +1707,51 @@ namespace ModernVoicesReader
             tips.SetToolTip(playButton, playing ? "Pause" : (mode == Mode.Paused ? "Go on" : "Play"));
             stopButton.Enabled = mode != Mode.Stopped;
             startButton.Enabled = has;
+            undoButton.Enabled = before.Count > 0;
+            redoButton.Enabled = undone.Count > 0;
+        }
+
+        // ---- undo and redo (the box's last ten changes)
+
+        // The box's text has changed: what it held before is kept for Undo. Typing letter after letter is
+        // one change (until a second's pause); anything else (a paste, a file, Clear) is a change of its own.
+        void NoteChange(bool whole)
+        {
+            string now = box.Text;
+            if (now == heldText) { return; }
+            bool typing = !whole && Math.Abs(now.Length - heldText.Length) <= 2 && (DateTime.UtcNow - typedAt).TotalSeconds < 1.0 && before.Count > 0;
+            if (!typing)
+            {
+                before.Add(new Held { Text = heldText, Caret = heldCaret });
+                if (before.Count > UndoSteps) { before.RemoveAt(0); }
+            }
+            undone.Clear();
+            typedAt = whole ? DateTime.MinValue : DateTime.UtcNow;
+            heldText = now; heldCaret = box.SelectionStart;
+        }
+
+        public void Undo() { StepBack(before, undone); }
+        public void Redo() { StepBack(undone, before); }
+
+        // Puts back the newest text of `from`, keeping the box's present one in `into`.
+        void StepBack(List<Held> from, List<Held> into)
+        {
+            if (from.Count == 0 || saver != null) { return; }
+            if (mode != Mode.Stopped) { Halt(); }
+            Held back = from[from.Count - 1];
+            from.RemoveAt(from.Count - 1);
+            into.Add(new Held { Text = box.Text, Caret = box.SelectionStart });
+            if (into.Count > UndoSteps) { into.RemoveAt(0); }
+            loading = true;
+            box.Text = back.Text;
+            loading = false;
+            box.SelectionStart = Math.Min(back.Caret, box.TextLength); box.SelectionLength = 0;
+            box.ScrollToCaret();
+            heldText = back.Text; heldCaret = box.SelectionStart;
+            typedAt = DateTime.MinValue;
+            position = Math.Min(position, box.TextLength);
+            TextEdited();
+            ShowPlace();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -1688,6 +1775,9 @@ namespace ModernVoicesReader
         public int Position { get { return position; } }
         public string BoxText { get { return box.Text; } }
         public void TestLoad(string text, int at) { LoadText(text, at, ""); }
+        public void TestType(string text) { box.SelectionStart = box.TextLength; box.SelectedText = text; }
+        public bool CanUndo { get { return undoButton.Enabled; } }
+        public bool CanRedo { get { return redoButton.Enabled; } }
         public void TestPlace(int at) { position = at; }
         public string PlayLabel { get { return playButton.Text; } }
         public void TestTidy(bool on) { tidyBox.Checked = on; }
@@ -1971,6 +2061,25 @@ namespace ModernVoicesReader
                     form.OpenFile(word);
                     form.OpenFile(plainFile);
                     Check(form.Position == 5, "a file opened again goes on from where it was left (" + form.Position + ")");
+                    // Undo and redo: each change of the text a step, ten kept.
+                    form.TestLoad("one", 0);
+                    form.TestLoad("two", 0);
+                    form.TestType(" three");
+                    form.Undo();
+                    bool typedUndone = form.BoxText == "two";
+                    form.Undo();
+                    bool loadUndone = form.BoxText == "one" && form.CanRedo;
+                    form.Redo(); form.Redo();
+                    Check(typedUndone && loadUndone && form.BoxText == "two three" && !form.CanRedo, "undo and redo: a typed change and a loaded text, back and forward (" + form.BoxText + ")");
+                    form.TestLoad("", 0);
+                    form.Undo();
+                    Check(form.BoxText == "two three", "Clear is undone");
+                    for (int i = 0; i < 14; i++) { form.TestLoad("text " + i, 0); }
+                    int steps = 0;
+                    while (form.CanUndo && steps < 30) { form.Undo(); steps++; }
+                    Check(steps == 10 && form.BoxText == "text 3", "ten changes can be undone (" + steps + ", back to '" + form.BoxText + "')");
+                    form.TestType("x");
+                    Check(!form.CanRedo, "a new change after undoing: nothing left to redo");
                     form.TestLoad(text, paused);
                     Check(form.PlayLabel == (form.PlayLabel.Length == 1 ? "\uE768" : "Play"), "the play button shows play when nothing is being read");
                     form.Close();
