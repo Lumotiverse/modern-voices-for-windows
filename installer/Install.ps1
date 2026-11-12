@@ -804,15 +804,15 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $apply = New-UiButton 'Apply changes'
     $close = New-UiButton 'Close'
     $close.DialogResult = 'Cancel'
-    # A moon: light to dark and back (the choice is shared with the Reader).
-    $themeButton = New-UiButton 'Dark'
-    $moonFont = New-Object System.Drawing.Font('Segoe MDL2 Assets', 11)
-    if ($moonFont.Name -eq 'Segoe MDL2 Assets') {      # Windows' own symbols, where it has them
-        $themeButton.Font = $moonFont; $themeButton.Text = [string][char]0xE708
-        $themeButton.Padding = New-Object System.Windows.Forms.Padding((Get-Px 8), (Get-Px 5), (Get-Px 8), (Get-Px 3))
-    }
+    # A moon to click (no button around it): dark to light and back (the choice is shared with the Reader).
+    $themeButton = New-Object System.Windows.Forms.Label
+    $themeButton.AutoSize = $true; $themeButton.Anchor = 'Left'; $themeButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $themeButton.Margin = New-Object System.Windows.Forms.Padding((Get-Px 4), 0, (Get-Px 8), 0)
+    $moonFont = New-Object System.Drawing.Font('Segoe MDL2 Assets', 15)
+    if ($moonFont.Name -eq 'Segoe MDL2 Assets') { $themeButton.Font = $moonFont; $themeButton.Text = [string][char]0xE708 }    # Windows' own symbols
+    else { $themeButton.Text = 'Dark' }
     $themeTip = New-Object System.Windows.Forms.ToolTip
-    $themeTip.SetToolTip($themeButton, 'Light or dark')
+    $themeTip.SetToolTip($themeButton, 'Dark or light')
     $themeButton.add_Click({ Set-ThemeChoice $(if (Test-DarkTheme) { 'light' } else { 'dark' }); Set-UiTheme })
     $bottom.Controls.Add($themeButton, 0, 1)
     $bottom.Controls.Add($status, 1, 1); $bottom.Controls.Add($apply, 2, 1); $bottom.Controls.Add($close, 3, 1)

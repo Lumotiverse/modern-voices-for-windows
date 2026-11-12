@@ -704,6 +704,7 @@ namespace ModernVoicesReader
 
         ComboBox voiceBox;
         Label themeButton;               // a moon to click: light to dark and back
+        int alignedFor;                  // the time's width the line under the buttons was laid out for
         TrackBar rateBar;
         Label rateLabel, timeLabel, statusLabel;
         PasteBox box;
@@ -830,7 +831,8 @@ namespace ModernVoicesReader
             int others = progress.Margin.Right + timeLabel.Width + timeLabel.Margin.Horizontal + autoBox.Width + autoBox.Margin.Horizontal +
                 tidyBox.Width + tidyBox.Margin.Left;
             int wanted = audioButton.Right - startButton.Left - others;
-            progress.Width = Math.Max(Px(80), wanted);
+            progress.Width = Math.Max(Px(50), wanted);
+            alignedFor = timeLabel.Width;
         }
 
         protected override void OnShown(EventArgs e)
@@ -930,14 +932,14 @@ namespace ModernVoicesReader
             progress.Margin = new Padding(3, Px(6), Px(6), Px(6));
             timeLabel = NewLabel("", false);
             timeLabel.Font = lineFont;
-            timeLabel.MinimumSize = new Size(Px(126), 0);
+            timeLabel.MinimumSize = new Size(Px(104), 0);
             autoBox = new CheckBox();
             autoBox.Text = "Read copied text instantly"; autoBox.AutoSize = true; autoBox.Anchor = AnchorStyles.Left; autoBox.Font = lineFont;
-            autoBox.Margin = new Padding(Px(6), 3, Px(6), 3);
+            autoBox.Margin = new Padding(Px(4), 3, Px(4), 3);
             autoBox.CheckedChanged += delegate { if (!loading) { store.State.AutoRead = autoBox.Checked; store.Save(); } };
             tidyBox = new CheckBox();
             tidyBox.Text = "Don't read links, code or symbols"; tidyBox.AutoSize = true; tidyBox.Anchor = AnchorStyles.Left; tidyBox.Font = lineFont;
-            tidyBox.Margin = new Padding(Px(6), 3, 0, 3);
+            tidyBox.Margin = new Padding(Px(4), 3, 0, 3);
             tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
             left.Controls.Add(progress); left.Controls.Add(timeLabel); left.Controls.Add(autoBox); left.Controls.Add(tidyBox);
             under.Controls.Add(left, 0, 0);
@@ -1248,6 +1250,7 @@ namespace ModernVoicesReader
             else { remaining = length - Math.Min(length, position); }
             progress.Value = Math.Max(0, Math.Min(1000, (int)(1000.0 * Math.Min(length, position) / length)));
             timeLabel.Text = "about " + Clock(remaining / Pace()) + " left";
+            if (timeLabel.Width != alignedFor) { AlignLine(); }     // (a longer time: the bar gives way)
         }
 
         void ShowPlace()
