@@ -27,6 +27,9 @@ param(
     [switch]$FunctionsOnly    # defines the functions and stops (for tests)
 )
 
+# (Said at once: Windows can take a while over what follows. Install.cmd says it itself, before PowerShell starts.)
+if (-not $FunctionsOnly -and -not $env:MV_LOADING_SAID) { Write-Host 'Loading program...' }
+
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -46,6 +49,7 @@ if (-not $isAdmin -and -not $PickerSelfTest -and -not $FunctionsOnly) {
     if ($NoPause) { $forward += '-NoPause' }
     if ($UsEnglishTags) { $forward += '-UsEnglishTags' }
     if ($InstallDir) { $forward += '-InstallDir'; $forward += "`"$InstallDir`"" }
+    $env:MV_LOADING_SAID = $null      # (the administrator's window says it for itself)
     Start-Process powershell.exe -Verb RunAs -ArgumentList $forward
     exit
 }
@@ -55,7 +59,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.9.6'
+$Version = '0.9.7'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -1736,6 +1740,34 @@ function Test-FileFree([string]$Path) {
     catch { return $false }
 }
 
+# The pronunciation rules the program comes with, in sets. A set is added once (the registry's RuleSets
+# value says which have been): rules already in the list, the person's own, are left as they are, and a
+# rule of a set that was removed later stays removed. A new set in a later version is added by an update.
+$DefaultRuleSets = [ordered]@{
+    smileys1 = @(
+        @(':D', 'big grin'), @('xD', 'laughing'), @(':P', 'tongue out'), @(':)', 'smiley face'),
+        @(':(', 'sad face'), @(';)', 'wink'), @('<3', 'love heart')
+    )
+}
+function Add-DefaultRules {
+    if (-not (Test-Path $Settings)) { New-Item $Settings -Force | Out-Null }
+    $done = @(([string](Get-ItemProperty $Settings -ErrorAction SilentlyContinue).RuleSets) -split ',' | Where-Object { $_ })
+    $new = @($DefaultRuleSets.Keys | Where-Object { $done -notcontains $_ })
+    if ($new.Count -eq 0) { return }
+    $rules = @(Get-Dictionary $DictionaryFile)
+    $added = 0
+    foreach ($set in $new) {
+        foreach ($pair in $DefaultRuleSets[$set]) {
+            if (@($rules | Where-Object { $_.From -ieq $pair[0] }).Count -gt 0) { continue }
+            $rules += [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = $pair[0]; To = $pair[1] }
+            $added++
+        }
+    }
+    if ($added -gt 0) { Set-Dictionary $DictionaryFile $rules }
+    Set-ItemProperty $Settings -Name 'RuleSets' -Value (@($done + $new) -join ',')
+    if ($added -gt 0) { Write-Host "  $added pronunciation rules added (the Pronunciation tab lists them)" }
+}
+
 # An update over an older version: the program files of that kind which this version no longer has go.
 function Remove-Leftovers([string]$From, [string]$Into, [string]$Kind) {
     foreach ($file in @(Get-ChildItem $Into -Filter $Kind -File -ErrorAction SilentlyContinue)) {
@@ -1747,7 +1779,7 @@ function Remove-Leftovers([string]$From, [string]$Into, [string]$Kind) {
 # and place), as their files are about to be replaced.
 function Close-OurPrograms {
     foreach ($reader in @(Get-Process 'ModernVoicesReader' -ErrorAction SilentlyContinue)) {
-        Write-Host '  closing the Reader (its text and place are kept)'
+        Write-Host '  closing the Reader'
         try {
             [void]$reader.CloseMainWindow()
             if (-not $reader.WaitForExit(5000)) { $reader.Kill(); [void]$reader.WaitForExit(5000) }
@@ -1888,14 +1920,19 @@ function New-Shortcut([string]$Path, [string]$Arguments, [string]$Description, [
 
 function Write-Launcher([string]$Destination, [string]$Script, [string]$Extra, [switch]$LeaveFolder) {
     $run = "`"$PS64`" -NoProfile -ExecutionPolicy Bypass -File `"%~dp0installer\$Script`" $Extra".TrimEnd()
-    $text = if ($LeaveFolder) { "@cd /d `"%TEMP%`" & $run & exit /b`r`n" } else { "@echo off`r`n$run`r`n" }
+    $loading = if ($Script -eq 'Install.ps1') { "echo Loading program...`r`nset MV_LOADING_SAID=1`r`n" } else { '' }
+    $text = if ($LeaveFolder) { "@cd /d `"%TEMP%`" & $run & exit /b`r`n" } else { "@echo off`r`n$loading$run`r`n" }
     [System.IO.File]::WriteAllText($Destination, $text, (New-Object System.Text.ASCIIEncoding))
 }
 
 function Register-Program {
     Write-Launcher (Join-Path $App 'Modern Voices Config.cmd') 'Install.ps1' ''
-    Write-Launcher (Join-Path $App 'Repair.cmd') 'Install.ps1' '-Repair'
-    Write-Launcher (Join-Path $App 'Test voices.cmd') 'Test.ps1' ''
+    Write-Launcher (Join-Path $App 'Modern Voices Repair.cmd') 'Install.ps1' '-Repair'
+    Write-Launcher (Join-Path $App 'Modern Voices Test.cmd') 'Test.ps1' ''
+    # (As they were named before 0.9.7.)
+    foreach ($old in (Join-Path $App 'Repair.cmd'), (Join-Path $App 'Test voices.cmd'), (Join-Path $StartMenu 'Repair.lnk'), (Join-Path $StartMenu 'Test voices.lnk')) {
+        Remove-Item $old -Force -ErrorAction SilentlyContinue
+    }
     Write-Launcher (Join-Path $App 'Uninstall.cmd') 'Uninstall.ps1' '' -LeaveFolder
     $sizeKb = [int]((Get-ChildItem $App -Recurse -File | Measure-Object Length -Sum).Sum / 1KB)
     New-Item $OurKey -Force | Out-Null
@@ -1919,8 +1956,8 @@ function Register-Program {
         $link.Description = 'Reads text aloud with the Modern Voices: pasted or copied text, files, and text on the screen'
         $link.Save()      # (its icon is the program's own)
     }
-    New-Shortcut (Join-Path $StartMenu 'Repair.lnk') ($common + 'Install.ps1" -Repair') 'Register the voices again'
-    New-Shortcut (Join-Path $StartMenu 'Test voices.lnk') ($common + 'Test.ps1"') 'Hear each Modern Voice'
+    New-Shortcut (Join-Path $StartMenu 'Modern Voices Repair.lnk') ($common + 'Install.ps1" -Repair') 'Register the voices again (if one went missing from programs)' "$App\installer\repair.ico,0"
+    New-Shortcut (Join-Path $StartMenu 'Modern Voices Test.lnk') ($common + 'Test.ps1"') 'Hear each Modern Voice, with each word shown as the engine reports it'
     New-Shortcut (Join-Path $StartMenu 'Uninstall.lnk') ($common + 'Uninstall.ps1"') "Uninstall $AppName"
 }
 
@@ -2266,6 +2303,7 @@ try {
     Write-Host "`nEngine"
     Install-AndRegisterEngine
     Register-Program
+    Add-DefaultRules
     Write-Host ("  {0}{1}" -f $Dll64, $(if (Test-Path $Dll32) { ' and 32-bit' } else { ' (no 32-bit engine in this build)' }))
 
     Write-Host "`nVoice list"
@@ -2281,7 +2319,7 @@ try {
         if ($have.Count -gt 0) {
             Write-Host "`nVoices"
             try { [void](Set-InstalledVoices $have $usTags $byKey) }
-            catch { Write-Host "  The voices were left as they were ($($_.Exception.Message)). Repair (Start menu) registers them again." -ForegroundColor Yellow }
+            catch { Write-Host "  The voices were left as they were ($($_.Exception.Message)). Modern Voices Repair (Start menu) registers them again." -ForegroundColor Yellow }
         }
     }
     if ($interactive) {
@@ -2311,7 +2349,7 @@ try {
     } else {
         Write-Host "Done. Installed in $App" -ForegroundColor Green
         Write-Host 'The voices are in every program that uses Windows'' installed voices (restart programs that were open).'
-        Write-Host 'Start menu > Modern Voices for Windows: Modern Voices, Test voices, Repair, Uninstall.'
+        Write-Host 'Start menu > Modern Voices for Windows: Modern Voices Config, Reader, Repair and Test, and Uninstall.'
         $signature = (Get-AuthenticodeSignature $Dll64).Status
         if ($signature -ne 'Valid') {
             Write-Host "Note: the engine's signature is '$signature': programs that insist on signed engines (WoW) will not use it." -ForegroundColor Yellow

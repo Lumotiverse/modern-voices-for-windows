@@ -98,7 +98,11 @@ if ($has32) { Check ((Get-OurTokens $Tokens32).Count -eq 3) '3 voices for 32-bit
 $signature = Get-AuthenticodeSignature (Join-Path $App 'engine\x64\modern_voices.dll')
 Check ($signature.Status -eq 'Valid') "64-bit engine signature trusted ($($signature.Status))"
 $menu = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Modern Voices for Windows'
-Check ((Test-Path "$menu\Modern Voices Config.lnk") -and (Test-Path "$menu\Repair.lnk")) 'Start menu: Modern Voices Config, Repair'
+Check ((Test-Path "$menu\Modern Voices Config.lnk") -and (Test-Path "$menu\Modern Voices Repair.lnk") -and (Test-Path "$menu\Modern Voices Test.lnk")) 'Start menu: Modern Voices Config, Modern Voices Repair, Modern Voices Test'
+Check (Test-Path (Join-Path $App 'installer\repair.ico')) "Repair's icon (the wrench) is installed"
+$rulesFile = Join-Path $App 'dictionary.txt'
+$rulesText = if (Test-Path $rulesFile) { Get-Content $rulesFile -Raw } else { '' }
+Check ($rulesText.Contains("1`tw`ti`t<3`tlove heart") -and $rulesText.Contains("1`tw`ti`t:D`tbig grin")) 'the pronunciation rules the program comes with (smileys) are in the list'
 Check (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows') 'Installed apps entry'
 $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"
@@ -266,6 +270,12 @@ Set-ItemProperty $ourKey -Name 'DisplayVersion' -Value '0.0.1'
 $oldDll = Join-Path $App 'engine\x64\gone_in_this_version.dll'
 $oldScript = Join-Path $App 'installer\GoneInThisVersion.ps1'
 Set-Content $oldDll 'old'; Set-Content $oldScript '# old'
+Set-Content "$menu\Repair.lnk" 'old'
+# (A rule of the person's own, one of the program's changed, and one removed: all three stay as they are.)
+$own = @(Get-Dictionary $rulesFile | Where-Object { $_.From -ne '<3' })
+foreach ($rule in $own) { if ($rule.From -eq ':)') { $rule.To = 'smile' } }
+$own += [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = 'Niamh'; To = 'Neev' }
+Set-Dictionary $rulesFile $own
 Set-GlobalSpeed $settingsFile 115
 Set-VoiceSettings $albaDir 0.8 2 1
 $voiceFile = Get-ChildItem $albaDir -Filter '*.onnx' | Select-Object -First 1
@@ -275,6 +285,9 @@ Check ($code -eq 0) 'update finished without errors'
 Check ((Get-ItemProperty $ourKey).DisplayVersion -eq $versionNow -and $versionNow -ne '0.0.1') "Installed apps shows this version again ($versionNow)"
 Check (-not (Test-Path $oldDll) -and -not (Test-Path $oldScript)) "the older version's leftover program files are gone"
 Check ((Get-GlobalSpeed $settingsFile) -eq 115) 'the speed set before the update is kept'
+$after = @(Get-Dictionary $rulesFile)
+Check (@($after | Where-Object { $_.From -eq 'Niamh' -and $_.To -eq 'Neev' }).Count -eq 1 -and @($after | Where-Object { $_.From -eq ':)' -and $_.To -eq 'smile' }).Count -eq 1 -and @($after | Where-Object { $_.From -eq '<3' }).Count -eq 0 -and $after.Count -eq $own.Count) 'pronunciation rules: the added, changed and removed ones are as they were left'
+Check (-not (Test-Path "$menu\Repair.lnk")) "the Start menu's old Repair entry is gone"
 Check ((Get-Item $voiceFile.FullName).LastWriteTimeUtc -eq $voiceWritten) 'the voice files were not downloaded again'
 Check ((Get-ItemProperty $ourKey).DisplayIcon -like '*ModernVoicesReader.exe,0') "Installed apps shows the program's icon (the speaker), not Config's cog"
 [void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })

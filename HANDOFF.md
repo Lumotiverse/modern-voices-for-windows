@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.9.6 (12 Nov 2026).
+Last updated at version 0.9.7 (12 Nov 2026).
 
 ## What it is
 
@@ -16,7 +16,7 @@ with Windows' voices but can't use Narrator's natural voices. It must keep worki
 | Modern Voices Config | The installer and settings window: Voice manager, Speed and pauses, Pronunciation, Add or remove voices. | PowerShell 5.1 + WinForms | `installer/Install.ps1` (plus `VoiceConvert.ps1`, `Test.ps1`, `Speak.ps1`, `Ocr.ps1`, `Uninstall.ps1`) |
 | Modern Voices: Reader | A small app that reads pasted or copied text, files and screen regions. It has play/pause/stop, time left, saves as WAV, and remembers its place per file. | C# 5 (built with Windows' own `csc.exe`, .NET Framework 4) | `reader/Reader.cs`, `reader/Build.ps1` |
 
-The user-facing documentation is `kit/README.txt`, and it is accurate for 0.9.6. Read it to see what
+The user-facing documentation is `kit/README.txt`, and it is accurate for 0.9.7. Read it to see what
 each feature does.
 
 ## Luke's standing rules
@@ -24,12 +24,15 @@ each feature does.
 - **Before any build request, say whether it needs Fable (complicated: new features, engine work,
   multi-part changes) or Opus 5.5 (simple and safe changes to working code)**, so he can switch model
   first. If he's already on the right one, say so and proceed.
-- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.9.6.zip`.
+- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.9.7.zip`.
 - Every build must update in place (since 0.9.6): the new kit's Install.cmd run over the installed version
   keeps voices, settings, nicknames and pronunciations, with no uninstall and no re-download. If a build
   changes where or how any of those are stored, it must carry the old ones over. Test-Kit has an 'Update' step.
+- The GitHub `README.md` must not mention World of Warcraft; it credits the Spoken Players voicepack engine,
+  says Claude wrote all the code, and keeps Luke's two lines ("All work ... Claude.ai" / "Code provided by ...").
 - Icons: the speech bubble with the speaker (the Reader's exe icon) is the program's default icon (Installed
-  apps, Start menu entries); the bubble with the cog (`manager.ico`) is for Modern Voices Config only.
+  apps, Start menu entries); the bubble with the cog (`manager.ico`) is for Modern Voices Config only; the bubble with the wrench
+  (`repair.ico`) is Modern Voices Repair's. All three are drawn by `tools/make_icons.py`.
 - Bump the version in all three places: `engine/Cargo.toml`, `$Version` in `installer/Install.ps1`, and
   the first line of `kit/README.txt`. The Reader's `AssemblyVersion` in `reader/Reader.cs` is stamped
   at build from Cargo.toml, but keep it in step.
@@ -123,7 +126,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.9.6)
+## Current state (0.9.7)
 
 Everything above works and is tested on the CI Windows machine. Luke has been using it and sending UI
 tweaks one batch at a time; the last batch (0.9.4) is done and delivered: the moon moved and greyed in
@@ -136,7 +139,16 @@ them in the ANSI code page, which turned ' and ... into mojibake); the engine sa
 and the Reader follows Config's moon by re-reading the registry `Theme` value on its 500 ms tick.
 Luke confirmed 0.9.5 works. 0.9.6: update in place (`$updating` in Install.ps1's main flow,
 `Close-OurPrograms`, `Remove-Leftovers`) and the default icon (`Get-AppIcon`).
+0.9.7: Start menu entries renamed Modern Voices Repair (wrench icon) and Modern Voices Test; the
+Reader asks before a second instance (`AnotherWanted` in `Program`) and no longer keeps the box's text
+between runs; `Loading program...` is said by Install.cmd and Install.ps1; the README was rewritten.
+Default pronunciation rules: `$DefaultRuleSets` / `Add-DefaultRules` in Install.ps1 add each named set
+once (registry `RuleSets`), never overwriting or re-adding. Only `smileys1` exists. Luke was sent the
+chat and trade abbreviation lists from his old TTS Enhanced addon to pick from: add his picks as a new
+set (e.g. `chat1`). He said to leave the game-instance abbreviations out.
 Not yet confirmed by Luke:
+
+- the 0.9.7 items above on his machine;
 
 - updating 0.9.5 to 0.9.6 on his machine without uninstalling;
 

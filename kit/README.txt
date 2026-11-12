@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.9.6
+Modern Voices for Windows 0.9.7
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -33,7 +33,8 @@ Restart programs that were open to see the new voices. This folder can then be d
 
 Updating: run Install.cmd from the new version's folder, with the old version still installed. The
 program is replaced where it is; the voices (nothing is downloaded again), their sound settings,
-speed and pauses, nicknames, pronunciations and the Reader's text all stay. An open Reader or
+speed and pauses, nicknames and pronunciation rules all stay (rules you added, changed or removed
+are left exactly as they are). An open Reader or
 Modern Voices Config is closed first; other programs that are speaking need closing by hand.
 
 Installed outside Program Files, the folder is set up as Program Files is: only administrators can
@@ -46,8 +47,12 @@ Afterwards, from the Start menu (Modern Voices for Windows):
   Modern Voices Reader
                   reads text aloud with the voices: pasted or copied text, files, text on the
                   screen (see "The Reader" below)
-  Test voices     hear each voice, with each word shown as the engine reports it
-  Repair          registers everything again (if a voice went missing from programs)
+  Modern Voices Repair
+                  registers everything again (if a voice went missing from programs, as can
+                  happen after a large Windows update)
+  Modern Voices Test
+                  hear each voice, with each word shown as the engine reports it (to find out
+                  why a program is not speaking: whether it is the voices or the program)
   Uninstall       removes everything (also in Windows' Installed apps)
 
 
@@ -128,6 +133,8 @@ these voices (the Reader, World of Warcraft, a screen reader...).
   * Type the word or phrase and how to say it, spelt as it sounds (Niamh as Neev; GIF as jif), then
     Add rule. Hear it says the "Say it as" text with the voice selected on the Voice manager, to try
     a spelling before saving.
+  * The list starts with a few rules for smileys (:) is said as "smiley face"): change or remove
+    them as you like.
   * To change a rule, select it, edit, and Save rule. Untick a rule to switch it off; Remove deletes it.
   * Whole words only (the usual): "cat" changes "the cat's" but not "catalogue". Unticked, parts of
     words change too. Match capitals: "US" but not "us".
@@ -166,12 +173,15 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     for the languages Windows has text recognition for (Settings > Time & language > Language).
   * Save as sound: the text as a WAV file, in the voice and at the speed chosen, made as fast as the
     voice can (not played). About 2.6 MB a minute.
-  * The text in the box and its place are kept when the Reader is closed.
+  * The box starts empty each time: its text is not kept when the Reader is closed (a file's
+    place is: open the file again and Play goes on from where you stopped).
+  * Opened while it is already running, the Reader asks whether to start a second one; Cancel
+    shows the one that is open.
   * Sums of money are said the way they are read aloud, by every program that uses the voices:
     "$150" is "150 dollars", "$1.50" "1 dollar 50", "$3.5m" "3.5 million dollars"; the same for
     pounds and euros.
 
-Its text and places are kept in %APPDATA%\Modern Voices Reader (removed by Uninstall).
+Its settings and files' places are kept in %APPDATA%\Modern Voices Reader (removed by Uninstall).
 
 
 Light and dark

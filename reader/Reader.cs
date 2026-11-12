@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.9.6.0")]
+[assembly: System.Reflection.AssemblyVersion("0.9.7.0")]
 
 namespace ModernVoicesReader
 {
@@ -1136,8 +1136,9 @@ namespace ModernVoicesReader
             for (int i = 0; i < voiceBox.Items.Count; i++) { if (((VoiceChoice)voiceBox.Items[i]).Name == s.Voice) { chosen = i; } }
             if (chosen < 0 && voiceBox.Items.Count > 0) { chosen = 0; }
             voiceBox.SelectedIndex = chosen;
-            box.Text = store.Read(store.CurrentFile);
-            position = Math.Max(0, Math.Min(box.TextLength, s.Position));
+            // The box starts empty: its text is not kept when the program is closed (nor what an older version kept).
+            box.Text = ""; position = 0; s.Position = 0; s.OpenedFile = "";
+            try { if (File.Exists(store.CurrentFile)) { File.Delete(store.CurrentFile); } } catch (Exception) { }
             loading = false;
             RateChanged();
             ShowPlace();
@@ -1148,8 +1149,7 @@ namespace ModernVoicesReader
         void Remember()
         {
             State s = store.State;
-            s.Position = position;
-            store.Write(store.CurrentFile, box.Text);
+            s.Position = 0;                    // (the box's text is not kept; a file's place is)
             if (s.OpenedFile != "") { store.KeepPlace(s.OpenedFile, position, box.TextLength); }
             if (WindowState == FormWindowState.Normal) { s.Bounds = new int[] { Left, Top, Width, Height }; }
             store.Save();
@@ -1720,6 +1720,10 @@ namespace ModernVoicesReader
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             if (args.Length >= 2 && args[0] == "--selftest") { return SelfTest.Run(args[1]); }
+            // Already running: a second one only if wanted, else the one that is open comes to the front.
+            bool first;
+            System.Threading.Mutex running = new System.Threading.Mutex(true, "ModernVoicesReader.Running", out first);
+            if (!first && !AnotherWanted()) { return 0; }
             string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Modern Voices Reader");
             MainForm form = new MainForm(new Store(folder), false);
             // A file given to the program (dropped on it, or "Open with") is opened.
@@ -1729,7 +1733,78 @@ namespace ModernVoicesReader
                 form.Shown += delegate { form.OpenFile(given); };
             }
             Application.Run(form);
+            GC.KeepAlive(running);
             return 0;
+        }
+
+        [DllImport("user32.dll")]
+        static extern bool SetForegroundWindow(IntPtr hwnd);
+        [DllImport("user32.dll")]
+        static extern bool IsIconic(IntPtr hwnd);
+        [DllImport("user32.dll")]
+        static extern bool ShowWindowAsync(IntPtr hwnd, int show);
+
+        // Asks, when the Reader is already open, whether to open another: Yes, or Cancel (the open one is shown).
+        static bool AnotherWanted()
+        {
+            bool yes;
+            using (Form ask = AlreadyRunningWindow())
+            {
+                yes = ask.ShowDialog() == DialogResult.Yes;
+            }
+            if (yes) { return true; }
+            int self = System.Diagnostics.Process.GetCurrentProcess().Id;
+            foreach (System.Diagnostics.Process other in System.Diagnostics.Process.GetProcessesByName(System.Diagnostics.Process.GetCurrentProcess().ProcessName))
+            {
+                try
+                {
+                    if (other.Id != self && other.MainWindowHandle != IntPtr.Zero)
+                    {
+                        if (IsIconic(other.MainWindowHandle)) { ShowWindowAsync(other.MainWindowHandle, 9); }
+                        SetForegroundWindow(other.MainWindowHandle);
+                        break;
+                    }
+                }
+                catch (Exception) { }
+                finally { other.Dispose(); }
+            }
+            return false;
+        }
+
+        // The warning's window (in the theme the Reader wears): the question, Yes and Cancel.
+        public static Form AlreadyRunningWindow()
+        {
+            Form ask = new Form();
+            ask.Text = "Modern Voices: Reader";
+            ask.FormBorderStyle = FormBorderStyle.FixedDialog;
+            ask.MaximizeBox = false; ask.MinimizeBox = false; ask.ShowInTaskbar = true;
+            ask.StartPosition = FormStartPosition.CenterScreen;
+            ask.Font = new Font("Segoe UI", 9.75f);
+            ask.AutoScaleMode = AutoScaleMode.None;
+            ask.AutoSize = true; ask.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            ask.Padding = new Padding(18, 16, 18, 14);
+            try { ask.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception) { }
+            TableLayoutPanel rows = new TableLayoutPanel();
+            rows.AutoSize = true; rows.AutoSizeMode = AutoSizeMode.GrowAndShrink; rows.ColumnCount = 1; rows.RowCount = 2;
+            rows.Dock = DockStyle.Fill;
+            Label question = new Label();
+            question.AutoSize = true; question.Margin = new Padding(0, 0, 0, 16);
+            question.Text = "Modern Voices is already running. Would you like to start a 2nd instance?";
+            FlowLayoutPanel buttons = new FlowLayoutPanel();
+            buttons.AutoSize = true; buttons.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            buttons.FlowDirection = FlowDirection.RightToLeft; buttons.Anchor = AnchorStyles.Right; buttons.Margin = new Padding(0);
+            Button cancel = new Button();
+            cancel.Text = "Cancel"; cancel.DialogResult = DialogResult.Cancel; cancel.AutoSize = true;
+            cancel.MinimumSize = new Size(88, 30); cancel.Margin = new Padding(8, 0, 0, 0);
+            Button yes = new Button();
+            yes.Text = "Yes"; yes.DialogResult = DialogResult.Yes; yes.AutoSize = true;
+            yes.MinimumSize = new Size(88, 30); yes.Margin = new Padding(0);
+            buttons.Controls.Add(cancel); buttons.Controls.Add(yes);
+            rows.Controls.Add(question, 0, 0); rows.Controls.Add(buttons, 0, 1);
+            ask.Controls.Add(rows);
+            ask.AcceptButton = yes; ask.CancelButton = cancel;
+            Theme.Apply(ask, Theme.IsDark());
+            return ask;
         }
     }
 
@@ -1889,7 +1964,6 @@ namespace ModernVoicesReader
                     double seconds = File.Exists(wav) ? (new FileInfo(wav).Length - 44) / 44100.0 : 0;
                     Check(saved && seconds > 4 && seconds < 40, "the text is saved as a WAV file (" + seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s of sound)");
 
-                    // Kept between runs: the text, its place, and the list.
                     // A file's place is kept for when it is opened again.
                     string plainFile = Path.Combine(made, "utf8.txt");
                     form.OpenFile(plainFile);
@@ -1904,7 +1978,14 @@ namespace ModernVoicesReader
                     MainForm again = new MainForm(new Store(data), true);
                     again.Show();
                     Application.DoEvents();
-                    Check(again.BoxText == text && again.Position == paused, "opened again: the same text and place (" + again.Position + ")");
+                    using (Form ask = Program.AlreadyRunningWindow())
+                    {
+                        ask.Show(); Application.DoEvents();
+                        Check(ask.AcceptButton != null && ask.CancelButton != null && ask.Width > 300, "already running: the warning has its question, Yes and Cancel");
+                        try { using (Bitmap shot = new Bitmap(ask.Width, ask.Height)) { ask.DrawToBitmap(shot, new Rectangle(0, 0, ask.Width, ask.Height)); shot.Save(Path.Combine(folder, "reader-already-running.png")); } } catch (Exception) { }
+                        ask.Close();
+                    }
+                    Check(again.BoxText == "" && again.Position == 0 && !File.Exists(Path.Combine(data, "current.txt")), "opened again: the box is empty (its text is not kept)");
                     again.Close();
                     again.Dispose();
                 }
