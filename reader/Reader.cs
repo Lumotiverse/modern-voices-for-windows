@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.10.2.0")]
+[assembly: System.Reflection.AssemblyVersion("0.10.3.0")]
 
 namespace ModernVoicesReader
 {
@@ -287,7 +287,7 @@ namespace ModernVoicesReader
             if (kind == ".html" || kind == ".htm") { return Html.ToText(Plain(path)); }
             if (kind == ".doc" || kind == ".pdf" || kind == ".odt" || kind == ".epub")
             {
-                throw new InvalidOperationException("files of this kind (" + kind + ") can't be read: copy the text and press Read clipboard");
+                throw new InvalidOperationException("files of this kind (" + kind + ") can't be read: copy the text and press Paste and read");
             }
             return Plain(path);
         }
@@ -1677,13 +1677,48 @@ namespace ModernVoicesReader
 
         // ---- reading
 
-        void Status(string text) { statusLabel.Text = text; }
+        // What is happening, on the last line: shown for five seconds, then it fades away. (A message that
+        // goes on being renewed, as the progress of saving is, stays.)
+        Timer statusTimer;
+        DateTime statusAt;
+        const double StatusSeconds = 5.0, StatusFade = 0.6;
+        void Status(string text)
+        {
+            Palette p = Theme.Get(Theme.IsDark());
+            statusLabel.ForeColor = p.Muted;
+            statusLabel.Text = text;
+            statusAt = DateTime.UtcNow;
+            if (statusTimer == null)
+            {
+                statusTimer = new Timer();
+                statusTimer.Interval = 50;
+                statusTimer.Tick += delegate { FadeStatus((DateTime.UtcNow - statusAt).TotalSeconds); };
+            }
+            if (text.Length > 0) { statusTimer.Start(); } else { statusTimer.Stop(); }
+        }
+        // The status line `shown` seconds after its message came: there, fading, or gone.
+        public void FadeStatus(double shown)
+        {
+            if (shown < StatusSeconds) { return; }
+            Palette p = Theme.Get(Theme.IsDark());
+            double t = Math.Min(1.0, (shown - StatusSeconds) / StatusFade);
+            if (t >= 1.0)
+            {
+                statusLabel.Text = ""; statusLabel.ForeColor = p.Muted;
+                if (statusTimer != null) { statusTimer.Stop(); }
+                return;
+            }
+            statusLabel.ForeColor = Color.FromArgb(
+                (int)(p.Muted.R + (p.Back.R - p.Muted.R) * t), (int)(p.Muted.G + (p.Back.G - p.Muted.G) * t), (int)(p.Muted.B + (p.Back.B - p.Muted.B) * t));
+        }
+        public string StatusText { get { return statusLabel.Text; } }
+        public void TestStatus(string text) { Status(text); }
 
         public void Play()
         {
             if (mode == Mode.Paused) { PauseOrResume(); return; }
             if (mode == Mode.Playing) { return; }
-            if (box.TextLength == 0) { Status("Nothing to read: paste some text, or press Read clipboard."); return; }
+            if (box.TextLength == 0) { Status("Nothing to read: paste some text, or press Paste and read."); return; }
             if (CurrentVoice == null) { Status("Choose a voice first."); return; }
             if (position >= box.TextLength) { position = 0; }
             StartAt(position);
@@ -2491,6 +2526,13 @@ namespace ModernVoicesReader
                         if (defaultThen == null) { key.DeleteValue("DefaultTokenId", false); } else { key.SetValue("DefaultTokenId", defaultThen); }
                     }
                 }
+                form.TestStatus("A message");
+                form.FadeStatus(4.9);
+                bool there = form.StatusText == "A message";
+                form.FadeStatus(5.3);
+                bool fading = form.StatusText == "A message";
+                form.FadeStatus(5.7);
+                Check(there && fading && form.StatusText == "", "a message on the last line is there for five seconds, fades, and is gone");
                 Check(form.TopRowEven, "the nickname box and its tick are as tall as the voice list (" + form.TopRow + ")");
                 Check(MainForm.CleanNickname("  My (best)\r\n voice ") == "My best voice", "a nickname is tidied (no brackets or line ends)");
                 // Text in a picture (where this PC has Windows' text recognition).

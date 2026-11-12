@@ -59,7 +59,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.10.2'
+$Version = '0.10.3'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -1153,6 +1153,13 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     Update-UiAddLayout
     Update-UiInstalledList
     Update-UiSummary
+    Update-UiApply
+    $applyTimer = New-Object System.Windows.Forms.Timer
+    $applyTimer.Interval = 300
+    $applyTimer.add_Tick({ Update-UiApply })
+    $script:Ui.ApplyTimer = $applyTimer
+    $form.add_Shown({ $script:Ui.ApplyTimer.Start() })
+    $form.add_FormClosed({ $script:Ui.ApplyTimer.Stop() })
     # Dark or light: as chosen, or as Windows is (looked at again whenever the window comes to the front).
     $script:UiDark = $null
     foreach ($view in $installedList, $list, $wordList) {
@@ -1339,6 +1346,18 @@ function Set-UiDefaultVoice {
     if ($script:Ui.InstalledList.Items.Count -gt $index) { $script:Ui.InstalledList.Items[$index].Selected = $true; Update-UiInstalled }
 }
 
+# Apply changes is greyed out while there is nothing to apply: the voices (and speakers) ticked are the
+# ones installed, and the US English option is as it was. (Looked at a few times a second, by a timer:
+# ticks change in several places.)
+function Update-UiApply {
+    $ui = $script:Ui
+    if (-not $ui -or $ui.Busy -or $ui.Filling -or -not $ui.Apply) { return }
+    Save-UiSpeakers
+    $wanted = @(Get-PickedIds $ui)
+    $same = ((@($wanted | Sort-Object) -join '|') -eq (@($ui.Installed | Sort-Object) -join '|')) -and ([bool]$ui.UsBox.Checked -eq [bool]$ui.UsTags)
+    if ($ui.Apply.Enabled -eq $same) { $ui.Apply.Enabled = -not $same }
+}
+
 # Applies the Add or remove tab's ticks in the window: downloads, removals, registration and tests, with
 # progress below; then the window shows the new state.
 function Invoke-UiApply {
@@ -1378,6 +1397,7 @@ function Invoke-UiApply {
     $ui.Filling = $false
     Update-UiInstalledList
     Update-UiSummary
+    Update-UiApply
     if ($ok) {
         $ui.Status.Text = 'Done: every voice passed its test. Restart programs that were open to see new voices.'
         if ($ui.InstalledList.Items.Count -gt 0) { Show-UiPage 0 }
@@ -2264,6 +2284,17 @@ try {
         Invoke-UiApply
         Write-Output "apply, nothing changed: $($ui.Status.Text)"
         if ($ui.Status.Text -ne 'Nothing to change.') { $bad += 'apply with no changes' }
+        # Apply changes is greyed out with nothing to apply, and not once a tick differs.
+        Update-UiApply
+        $greyed = -not $ui.Apply.Enabled
+        $first = $ui.List.Items | Where-Object { -not $_.Checked } | Select-Object -First 1
+        if ($first) { $first.Checked = $true }
+        Update-UiApply
+        $lit = $ui.Apply.Enabled
+        if ($first) { $first.Checked = $false }
+        Update-UiApply
+        Write-Output "apply button: nothing to apply, greyed out: $greyed; a voice ticked, lit: $lit; unticked again, greyed out: $(-not $ui.Apply.Enabled)"
+        if (-not $greyed -or -not $lit -or $ui.Apply.Enabled) { $bad += 'apply button greyed out' }
         # Windows' default voice, set from the Voice manager (put back afterwards).
         if ($real.Count -and $ui.InstalledList.Items.Count) {
             $before = (Get-ItemProperty $DefaultVoiceKey -ErrorAction SilentlyContinue).DefaultTokenId
