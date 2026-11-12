@@ -271,10 +271,11 @@ $oldDll = Join-Path $App 'engine\x64\gone_in_this_version.dll'
 $oldScript = Join-Path $App 'installer\GoneInThisVersion.ps1'
 Set-Content $oldDll 'old'; Set-Content $oldScript '# old'
 Set-Content "$menu\Repair.lnk" 'old'
-# (A rule of the person's own, one of the program's changed, and one removed: all three stay as they are.)
-$own = @(Get-Dictionary $rulesFile | Where-Object { $_.From -ne '<3' })
-foreach ($rule in $own) { if ($rule.From -eq ':)') { $rule.To = 'smile' } }
-$own += [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = 'Niamh'; To = 'Neev' }
+# (A rule of the person's own, one of the program's changed, and the rest of the program's removed: the list stays as it is.)
+$own = @(
+    [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = ':)'; To = 'smile' },
+    [pscustomobject]@{ On = $false; Whole = $true; Case = $false; From = ':D'; To = 'big grin' },
+    [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = 'Niamh'; To = 'Neev' })
 Set-Dictionary $rulesFile $own
 Set-GlobalSpeed $settingsFile 115
 Set-VoiceSettings $albaDir 0.8 2 1
@@ -286,7 +287,8 @@ Check ((Get-ItemProperty $ourKey).DisplayVersion -eq $versionNow -and $versionNo
 Check (-not (Test-Path $oldDll) -and -not (Test-Path $oldScript)) "the older version's leftover program files are gone"
 Check ((Get-GlobalSpeed $settingsFile) -eq 115) 'the speed set before the update is kept'
 $after = @(Get-Dictionary $rulesFile)
-Check (@($after | Where-Object { $_.From -eq 'Niamh' -and $_.To -eq 'Neev' }).Count -eq 1 -and @($after | Where-Object { $_.From -eq ':)' -and $_.To -eq 'smile' }).Count -eq 1 -and @($after | Where-Object { $_.From -eq '<3' }).Count -eq 0 -and $after.Count -eq $own.Count) 'pronunciation rules: the added, changed and removed ones are as they were left'
+Check (@($after | Where-Object { $_.From -eq 'Niamh' -and $_.To -eq 'Neev' }).Count -eq 1 -and @($after | Where-Object { $_.From -eq ':)' -and $_.To -eq 'smile' }).Count -eq 1 -and @($after | Where-Object { $_.From -eq ':D' -and -not $_.On }).Count -eq 1 -and @($after | Where-Object { $_.From -eq '<3' }).Count -eq 0 -and $after.Count -eq 3) "pronunciation rules: the added, changed, switched off and removed ones are as they were left ($($after.Count) rules)"
+Set-Dictionary $rulesFile @()
 Check (-not (Test-Path "$menu\Repair.lnk")) "the Start menu's old Repair entry is gone"
 Check ((Get-Item $voiceFile.FullName).LastWriteTimeUtc -eq $voiceWritten) 'the voice files were not downloaded again'
 Check ((Get-ItemProperty $ourKey).DisplayIcon -like '*ModernVoicesReader.exe,0') "Installed apps shows the program's icon (the speaker), not Config's cog"
