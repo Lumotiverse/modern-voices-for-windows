@@ -60,9 +60,23 @@ jobs:
           name: engine-x86
           path: engine/target/i686-pc-windows-msvc/release/modern_voices.dll
 
+  reader:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the Reader (C#, with the compiler that is part of Windows)
+        shell: powershell
+        run: |
+          $version = [regex]::Match((Get-Content engine/Cargo.toml -Raw), '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          ./reader/Build.ps1 -Out built/reader -Version $version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reader
+          path: built/reader/ModernVoicesReader.exe
+
   package:
-    needs: [engine-x64, engine-x86]
-    if: ${{ always() && needs.engine-x64.result == 'success' }}
+    needs: [engine-x64, engine-x86, reader]
+    if: ${{ always() && needs.engine-x64.result == 'success' && needs.reader.result == 'success' }}
     runs-on: windows-latest
     permissions:
       contents: write
@@ -77,10 +91,14 @@ jobs:
         with:
           name: engine-x86
           path: built/x86
+      - uses: actions/download-artifact@v4
+        with:
+          name: reader
+          path: built/reader
       - name: Sign and package
         id: kit
         shell: powershell
-        run: ./tools/Package.ps1 -X64 built/x64/modern_voices.dll -X86 built/x86/modern_voices.dll -Out out
+        run: ./tools/Package.ps1 -X64 built/x64/modern_voices.dll -X86 built/x86/modern_voices.dll -Reader built/reader/ModernVoicesReader.exe -Out out
       - name: Install, test, repair, uninstall (Windows PowerShell, as users run it)
         shell: powershell
         run: ./tools/Test-Kit.ps1 -Kit "out/${{ steps.kit.outputs.name }}"

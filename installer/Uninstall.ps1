@@ -1,7 +1,7 @@
 <#
 Modern Voices for Windows - uninstaller. Removes the voices (64- and 32-bit), the engine's
-registration and its certificate's trust, the Start menu folder, the Installed apps entry and the
-program's folder. Nothing else is touched.
+registration and its certificate's trust, the Start menu folder, the Installed apps entry, the
+program's folder (the Reader with it) and the Reader's saved texts. Nothing else is touched.
 #>
 param([switch]$NoPause)
 
@@ -53,6 +53,10 @@ try {
     foreach ($key in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows', 'HKLM:\SOFTWARE\Modern Voices for Windows') {
         if (Test-Path $key) { Remove-Item $key -Recurse -Force }
     }
+    # The Reader's texts and place, and the theme chosen (this Windows user's).
+    $readerData = Join-Path $env:APPDATA 'Modern Voices Reader'
+    if (Test-Path $readerData) { Remove-Item $readerData -Recurse -Force -ErrorAction SilentlyContinue }
+    if (Test-Path 'HKCU:\Software\Modern Voices for Windows') { Remove-Item 'HKCU:\Software\Modern Voices for Windows' -Recurse -Force }
     $menu = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$AppName"
     if (Test-Path $menu) { Remove-Item $menu -Recurse -Force }
     if (-not $isOurs) {

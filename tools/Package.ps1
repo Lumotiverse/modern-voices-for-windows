@@ -1,5 +1,5 @@
 <#
-Signs the built engines and packages the kit: out\ModernVoicesForWindows<version>\ and its .zip.
+Signs the built engines and the Reader, and packages the kit: out\ModernVoicesForWindows<version>\ and its .zip.
 
 Signing: a certificate made here for code signing only signs the DLLs, then its private key is deleted,
 so it can never sign anything else (the Spoken Players voicepack's method). Its public part goes in
@@ -9,6 +9,7 @@ engines (World of Warcraft) need that. Run in Windows PowerShell as administrato
 param(
     [Parameter(Mandatory)][string]$X64,
     [string]$X86,
+    [string]$Reader,
     [string]$Out = 'out'
 )
 
@@ -33,6 +34,13 @@ if ($X86 -and (Test-Path $X86)) {
     $dlls += "$kit\engine\x86\modern_voices.dll"
 } else {
     Write-Host 'no 32-bit engine: this kit is 64-bit only' -ForegroundColor Yellow
+}
+if ($Reader -and (Test-Path $Reader)) {
+    New-Item "$kit\reader" -ItemType Directory -Force | Out-Null
+    Copy-Item $Reader "$kit\reader\ModernVoicesReader.exe"
+    $dlls += "$kit\reader\ModernVoicesReader.exe"
+} else {
+    throw 'The Reader (reader\ModernVoicesReader.exe) was not built.'
 }
 Copy-Item (Join-Path $repo 'engine\espeak-ng-data') "$kit\engine\espeak-ng-data" -Recurse
 Copy-Item (Join-Path $repo 'installer\*.ps1') "$kit\installer"

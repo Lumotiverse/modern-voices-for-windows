@@ -203,6 +203,20 @@ $screens = Join-Path (Split-Path (Resolve-Path $Kit).Path -Parent) 'screens'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Kit 'installer\Install.ps1') -PickerSelfTest -ScreenshotDir $screens | Out-Host
 Check ($LASTEXITCODE -eq 0) 'window: pause sliders save (Speed and pauses tab and a voice of its own), preview voices, pictures'
 
+Step 'The Reader'
+$readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
+Check (Test-Path $readerExe) 'the Reader is installed'
+Check (Test-Path (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Modern Voices for Windows\Modern Voices Reader.lnk")) 'Start menu: Modern Voices Reader'
+if (Test-Path $readerExe) {
+    Check ((Get-AuthenticodeSignature $readerExe).Status -eq 'Valid') 'the Reader is signed by the build (trusted as the engine is)'
+    $readerRun = Start-Process $readerExe -ArgumentList '--selftest', "`"$screens`"" -PassThru
+    if (-not $readerRun.WaitForExit(300000)) { $readerRun.Kill(); Check $false "the Reader's own test finished" }
+    $readerLog = Join-Path $screens 'reader-selftest.log'
+    if (Test-Path $readerLog) { Get-Content $readerLog | Out-Host }
+    Check ($readerRun.HasExited -and $readerRun.ExitCode -eq 0) "the Reader: tidying, reading with a Modern Voice, pause, the place kept, the list, light and dark"
+    Remove-Item (Join-Path $screens 'data') -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Step 'Repair (registers everything again; settings kept)'
 Set-VoiceSettings $albaDir 0.8 2 1
 $code = Invoke-Install @('-Repair', '-Unattended', '-NoPause')
@@ -220,6 +234,7 @@ Step 'Uninstall'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Uninstall.ps1') -NoPause
 Check ((Get-OurTokens $Tokens64).Count -eq 0 -and (Get-OurTokens $Tokens32).Count -eq 0) 'no voices left'
 Check (-not (Test-Path $App)) 'program folder gone'
+Check (-not (Test-Path (Join-Path $env:APPDATA 'Modern Voices Reader'))) "the Reader's saved texts gone"
 Check (-not (Test-Path 'HKLM:\SOFTWARE\Classes\CLSID\{F9857585-FF01-467B-84C0-D6CA4E0572D2}')) 'engine registration gone'
 
 Step 'Engine log (last 150 lines)'

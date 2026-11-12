@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.7.9
+Modern Voices for Windows 0.8.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -37,6 +37,9 @@ change its files (every program that speaks loads the engine from it).
 Afterwards, from the Start menu (Modern Voices for Windows):
   Modern Voices   the window: Voice manager (installed voices, how they sound, Windows' default
                   voice), Speed and pauses, and Add or remove voices
+  Modern Voices Reader
+                  reads text aloud with the voices: pasted or copied text, and a list to read
+                  later (see "The Reader" below)
   Test voices     hear each voice, with each word shown as the engine reports it
   Repair          registers everything again (if a voice went missing from programs)
   Uninstall       removes everything (also in Windows' Installed apps)
@@ -108,6 +111,35 @@ The settings live in the install folder: settings.json (the Speed and pauses tab
 and "pauses") and voices\<voice>\voice.json
 ("loudness": peak and boost; "inference": length_scale, higher = slower; "pauses": its own), if you'd
 rather edit them.
+
+
+The Reader
+----------
+Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Reader) reads text aloud:
+
+  * Paste text into the box (or press Read clipboard) and press Play. Pause and Resume; Stop keeps
+    the place, and Play goes on from the start of the sentence it was in. Click in the text to read
+    from somewhere else; From the start goes back to the top. The word being read is marked.
+  * Voice lists the Modern Voices (by nickname, where one has a nickname), then Windows' other
+    voices. Speed is the program's own rate (as other programs have), on top of the Dictation speed.
+  * "about 3:20 left" is an estimate: from a typical pace at first, then from how fast the voice is
+    actually reading.
+  * "Read text as soon as it is copied": while the Reader is open (minimised is fine), anything
+    copied in another program is read straight away.
+  * "Leave out links, code and symbols": web addresses are read as "link", blocks of code are
+    skipped, and the marks of formatted text (#, **, `, table lines) aren't read out.
+  * To read later: Save this text to the list, or Add the clipboard to the list. Each text in the
+    list remembers where you stopped; Open (or a double click) carries on from there.
+  * The text in the box and its place are kept when the Reader is closed.
+
+Its texts are kept in %APPDATA%\Modern Voices Reader (removed by Uninstall).
+
+
+Light and dark
+--------------
+Both windows are light or dark as Windows is (Settings > Personalisation > Colours: the mode for
+apps), or as chosen under Theme in either window (the choice is shared). A few parts are Windows'
+own and stay as Windows draws them (the ticks of tick boxes, the sliders' tracks).
 
 
 Disk space

@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.7.9'
+$Version = '0.8.0'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -444,7 +444,7 @@ function New-UiLabel([string]$Text, [switch]$Grey, [switch]$Bold) {
     $l = New-Object System.Windows.Forms.Label
     $l.AutoSize = $true; $l.Dock = 'Fill'; $l.Text = $Text
     $l.Margin = New-Object System.Windows.Forms.Padding(3, (Get-Px 3), 3, (Get-Px 3))
-    if ($Grey) { $l.ForeColor = [System.Drawing.Color]::DimGray }
+    if ($Grey) { $l.ForeColor = [System.Drawing.Color]::DimGray; $l.Tag = 'muted' }
     if ($Bold) { $l.Font = $script:UiBold }
     return $l
 }
@@ -511,7 +511,7 @@ $script:SliderNames = @{ 'Speed' = 'Dictation speed'; 'Sentence gap' = 'Sentence
 # Scrolls the tab a control is on, as the mouse wheel would.
 function Send-UiWheelToPage($Control, [int]$Delta) {
     $tab = $Control.Parent
-    while ($tab -and -not ($tab -is [System.Windows.Forms.TabPage])) { $tab = $tab.Parent }
+    while ($tab -and -not ($tab.Tag -is [string] -and $tab.Tag -eq 'page')) { $tab = $tab.Parent }
     if (-not $tab -or -not $tab.VerticalScroll.Visible) { return }
     $lines = [System.Windows.Forms.SystemInformation]::MouseWheelScrollLines
     if ($lines -le 0) { $lines = 3 }
@@ -541,6 +541,126 @@ function Add-UiNote($Grid, $Label) {
     $Grid.Controls.Add($Label, 1, $row)
 }
 
+# ---- light and dark. The choice (As Windows, Light, Dark) is kept for the Windows user and shared
+# with the Reader; "As Windows" follows Settings > Personalisation > Colours (the mode for apps).
+$ThemeKey = 'HKCU:\Software\Modern Voices for Windows'
+function Get-ThemeChoice {
+    $found = Get-ItemProperty $ThemeKey -Name Theme -ErrorAction SilentlyContinue
+    if ($found -and @('light', 'dark') -contains $found.Theme) { return [string]$found.Theme }
+    return 'auto'
+}
+function Set-ThemeChoice([string]$Choice) {
+    if (-not (Test-Path $ThemeKey)) { New-Item $ThemeKey -Force | Out-Null }
+    Set-ItemProperty $ThemeKey -Name Theme -Value $Choice
+}
+function Test-DarkTheme {
+    $choice = if ($script:UiThemeOverride) { $script:UiThemeOverride } else { Get-ThemeChoice }
+    if ($choice -eq 'dark') { return $true }
+    if ($choice -eq 'light') { return $false }
+    $windows = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name AppsUseLightTheme -ErrorAction SilentlyContinue
+    return ($null -ne $windows) -and ($windows.AppsUseLightTheme -eq 0)
+}
+function Get-UiPalette([bool]$Dark) {
+    $rgb = { param($r, $g, $b) [System.Drawing.Color]::FromArgb($r, $g, $b) }
+    if ($Dark) {
+        return @{ Dark = $true; Back = (& $rgb 32 32 32); Raised = (& $rgb 51 51 51); Input = (& $rgb 24 24 24); Text = (& $rgb 240 240 240)
+                  Muted = (& $rgb 160 160 160); Warn = (& $rgb 255 128 128); Border = (& $rgb 90 90 90); Tab = (& $rgb 20 20 20) }
+    }
+    return @{ Dark = $false; Back = [System.Drawing.SystemColors]::Control; Raised = [System.Drawing.SystemColors]::Control
+              Input = [System.Drawing.SystemColors]::Window; Text = [System.Drawing.SystemColors]::ControlText; Muted = [System.Drawing.Color]::DimGray
+              Warn = [System.Drawing.Color]::Firebrick; Border = [System.Drawing.SystemColors]::ControlDark; Tab = [System.Drawing.SystemColors]::ControlLight }
+}
+
+function Set-UiThemeOn($Control, $P) {
+    if ($Control -is [System.Windows.Forms.Button]) {
+        if ($Control.Tag -is [int]) { }   # a tab's button: Show-UiPage colours those
+        elseif ($P.Dark) {
+            $Control.FlatStyle = 'Flat'; $Control.BackColor = $P.Raised; $Control.ForeColor = $P.Text
+            $Control.FlatAppearance.BorderColor = $P.Border
+        } else { $Control.FlatStyle = 'Standard'; $Control.ForeColor = $P.Text; $Control.UseVisualStyleBackColor = $true }
+    }
+    elseif ($Control -is [System.Windows.Forms.TextBox] -or $Control -is [System.Windows.Forms.ListView] -or $Control -is [System.Windows.Forms.ListBox]) {
+        $Control.BackColor = $P.Input; $Control.ForeColor = $P.Text
+        if ($Control -is [System.Windows.Forms.ListView]) { $Control.OwnerDraw = $P.Dark }
+        try { [void][ModernVoices.Look]::SetWindowTheme($Control.Handle, $(if ($P.Dark) { 'DarkMode_Explorer' } else { 'Explorer' }), $null) } catch { }
+    }
+    elseif ($Control -is [System.Windows.Forms.ComboBox]) {
+        $Control.FlatStyle = $(if ($P.Dark) { 'Flat' } else { 'Standard' }); $Control.BackColor = $P.Input; $Control.ForeColor = $P.Text
+    }
+    elseif ($Control -is [System.Windows.Forms.Label]) {
+        $Control.ForeColor = $(if ($Control.Tag -is [string] -and $Control.Tag -eq 'muted') { $P.Muted } elseif ($Control.Tag -is [string] -and $Control.Tag -eq 'warn') { $P.Warn } else { $P.Text })
+    }
+    elseif ($Control -is [System.Windows.Forms.CheckBox]) { $Control.ForeColor = $P.Text }
+    elseif ($Control -is [System.Windows.Forms.TrackBar]) { $Control.BackColor = $P.Back }
+    elseif ($Control -is [System.Windows.Forms.ProgressBar]) { }
+    else { $Control.BackColor = $P.Back; $Control.ForeColor = $P.Text }
+    foreach ($child in $Control.Controls) { Set-UiThemeOn $child $P }
+}
+
+# Makes the window light or dark as chosen (nothing to do when it already is).
+function Set-UiTheme {
+    if (-not $script:Ui) { return }
+    $dark = Test-DarkTheme
+    if ($null -ne $script:UiDark -and $script:UiDark -eq $dark) { return }
+    $script:UiDark = $dark
+    $p = Get-UiPalette $dark
+    $script:UiPalette = $p
+    if (-not ('ModernVoices.Look' -as [type])) {
+        Add-Type -Namespace ModernVoices -Name Look -MemberDefinition @'
+[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(System.IntPtr window, int attribute, ref int value, int size);
+[DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] public static extern int SetWindowTheme(System.IntPtr window, string app, string ids);
+'@
+    }
+    $form = $script:Ui.Form
+    $form.SuspendLayout()
+    $form.BackColor = $p.Back; $form.ForeColor = $p.Text
+    try {
+        # The title bar (Windows 10 version 2004 and later: 20; before that: 19).
+        $on = [int]$dark
+        if ([ModernVoices.Look]::DwmSetWindowAttribute($form.Handle, 20, [ref]$on, 4) -ne 0) { [void][ModernVoices.Look]::DwmSetWindowAttribute($form.Handle, 19, [ref]$on, 4) }
+    } catch { }
+    foreach ($child in $form.Controls) { Set-UiThemeOn $child $p }
+    Show-UiPage $script:Ui.PageIndex
+    $form.ResumeLayout()
+    $form.Refresh()
+}
+
+# Shows one of the tabs' pages; its button stands out.
+function Show-UiPage([int]$Index) {
+    $ui = $script:Ui
+    $p = $script:UiPalette
+    $ui.PageIndex = $Index
+    for ($i = 0; $i -lt $ui.Pages.Count; $i++) {
+        $ui.Pages[$i].Visible = ($i -eq $Index)
+        $b = $ui.TabButtons[$i]
+        $b.Font = $(if ($i -eq $Index) { $script:UiBold } else { $ui.Form.Font })
+        if ($p) {
+            $b.BackColor = $(if ($i -eq $Index) { $p.Input } else { $p.Tab })
+            $b.ForeColor = $(if ($i -eq $Index) { $p.Text } else { $p.Muted })
+        }
+    }
+}
+
+# A list's column headings are drawn by the program when dark (Windows draws them light only).
+function Enable-UiDarkHeader($View) {
+    $View.add_DrawColumnHeader({
+        param($sender, $e)
+        $p = $script:UiPalette
+        $fill = New-Object System.Drawing.SolidBrush $p.Raised
+        $e.Graphics.FillRectangle($fill, $e.Bounds)
+        $fill.Dispose()
+        $line = New-Object System.Drawing.Pen $p.Border
+        $e.Graphics.DrawLine($line, $e.Bounds.Right - 1, $e.Bounds.Top + 3, $e.Bounds.Right - 1, $e.Bounds.Bottom - 4)
+        $line.Dispose()
+        $flags = [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
+        if ($e.Header.TextAlign -eq 'Center') { $flags = $flags -bor [System.Windows.Forms.TextFormatFlags]::HorizontalCenter }
+        $inside = New-Object System.Drawing.Rectangle(($e.Bounds.X + 4), $e.Bounds.Y, ($e.Bounds.Width - 8), $e.Bounds.Height)
+        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $e.Header.Text, $sender.Font, $inside, $p.Text, $flags)
+    })
+    $View.add_DrawItem({ param($sender, $e) $e.DrawDefault = $true })
+    $View.add_DrawSubItem({ param($sender, $e) $e.DrawDefault = $true })
+}
+
 # The names Windows has for this program's voices (what Preview asks for).
 function Get-OurVoiceNames {
     $tokens = 'HKLM:\SOFTWARE\Microsoft\Speech\Voices\Tokens'
@@ -552,10 +672,12 @@ function Save-UiPictures([string]$Dir) {
     $ui = $script:Ui
     New-Item $Dir -ItemType Directory -Force | Out-Null
     $ui.Form.Show()
-    foreach ($shape in @(@('open', 0, 0), @('small', 640, 440))) {
+    foreach ($shape in @(@('open', 0, 0, 'light'), @('dark', 0, 0, 'dark'), @('small', 640, 440, 'light'))) {
         if ($shape[1]) { $ui.Form.Size = New-Object System.Drawing.Size($shape[1], $shape[2]) }
-        for ($i = 0; $i -lt $ui.Tabs.TabPages.Count; $i++) {
-            $ui.Tabs.SelectedIndex = $i
+        $script:UiThemeOverride = $shape[3]
+        Set-UiTheme
+        for ($i = 0; $i -lt $ui.Pages.Count; $i++) {
+            Show-UiPage $i
             [System.Windows.Forms.Application]::DoEvents()
             Start-Sleep -Milliseconds 150
             [System.Windows.Forms.Application]::DoEvents()
@@ -565,7 +687,9 @@ function Save-UiPictures([string]$Dir) {
             $picture.Dispose()
         }
     }
-    $ui.Tabs.SelectedIndex = 0
+    $script:UiThemeOverride = $null
+    Set-UiTheme
+    Show-UiPage 0
     $ui.Form.Hide()
     Write-Output "pictures of the window: $Dir"
 }
@@ -606,16 +730,31 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $script:UiBold = $bold
     $red = [System.Drawing.Color]::Firebrick
 
-    $tabs = New-Object System.Windows.Forms.TabControl
-    $tabs.Dock = 'Fill'
-    $tabInstalled = New-Object System.Windows.Forms.TabPage 'Voice manager'
-    $tabPauses = New-Object System.Windows.Forms.TabPage 'Speed and pauses'
-    $tabAdd = New-Object System.Windows.Forms.TabPage 'Add or remove voices'
-    foreach ($tab in $tabInstalled, $tabPauses, $tabAdd) { $tab.AutoScroll = $true; $tab.UseVisualStyleBackColor = $false; $tab.BackColor = [System.Drawing.SystemColors]::Control; $tabs.TabPages.Add($tab) }
-    $form.Controls.Add($tabs)
+    # The tabs: a button each and a page each (drawn by the program, so that they can be dark too).
+    $pageHost = New-Object System.Windows.Forms.Panel
+    $pageHost.Dock = 'Fill'
+    $form.Controls.Add($pageHost)
+    $tabStrip = New-UiFlow
+    $tabStrip.Dock = 'Top'; $tabStrip.WrapContents = $false
+    $form.Controls.Add($tabStrip)
+    $pages = @(); $tabButtons = @()
+    foreach ($title in 'Voice manager', 'Speed and pauses', 'Add or remove voices') {
+        $tab = New-Object System.Windows.Forms.Panel
+        $tab.Dock = 'Fill'; $tab.AutoScroll = $true; $tab.Tag = 'page'; $tab.Visible = $false
+        $pageHost.Controls.Add($tab)
+        $pages += $tab
+        $tabButton = New-UiButton $title
+        $tabButton.FlatStyle = 'Flat'; $tabButton.FlatAppearance.BorderSize = 0; $tabButton.TabStop = $false
+        $tabButton.Margin = New-Object System.Windows.Forms.Padding(0, 0, (Get-Px 2), 0)
+        $tabButton.Tag = $pages.Count - 1
+        $tabButton.add_Click({ param($sender, $e) Show-UiPage ([int]$sender.Tag) })
+        $tabStrip.Controls.Add($tabButton)
+        $tabButtons += $tabButton
+    }
+    $tabInstalled = $pages[0]; $tabPauses = $pages[1]; $tabAdd = $pages[2]
 
     # ---- bottom of the window: progress while applying changes
-    $bottom = New-UiLine @('fill', 'auto', 'auto')
+    $bottom = New-UiLine @('auto', 'auto', 'fill', 'auto', 'auto')
     $bottom.Dock = 'Bottom'
     $bottom.RowStyles.Clear()
     [void]$bottom.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, (Get-Px 20))))
@@ -624,13 +763,21 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $progress = New-Object System.Windows.Forms.ProgressBar
     $progress.Dock = 'Fill'; $progress.Visible = $false
     $progress.Margin = New-Object System.Windows.Forms.Padding(3, (Get-Px 6), 3, 0)
-    $bottom.Controls.Add($progress, 0, 0); $bottom.SetColumnSpan($progress, 3)
+    $bottom.Controls.Add($progress, 0, 0); $bottom.SetColumnSpan($progress, 5)
     $status = New-UiLabel '' -Grey
     $status.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 34))
     $apply = New-UiButton 'Apply changes'
     $close = New-UiButton 'Close'
     $close.DialogResult = 'Cancel'
-    $bottom.Controls.Add($status, 0, 1); $bottom.Controls.Add($apply, 1, 1); $bottom.Controls.Add($close, 2, 1)
+    $themeLabel = New-UiLabel 'Theme'
+    $themeLabel.Dock = 'None'; $themeLabel.Anchor = 'Left'
+    $themeBox = New-Object System.Windows.Forms.ComboBox
+    $themeBox.DropDownStyle = 'DropDownList'; $themeBox.Width = Get-Px 110; $themeBox.Anchor = 'Left'
+    foreach ($name in 'As Windows', 'Light', 'Dark') { [void]$themeBox.Items.Add($name) }
+    $themeBox.SelectedIndex = [math]::Max(0, [array]::IndexOf(@('auto', 'light', 'dark'), (Get-ThemeChoice)))
+    $themeBox.add_SelectedIndexChanged({ Set-ThemeChoice (@('auto', 'light', 'dark')[$script:Ui.ThemeBox.SelectedIndex]); Set-UiTheme })
+    $bottom.Controls.Add($themeLabel, 0, 1); $bottom.Controls.Add($themeBox, 1, 1)
+    $bottom.Controls.Add($status, 2, 1); $bottom.Controls.Add($apply, 3, 1); $bottom.Controls.Add($close, 4, 1)
     $form.Controls.Add($bottom)
     $form.CancelButton = $close
 
@@ -743,7 +890,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     Add-UiNote $globalGrid (New-UiLabel ("how fast every voice speaks before a program's own rate: 100% by default, the voices' own pace (rate +2 is about 125%) " +
         "(each voice's own Dictation speed, on the Voice manager, adjusts from here)") -Grey)
     $rateWarn = New-UiLabel ''
-    $rateWarn.ForeColor = $red
+    $rateWarn.ForeColor = $red; $rateWarn.Tag = 'warn'
     Add-UiNote $globalGrid $rateWarn
     $rateReset = New-UiButton "Set Windows' speed to 0"
     $rateReset.Visible = $false
@@ -818,7 +965,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $sizeLabel = New-UiLabel ''
     Add-UiRow $addGrid $sizeLabel
     $warnLabel = New-UiLabel ''
-    $warnLabel.ForeColor = $red
+    $warnLabel.ForeColor = $red; $warnLabel.Tag = 'warn'
     Add-UiRow $addGrid $warnLabel
     $usBox = New-Object System.Windows.Forms.CheckBox
     $usBox.Text = 'Also list British voices as US English (only if a program does not show them)'
@@ -835,7 +982,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $globalTimer.Interval = 350
     $globalTimer.add_Tick({ $script:Ui.GlobalTimer.Stop(); Save-UiGlobalSettings })
 
-    $script:Ui = @{ Form = $form; Tabs = $tabs; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
+    $script:Ui = @{ Form = $form; Pages = $pages; TabButtons = $tabButtons; TabStrip = $tabStrip; PageHost = $pageHost; PageIndex = 0; ThemeBox = $themeBox; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
         Speakers = $chosenSpeakers; Current = $null; Player = $null; Filling = $false; InstalledKeys = @($speakersOf.Keys)
         InstalledList = $installedList; SoundLabel = $soundLabel; Sliders = $sliders; PreviewBox = $previewBox
         PreviewButton = $previewButton; ResetButton = $resetButton; CurrentInstalled = $null; SaveTimer = $timer
@@ -895,7 +1042,12 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     Update-UiAddLayout
     Update-UiInstalledList
     Update-UiSummary
-    if ($installedList.Items.Count -eq 0) { $tabs.SelectedTab = $tabAdd }
+    # Dark or light: as chosen, or as Windows is (looked at again whenever the window comes to the front).
+    $script:UiDark = $null
+    foreach ($view in $installedList, $list) { Enable-UiDarkHeader $view }
+    Set-UiTheme
+    $form.add_Activated({ Set-UiTheme })
+    Show-UiPage $(if ($installedList.Items.Count -eq 0) { 2 } else { 0 })
     return $script:Ui
 }
 
@@ -1076,7 +1228,7 @@ function Invoke-UiApply {
     $same = ((@($wanted | Sort-Object) -join '|') -eq (@($ui.Installed | Sort-Object) -join '|')) -and ($usTags -eq $ui.UsTags)
     if ($same) { $ui.Status.Text = 'Nothing to change.'; return }
     $ui.Busy = $true
-    $ui.Tabs.Enabled = $false; $ui.Apply.Enabled = $false; $ui.Close.Enabled = $false
+    $ui.PageHost.Enabled = $false; $ui.TabStrip.Enabled = $false; $ui.Apply.Enabled = $false; $ui.Close.Enabled = $false
     $ui.Progress.Value = 0; $ui.Progress.Visible = $true
     $ui.Form.Cursor = 'WaitCursor'
     $ok = $false
@@ -1092,7 +1244,7 @@ function Invoke-UiApply {
     } finally {
         $ui.Busy = $false
         $ui.Progress.Visible = $false
-        $ui.Tabs.Enabled = $true; $ui.Apply.Enabled = $true; $ui.Close.Enabled = $true
+        $ui.PageHost.Enabled = $true; $ui.TabStrip.Enabled = $true; $ui.Apply.Enabled = $true; $ui.Close.Enabled = $true
         $ui.Form.Cursor = 'Default'
     }
     # The new state: ticks and bold for what is installed, the manager's list.
@@ -1107,7 +1259,7 @@ function Invoke-UiApply {
     Update-UiSummary
     if ($ok) {
         $ui.Status.Text = 'Done: every voice passed its test. Restart programs that were open to see new voices.'
-        if ($ui.InstalledList.Items.Count -gt 0) { $ui.Tabs.SelectedIndex = 0 }
+        if ($ui.InstalledList.Items.Count -gt 0) { Show-UiPage 0 }
     } elseif ($ui.Status.Text -notlike 'Stopped*') {
         $ui.Status.Text = "A voice failed its test. The engine's log says why: $env:LOCALAPPDATA\ModernVoices\engine.log"
     }
@@ -1400,6 +1552,14 @@ function Install-Engine {
     $scripts = Join-Path $App 'installer'
     New-Item $scripts -ItemType Directory -Force | Out-Null
     Copy-Item (Join-Path $Here '*.ps1') $scripts -Force
+    # Modern Voices: Reader (a program of its own, beside this one).
+    $readerFrom = Join-Path $Root 'reader'
+    if (Test-Path $readerFrom) {
+        $readerInto = Join-Path $App 'reader'
+        New-Item $readerInto -ItemType Directory -Force | Out-Null
+        try { Copy-Item (Join-Path $readerFrom '*') $readerInto -Force }
+        catch { throw "The Reader is open: close it, then run this again. ($($_.Exception.Message))" }
+    }
 }
 
 function Install-Voice($Entry) {
@@ -1497,6 +1657,15 @@ function Register-Program {
     New-Item $StartMenu -ItemType Directory -Force | Out-Null
     $common = "-NoProfile -ExecutionPolicy Bypass -File `"$App\installer\"
     New-Shortcut (Join-Path $StartMenu 'Modern Voices.lnk') ($common + 'Install.ps1"') 'Voices installed, how they sound, add or remove voices'
+    $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
+    if (Test-Path $readerExe) {
+        $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $StartMenu 'Modern Voices Reader.lnk'))
+        $link.TargetPath = $readerExe
+        $link.WorkingDirectory = Split-Path $readerExe -Parent
+        $link.Description = 'Reads text aloud with the Modern Voices: pasted or copied text, and a list to read later'
+        $link.IconLocation = "$env:SystemRoot\System32\SpeechUX\sapi.cpl,0"
+        $link.Save()
+    }
     New-Shortcut (Join-Path $StartMenu 'Repair.lnk') ($common + 'Install.ps1" -Repair') 'Register the voices again'
     New-Shortcut (Join-Path $StartMenu 'Test voices.lnk') ($common + 'Test.ps1"') 'Hear each Modern Voice'
     New-Shortcut (Join-Path $StartMenu 'Uninstall.lnk') ($common + 'Uninstall.ps1"') "Uninstall $AppName"
