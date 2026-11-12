@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.9.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.9.1.0")]
 
 namespace ModernVoicesReader
 {
@@ -226,7 +226,7 @@ namespace ModernVoicesReader
                 Find(edits, text, @"^[ \t]*\|?[ \t]*:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)*\|?[ \t]*\r?$", "", 0);  // a table's ruled line
                 Find(edits, text, @"^[ \t]{0,3}#{1,6}[ \t]+", "", 0);                                             // # headings
                 Find(edits, text, @"^[ \t]*>[ \t]?", "", 0);                                                      // > quotes
-                Find(edits, text, @"^[ \t]*[-*+][ \t]+(?:\[[ xX]\][ \t]+)?", "", 0);                              // - bullets, - [ ] boxes
+                Find(edits, text, @"^[ \t]*[-*+\u2022\u25E6\u25AA\u2023][ \t]+(?:\[[ xX]\][ \t]+)?", "", 0);                              // - bullets, - [ ] boxes
                 Find(edits, text, @"\*\*|__|~~|`+", "", 0);                                                       // **bold** `code`
                 Find(edits, text, @"(?<![\w*])[*_](?=\S)|(?<=\S)[*_](?![\w*])", "", 0);                           // *slanted*
                 Find(edits, text, @"[ \t]*\|[ \t]*", ", ", 0);                                                    // table columns
@@ -285,7 +285,7 @@ namespace ModernVoicesReader
             {
                 using (RichTextBox rich = new RichTextBox()) { rich.Rtf = Plain(path); return rich.Text; }
             }
-            if (kind == ".html" || kind == ".htm") { return FromHtml(Plain(path)); }
+            if (kind == ".html" || kind == ".htm") { return Html.ToText(Plain(path)); }
             if (kind == ".doc" || kind == ".pdf" || kind == ".odt" || kind == ".epub")
             {
                 throw new InvalidOperationException("files of this kind (" + kind + ") can't be read: copy the text and press Read clipboard");
@@ -341,26 +341,110 @@ namespace ModernVoicesReader
             return text.ToString();
         }
 
-        // A web page's words: scripts and styles left out, a line for each paragraph.
-        public static string FromHtml(string html)
-        {
-            html = Regex.Replace(html, @"<(script|style|head|noscript)\b[\s\S]*?</\1\s*>", "", RegexOptions.IgnoreCase);
-            html = Regex.Replace(html, @"<!--[\s\S]*?-->", "");
-            html = Regex.Replace(html, @"\s+", " ");
-            html = Regex.Replace(html, @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
-            html = Regex.Replace(html, @"</\s*(p|div|li|h[1-6]|tr|blockquote|section|article|title)\s*>", "\n", RegexOptions.IgnoreCase);
-            html = Regex.Replace(html, @"<[^>]+>", "");
-            html = WebUtility.HtmlDecode(html);
-            html = Regex.Replace(html, @"[ \t]*\n[ \t]*", "\n");
-            html = Regex.Replace(html, @"\n{3,}", "\n\n");
-            return html.Trim().Replace("\n", "\r\n");
-        }
-
         public static string SafeName(string title)
         {
             string name = Regex.Replace(Regex.Replace(title, @"[\\/:*?""<>|\r\n\t]+", " "), @"\s+", " ").Trim().TrimEnd('.');
             if (name.Length > 60) { name = name.Substring(0, 60).Trim(); }
             return name.Length == 0 ? "Reading" : name;
+        }
+    }
+
+    // ---------------------------------------------------------------- text from web pages and formatted copies
+
+    public static class Html
+    {
+        // What was copied, out of the wrapping the clipboard puts around it.
+        public static string Fragment(string copied)
+        {
+            const string start = "<!--StartFragment-->", end = "<!--EndFragment-->";
+            int a = copied.IndexOf(start, StringComparison.OrdinalIgnoreCase);
+            int b = copied.LastIndexOf(end, StringComparison.OrdinalIgnoreCase);
+            if (a >= 0 && b > a) { return copied.Substring(a + start.Length, b - a - start.Length); }
+            int first = copied.IndexOf('<');
+            return first > 0 ? copied.Substring(first) : copied;
+        }
+
+        // At least so many line ends at the end of what is made so far (none at its very start).
+        static void Break(StringBuilder made, int lines)
+        {
+            while (made.Length > 0 && (made[made.Length - 1] == ' ' || made[made.Length - 1] == '\t')) { made.Length--; }
+            if (made.Length == 0) { return; }
+            int have = 0;
+            while (have < made.Length && made[made.Length - 1 - have] == '\n') { have++; }
+            for (; have < lines; have++) { made.Append('\n'); }
+        }
+
+        // A page's words laid out as plain text: an empty line between paragraphs, a line for each
+        // item of a list with its bullet or number (indented when the list is inside another), a line
+        // break where there is one; scripts, styles and the like left out.
+        public static string ToText(string html)
+        {
+            html = Regex.Replace(html, @"<(script|style|head|noscript|svg|button|select)\b[\s\S]*?</\1\s*>", "", RegexOptions.IgnoreCase);
+            html = Regex.Replace(html, @"<!--[\s\S]*?-->", "");
+            StringBuilder made = new StringBuilder();
+            List<int> lists = new List<int>();     // for each list open: its next number, or 0 for bullets
+            int keepLines = 0;                     // inside <pre>: line ends are kept
+            bool afterMark = false;                // just after a bullet or number: its words come on the same line
+            foreach (string token in Regex.Split(html, @"(<[^>]*>)"))
+            {
+                if (token.Length == 0) { continue; }
+                if (token[0] == '<' && token[token.Length - 1] == '>')
+                {
+                    Match tag = Regex.Match(token, @"^<\s*(/?)\s*([a-zA-Z][a-zA-Z0-9]*)");
+                    if (!tag.Success) { continue; }
+                    bool closing = tag.Groups[1].Value == "/";
+                    string name = tag.Groups[2].Value.ToLowerInvariant();
+                    int inList = lists.Count > 0 ? 1 : 2;      // paragraphs in a list: no empty lines between
+                    if (name == "br") { Break(made, 0); made.Append('\n'); }
+                    else if (name == "pre") { keepLines = Math.Max(0, keepLines + (closing ? -1 : 1)); Break(made, inList); }
+                    else if (name == "ul" || name == "ol")
+                    {
+                        if (!closing) { Break(made, inList); lists.Add(name == "ol" ? 1 : 0); }
+                        else
+                        {
+                            if (lists.Count > 0) { lists.RemoveAt(lists.Count - 1); }
+                            Break(made, lists.Count > 0 ? 1 : 2);
+                        }
+                    }
+                    else if (name == "li")
+                    {
+                        if (closing) { continue; }
+                        Break(made, 1);
+                        made.Append(' ', 4 * Math.Max(0, lists.Count - 1));
+                        if (lists.Count > 0 && lists[lists.Count - 1] > 0)
+                        {
+                            made.Append(lists[lists.Count - 1].ToString(CultureInfo.InvariantCulture)).Append(". ");
+                            lists[lists.Count - 1]++;
+                        }
+                        else { made.Append("• "); }
+                        afterMark = true;
+                    }
+                    else if (name == "p" || name == "blockquote" || name == "table" || (name.Length == 2 && name[0] == 'h' && name[1] >= '1' && name[1] <= '6'))
+                    {
+                        if (!afterMark) { Break(made, inList); }
+                    }
+                    else if (name == "div" || name == "tr" || name == "section" || name == "article" || name == "header" || name == "footer" ||
+                             name == "dt" || name == "dd" || name == "figcaption" || name == "title")
+                    {
+                        if (!afterMark) { Break(made, 1); }
+                    }
+                    else if ((name == "td" || name == "th") && closing) { made.Append('\t'); }
+                    continue;
+                }
+                string words = WebUtility.HtmlDecode(token);
+                if (keepLines > 0) { words = words.Replace("\r\n", "\n").Replace('\r', '\n'); }
+                else
+                {
+                    words = Regex.Replace(words, @"[ \t\r\n]+", " ");
+                    if (afterMark || made.Length == 0 || made[made.Length - 1] == '\n' || made[made.Length - 1] == ' ') { words = words.TrimStart(' '); }
+                }
+                if (words.Length == 0) { continue; }
+                made.Append(words);
+                if (words.Trim().Length > 0) { afterMark = false; }
+            }
+            string text = Regex.Replace(made.ToString(), @"[ \t]+\n", "\n");
+            text = Regex.Replace(text, @"\n{3,}", "\n\n");
+            return text.Trim('\n', ' ', '\t').Replace("\n", "\r\n");
         }
     }
 
@@ -484,13 +568,11 @@ namespace ModernVoicesReader
 
     // ---------------------------------------------------------------- what is kept between runs
 
-    public class Saved
+    // Where reading stopped in a file that was opened (so that opening it again goes on from there).
+    public class Place
     {
-        public string Id = "";
-        public string Title = "";
         public int Position;
         public int Length;
-        public string Added = "";
     }
 
     public class State
@@ -500,9 +582,9 @@ namespace ModernVoicesReader
         public bool AutoRead;
         public bool Tidy = true;
         public int Position;                 // in the text in the box
-        public string CurrentId = "";        // the list's text in the box, if it is one
+        public string OpenedFile = "";       // the file the box's text came from, while it is unchanged
         public int[] Bounds = new int[0];
-        public List<Saved> List = new List<Saved>();
+        public Dictionary<string, Place> Places = new Dictionary<string, Place>();
     }
 
     public class Store
@@ -513,7 +595,7 @@ namespace ModernVoicesReader
         public Store(string folder)
         {
             Folder = folder;
-            Directory.CreateDirectory(Path.Combine(Folder, "list"));
+            Directory.CreateDirectory(Folder);
             try
             {
                 string file = Path.Combine(Folder, "state.json");
@@ -524,8 +606,9 @@ namespace ModernVoicesReader
                 }
             }
             catch (Exception) { State = new State(); }
-            if (State.List == null) { State.List = new List<Saved>(); }
+            if (State.Places == null) { State.Places = new Dictionary<string, Place>(); }
             if (State.Bounds == null) { State.Bounds = new int[0]; }
+            if (State.OpenedFile == null) { State.OpenedFile = ""; }
         }
 
         public void Save()
@@ -541,7 +624,6 @@ namespace ModernVoicesReader
         }
 
         public string CurrentFile { get { return Path.Combine(Folder, "current.txt"); } }
-        public string ItemFile(string id) { return Path.Combine(Path.Combine(Folder, "list"), id + ".txt"); }
 
         public string Read(string file)
         {
@@ -554,17 +636,44 @@ namespace ModernVoicesReader
             try { File.WriteAllText(file, text, Encoding.UTF8); } catch (Exception) { }
         }
 
-        public Saved Find(string id)
+        // The place kept for a file (0 when it has none, or the file's text is not the length it was).
+        public int PlaceIn(string path, int length)
         {
-            foreach (Saved s in State.List) { if (s.Id == id) { return s; } }
-            return null;
+            Place place;
+            if (State.Places.TryGetValue(path.ToLowerInvariant(), out place) && place != null && place.Length == length && place.Position < length) { return place.Position; }
+            return 0;
+        }
+
+        public void KeepPlace(string path, int position, int length)
+        {
+            if (State.Places.Count > 300) { State.Places.Clear(); }     // (not kept for ever)
+            Place place = new Place();
+            place.Position = position; place.Length = length;
+            State.Places[path.ToLowerInvariant()] = place;
         }
 
         public static string TitleOf(string text)
         {
             string line = Regex.Replace(text.Trim(), @"\s+", " ");
-            line = Regex.Replace(line, @"^[#>*\-\s]+", "");
+            line = Regex.Replace(line, @"^[#>*\-•\s]+", "");
             return line.Length > 60 ? line.Substring(0, 60).TrimEnd() + "..." : line;
+        }
+    }
+
+    // The text box: what is pasted into it is laid out as it was where it was copied.
+    public class PasteBox : TextBox
+    {
+        public Func<string> Pasting;
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == 0x0302 && Pasting != null && !ReadOnly)      // WM_PASTE
+            {
+                string text = Pasting();
+                if (text.Length > 0) { SelectedText = text; }
+                return;
+            }
+            base.WndProc(ref m);
         }
     }
 
@@ -596,10 +705,13 @@ namespace ModernVoicesReader
 
         ComboBox voiceBox, themeBox;
         TrackBar rateBar;
-        Label rateLabel, timeLabel, statusLabel, listLabel;
-        TextBox box;
-        Button playButton, pauseButton, stopButton, startButton;
-        Button clipboardButton, clearButton, saveButton, addClipboardButton, openButton, removeButton, fileButton, audioButton;
+        Label rateLabel, timeLabel, statusLabel;
+        PasteBox box;
+        Button playButton, stopButton, startButton;
+        Button clipboardButton, clearButton, fileButton, audioButton;
+        Font symbolFont;                 // Windows' own symbols (play, pause, stop), where it has them
+        bool symbols;
+        ToolTip tips = new ToolTip();
         SpeechSynthesizer saver;         // while the text is being saved as sound
         Button screenButton;
         Process recogniser;              // while the text of a picture is being read
@@ -608,7 +720,6 @@ namespace ModernVoicesReader
         string savingTo = "";
         CheckBox autoBox, tidyBox;
         ProgressBar progress;
-        ListBox listBox;
         Timer tick;
 
         enum Mode { Stopped, Playing, Paused }
@@ -638,11 +749,13 @@ namespace ModernVoicesReader
             Text = "Modern Voices: Reader";
             Font = new Font("Segoe UI", 9f);
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(Px(480), Px(440));
-            Size = new Size(Px(760), Px(680));
+            MinimumSize = new Size(Px(560), Px(380));
+            Size = new Size(Px(900), Px(640));
             Padding = new Padding(Px(8));
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception) { }
             synth = new SpeechSynthesizer();
+            symbolFont = new Font("Segoe MDL2 Assets", 11f);
+            symbols = symbolFont.Name == "Segoe MDL2 Assets";
             Build();
             FillVoices();
             Restore();
@@ -696,6 +809,19 @@ namespace ModernVoicesReader
             return t;
         }
 
+        // Play, pause, stop and "from the start" as the usual symbols (words, where Windows has no such symbols).
+        Button NewSymbolButton(string symbol, string words, string tip, EventHandler click)
+        {
+            Button b = NewButton(symbols ? symbol : words, click);
+            if (symbols)
+            {
+                b.Font = symbolFont;
+                b.Padding = new Padding(Px(8), Px(5), Px(8), Px(3));
+            }
+            tips.SetToolTip(b, tip);
+            return b;
+        }
+
         void Build()
         {
             TableLayoutPanel page = new TableLayoutPanel();
@@ -704,78 +830,34 @@ namespace ModernVoicesReader
             Controls.Add(page);
             int row = 0;
 
-            // Voice, speed, theme.
-            FlowLayoutPanel top = NewFlow();
-            top.Controls.Add(NewLabel("Voice", false));
+            // The voice (left) and the speed (right).
+            TableLayoutPanel top = NewLine(false, false, true, false, false, false);
             voiceBox = new ComboBox();
-            voiceBox.DropDownStyle = ComboBoxStyle.DropDownList; voiceBox.Width = Px(230); voiceBox.Anchor = AnchorStyles.Left;
+            voiceBox.DropDownStyle = ComboBoxStyle.DropDownList; voiceBox.Width = Px(260); voiceBox.Anchor = AnchorStyles.Left;
             voiceBox.SelectedIndexChanged += delegate { if (!loading) { VoiceChanged(); } };
-            top.Controls.Add(voiceBox);
-            top.Controls.Add(NewLabel("Speed", false));
+            top.Controls.Add(voiceBox, 0, 0);
+            top.Controls.Add(NewLabel("Voice", false), 1, 0);
+            top.Controls.Add(NewLabel("Speed", false), 3, 0);
             rateBar = new TrackBar();
             rateBar.Minimum = -10; rateBar.Maximum = 10; rateBar.TickFrequency = 5; rateBar.LargeChange = 1;
-            rateBar.AutoSize = false; rateBar.Width = Px(120); rateBar.Height = Px(30); rateBar.Anchor = AnchorStyles.Left;
+            rateBar.AutoSize = false; rateBar.Width = Px(150); rateBar.Height = Px(30); rateBar.Anchor = AnchorStyles.Left;
             rateBar.TickStyle = TickStyle.None;
             rateBar.ValueChanged += delegate { RateChanged(); };
-            top.Controls.Add(rateBar);
+            top.Controls.Add(rateBar, 4, 0);
             rateLabel = NewLabel("0", false);
             rateLabel.MinimumSize = new Size(Px(26), 0);
-            top.Controls.Add(rateLabel);
-            top.Controls.Add(NewLabel("Theme", false));
-            themeBox = new ComboBox();
-            themeBox.DropDownStyle = ComboBoxStyle.DropDownList; themeBox.Width = Px(120); themeBox.Anchor = AnchorStyles.Left;
-            themeBox.Items.AddRange(new object[] { "As Windows", "Light", "Dark" });
-            themeBox.SelectedIndex = Theme.Choice == "light" ? 1 : Theme.Choice == "dark" ? 2 : 0;
-            themeBox.SelectedIndexChanged += delegate
-            {
-                Theme.Choice = themeBox.SelectedIndex == 1 ? "light" : themeBox.SelectedIndex == 2 ? "dark" : "auto";
-                Theme.Apply(this, Theme.IsDark());
-            };
-            top.Controls.Add(themeBox);
+            top.Controls.Add(rateLabel, 5, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(top, 0, row++);
 
             // The text.
-            box = new TextBox();
+            box = new PasteBox();
             box.Multiline = true; box.AcceptsReturn = true; box.AcceptsTab = false; box.WordWrap = true;
             box.ScrollBars = ScrollBars.Vertical; box.HideSelection = false; box.MaxLength = 0;
             box.Dock = DockStyle.Fill; box.Font = new Font("Segoe UI", 10.5f);
+            box.Pasting = ClipboardText;
             box.TextChanged += delegate { if (!loading) { TextEdited(); } };
             box.MouseUp += delegate { CaretMoved(); };
             box.KeyUp += delegate { CaretMoved(); };
-            page.RowStyles.Add(new RowStyle(SizeType.Percent, 100f)); page.Controls.Add(box, 0, row++);
-
-            // Play, pause, how far, how long is left.
-            TableLayoutPanel playLine = NewLine(false, false, false, false, true, false);
-            playButton = NewButton("Play", delegate { Play(); });
-            pauseButton = NewButton("Pause", delegate { PauseOrResume(); });
-            stopButton = NewButton("Stop", delegate { Stop(); });
-            startButton = NewButton("From the start", delegate { FromStart(); });
-            progress = new ProgressBar();
-            progress.Dock = DockStyle.Fill; progress.Maximum = 1000; progress.Height = Px(18);
-            progress.Margin = new Padding(Px(8), Px(8), Px(8), Px(8));
-            timeLabel = NewLabel("", false);
-            timeLabel.MinimumSize = new Size(Px(120), 0);
-            playLine.Controls.Add(playButton, 0, 0); playLine.Controls.Add(pauseButton, 1, 0); playLine.Controls.Add(stopButton, 2, 0);
-            playLine.Controls.Add(startButton, 3, 0); playLine.Controls.Add(progress, 4, 0); playLine.Controls.Add(timeLabel, 5, 0);
-            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(playLine, 0, row++);
-
-            // The clipboard, tidying.
-            FlowLayoutPanel tools = NewFlow();
-            clipboardButton = NewButton("Read clipboard", delegate { ReadClipboard(false); });
-            autoBox = new CheckBox();
-            autoBox.Text = "Read text as soon as it is copied"; autoBox.AutoSize = true; autoBox.Anchor = AnchorStyles.Left;
-            autoBox.Margin = new Padding(Px(8), Px(6), Px(8), 3);
-            autoBox.CheckedChanged += delegate { if (!loading) { store.State.AutoRead = autoBox.Checked; store.Save(); } };
-            tidyBox = new CheckBox();
-            tidyBox.Text = "Leave out links, code and symbols"; tidyBox.AutoSize = true; tidyBox.Anchor = AnchorStyles.Left;
-            tidyBox.Margin = new Padding(Px(8), Px(6), Px(8), 3);
-            tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
-            clearButton = NewButton("Clear", delegate { ClearText(); });
-            fileButton = NewButton("Open a file...", delegate { ChooseFile(); });
-            audioButton = NewButton("Save as sound...", delegate { ChooseAudioFile(); });
-            screenButton = NewButton("Read from the screen...", delegate { ReadScreen(); });
-            tools.Controls.Add(clipboardButton); tools.Controls.Add(screenButton); tools.Controls.Add(fileButton); tools.Controls.Add(audioButton); tools.Controls.Add(clearButton);
-            tools.Controls.Add(autoBox); tools.Controls.Add(tidyBox);
             // A file dropped on the text is opened.
             box.AllowDrop = true;
             box.DragEnter += delegate(object sender, DragEventArgs e)
@@ -787,26 +869,55 @@ namespace ModernVoicesReader
                 string[] dropped = e.Data.GetData(DataFormats.FileDrop) as string[];
                 if (dropped != null && dropped.Length > 0) { OpenFile(dropped[0]); }
             };
-            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(tools, 0, row++);
+            page.RowStyles.Add(new RowStyle(SizeType.Percent, 100f)); page.Controls.Add(box, 0, row++);
 
-            // To read later.
-            listLabel = NewLabel("To read later (each remembers where you stopped)", false);
-            listLabel.Font = new Font(Font, FontStyle.Bold);
-            listLabel.Margin = new Padding(3, Px(10), 3, Px(3));
-            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(listLabel, 0, row++);
-            listBox = new ListBox();
-            listBox.Dock = DockStyle.Fill; listBox.IntegralHeight = false; listBox.Height = Px(110);
-            listBox.MinimumSize = new Size(0, Px(110));
-            listBox.DoubleClick += delegate { OpenSelected(); };
-            listBox.SelectedIndexChanged += delegate { UpdateButtons(); };
-            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(listBox, 0, row++);
-            FlowLayoutPanel listTools = NewFlow();
-            saveButton = NewButton("Save this text to the list", delegate { SaveToList(); });
-            addClipboardButton = NewButton("Add the clipboard to the list", delegate { AddClipboardToList(); });
-            openButton = NewButton("Open", delegate { OpenSelected(); });
-            removeButton = NewButton("Remove", delegate { RemoveSelected(); });
-            listTools.Controls.Add(saveButton); listTools.Controls.Add(addClipboardButton); listTools.Controls.Add(openButton); listTools.Controls.Add(removeButton);
-            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(listTools, 0, row++);
+            // From the start, play or pause, stop; files; the clipboard and the screen.
+            FlowLayoutPanel buttons = NewFlow();
+            startButton = NewSymbolButton("", "From the start", "Read from the start", delegate { FromStart(); });
+            playButton = NewSymbolButton("", "Play", "Play", delegate { PlayOrPause(); });
+            stopButton = NewSymbolButton("", "Stop", "Stop (Play goes on from the same place)", delegate { Stop(); });
+            fileButton = NewButton("Open a file...", delegate { ChooseFile(); });
+            audioButton = NewButton("Save as sound...", delegate { ChooseAudioFile(); });
+            clearButton = NewButton("Clear", delegate { ClearText(); });
+            clipboardButton = NewButton("Read clipboard", delegate { ReadClipboard(false); });
+            screenButton = NewButton("Read from the screen...", delegate { ReadScreen(); });
+            foreach (Button b in new Button[] { startButton, playButton, stopButton, fileButton, audioButton, clearButton, clipboardButton, screenButton })
+            {
+                b.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;    // (all one height)
+                buttons.Controls.Add(b);
+            }
+            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(buttons, 0, row++);
+
+            // How far, how long is left; what is read; the theme.
+            TableLayoutPanel under = NewLine(true, false, false);
+            FlowLayoutPanel left = NewFlow();
+            progress = new ProgressBar();
+            progress.Maximum = 1000; progress.Width = Px(150); progress.Height = Px(16); progress.Anchor = AnchorStyles.Left;
+            progress.Margin = new Padding(3, Px(6), Px(6), Px(6));
+            timeLabel = NewLabel("", false);
+            timeLabel.MinimumSize = new Size(Px(112), 0);
+            autoBox = new CheckBox();
+            autoBox.Text = "Read copied text instantly"; autoBox.AutoSize = true; autoBox.Anchor = AnchorStyles.Left;
+            autoBox.Margin = new Padding(Px(6), 3, Px(6), 3);
+            autoBox.CheckedChanged += delegate { if (!loading) { store.State.AutoRead = autoBox.Checked; store.Save(); } };
+            tidyBox = new CheckBox();
+            tidyBox.Text = "Don't read links, code or symbols"; tidyBox.AutoSize = true; tidyBox.Anchor = AnchorStyles.Left;
+            tidyBox.Margin = new Padding(Px(6), 3, Px(6), 3);
+            tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
+            left.Controls.Add(progress); left.Controls.Add(timeLabel); left.Controls.Add(autoBox); left.Controls.Add(tidyBox);
+            under.Controls.Add(left, 0, 0);
+            under.Controls.Add(NewLabel("Theme", false), 1, 0);
+            themeBox = new ComboBox();
+            themeBox.DropDownStyle = ComboBoxStyle.DropDownList; themeBox.Width = Px(110); themeBox.Anchor = AnchorStyles.Left;
+            themeBox.Items.AddRange(new object[] { "As Windows", "Light", "Dark" });
+            themeBox.SelectedIndex = Theme.Choice == "light" ? 1 : Theme.Choice == "dark" ? 2 : 0;
+            themeBox.SelectedIndexChanged += delegate
+            {
+                Theme.Choice = themeBox.SelectedIndex == 1 ? "light" : themeBox.SelectedIndex == 2 ? "dark" : "auto";
+                Theme.Apply(this, Theme.IsDark());
+            };
+            under.Controls.Add(themeBox, 2, 0);
+            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(under, 0, row++);
 
             statusLabel = NewLabel("", true);
             statusLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right; statusLabel.AutoEllipsis = true;
@@ -910,12 +1021,10 @@ namespace ModernVoicesReader
             for (int i = 0; i < voiceBox.Items.Count; i++) { if (((VoiceChoice)voiceBox.Items[i]).Name == s.Voice) { chosen = i; } }
             if (chosen < 0 && voiceBox.Items.Count > 0) { chosen = 0; }
             voiceBox.SelectedIndex = chosen;
-            if (s.CurrentId != "" && store.Find(s.CurrentId) == null) { s.CurrentId = ""; }
-            box.Text = store.Read(s.CurrentId != "" ? store.ItemFile(s.CurrentId) : store.CurrentFile);
-            position = Math.Max(0, Math.Min(box.TextLength, s.CurrentId != "" ? store.Find(s.CurrentId).Position : s.Position));
+            box.Text = store.Read(store.CurrentFile);
+            position = Math.Max(0, Math.Min(box.TextLength, s.Position));
             loading = false;
             RateChanged();
-            FillList();
             ShowPlace();
             if (voiceBox.Items.Count == 0) { Status("Windows has no voices to read with: add some in Modern Voices."); }
             else if (position > 0 && position < box.TextLength) { Status("Play goes on from where you stopped."); }
@@ -924,16 +1033,9 @@ namespace ModernVoicesReader
         void Remember()
         {
             State s = store.State;
-            if (s.CurrentId != "")
-            {
-                Saved item = store.Find(s.CurrentId);
-                if (item != null) { item.Position = position; item.Length = box.TextLength; }
-            }
-            else
-            {
-                s.Position = position;
-                store.Write(store.CurrentFile, box.Text);
-            }
+            s.Position = position;
+            store.Write(store.CurrentFile, box.Text);
+            if (s.OpenedFile != "") { store.KeepPlace(s.OpenedFile, position, box.TextLength); }
             if (WindowState == FormWindowState.Normal) { s.Bounds = new int[] { Left, Top, Width, Height }; }
             store.Save();
         }
@@ -984,6 +1086,11 @@ namespace ModernVoicesReader
             box.ReadOnly = true;
             Status("");
             UpdateButtons();
+        }
+
+        void PlayOrPause()
+        {
+            if (mode == Mode.Playing) { PauseOrResume(); } else { Play(); }
         }
 
         public void PauseOrResume()
@@ -1075,7 +1182,6 @@ namespace ModernVoicesReader
             else { Status("Finished."); }
             box.Select(0, 0);
             Remember();
-            FillList();
             UpdateButtons();
             UpdateTime();
         }
@@ -1127,29 +1233,24 @@ namespace ModernVoicesReader
 
         void TextEdited()
         {
-            // Text typed or pasted in: no longer the list's text as it was saved.
-            if (store.State.CurrentId != "")
-            {
-                Saved item = store.Find(store.State.CurrentId);
-                if (item != null) { store.Write(store.ItemFile(item.Id), box.Text); item.Length = box.TextLength; item.Title = Store.TitleOf(box.Text); FillList(); }
-            }
+            // Text typed or pasted in: no longer the file's text as it was opened.
+            store.State.OpenedFile = "";
             if (position > box.TextLength) { position = box.TextLength; }
             UpdateButtons();
             UpdateTime();
         }
 
-        // Puts a new text in the box (the one there keeps its place, if it is in the list).
-        void LoadText(string text, int at, string id)
+        // Puts a new text in the box (file: the file it is from, to keep its place for that file).
+        void LoadText(string text, int at, string file)
         {
             if (mode != Mode.Stopped) { Halt(); }
             Remember();
             loading = true;
-            store.State.CurrentId = id;
+            store.State.OpenedFile = file;
             box.Text = Regex.Replace(text, "\r?\n", "\r\n");   // (the box shows a line break only as CR LF)
             loading = false;
             position = Math.Max(0, Math.Min(box.TextLength, at));
             Remember();
-            FillList();
             ShowPlace();
             UpdateButtons();
         }
@@ -1183,8 +1284,11 @@ namespace ModernVoicesReader
                 return;
             }
             if (text.Trim().Length == 0) { Status(Path.GetFileName(path) + " has no text in it."); return; }
-            LoadText(text, 0, "");
-            Status("Opened " + Path.GetFileName(path) + ". Save it to the list to keep your place in it.");
+            text = Regex.Replace(text, "\r?\n", "\r\n");
+            string full = Path.GetFullPath(path);
+            int at = store.PlaceIn(full, text.Length);
+            LoadText(text, at, full);
+            Status("Opened " + Path.GetFileName(path) + (at > 0 ? ": Play goes on from where you stopped in it." : "."));
         }
 
         // ---- text on the screen that can't be selected (pictures, games, some PDFs): a box is dragged
@@ -1352,11 +1456,21 @@ namespace ModernVoicesReader
 
         // ---- the clipboard
 
-        static string ClipboardText()
+        // What was copied, laid out as it was: from the formatted copy web pages and documents also
+        // put on the clipboard (paragraphs apart, lists with their bullets and numbers), else the plain text.
+        public static string ClipboardText()
         {
             for (int attempt = 0; attempt < 5; attempt++)
             {
-                try { return Clipboard.ContainsText() ? Clipboard.GetText() : ""; }
+                try
+                {
+                    if (Clipboard.ContainsText(TextDataFormat.Html))
+                    {
+                        string made = Html.ToText(Html.Fragment(Clipboard.GetText(TextDataFormat.Html)));
+                        if (made.Trim().Length > 0) { return made; }
+                    }
+                    return Clipboard.ContainsText() ? Regex.Replace(Clipboard.GetText(), "\r?\n", "\r\n") : "";
+                }
                 catch (Exception) { System.Threading.Thread.Sleep(40); }   // another program has it open: again in a moment
             }
             return "";
@@ -1380,14 +1494,6 @@ namespace ModernVoicesReader
             Play();
         }
 
-        void AddClipboardToList()
-        {
-            string text = ClipboardText();
-            if (text.Trim().Length == 0) { Status("The clipboard has no text: copy some first (Ctrl+C)."); return; }
-            AddToList(text, 0);
-            Status("Added to the list.");
-        }
-
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
@@ -1402,86 +1508,15 @@ namespace ModernVoicesReader
             base.WndProc(ref m);
         }
 
-        // ---- the list of texts to read later
-
-        Saved AddToList(string text, int at)
-        {
-            Saved item = new Saved();
-            item.Id = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
-            item.Title = Store.TitleOf(text);
-            item.Position = at; item.Length = text.Length;
-            item.Added = DateTime.Now.ToString("d MMM yyyy", CultureInfo.CurrentCulture);
-            store.Write(store.ItemFile(item.Id), text);
-            store.State.List.Insert(0, item);
-            store.Save();
-            FillList();
-            return item;
-        }
-
-        void SaveToList()
-        {
-            if (box.TextLength == 0) { Status("Nothing to save: paste some text first."); return; }
-            if (store.State.CurrentId != "") { Status("This text is already in the list."); return; }
-            Saved item = AddToList(box.Text, position);
-            store.State.CurrentId = item.Id;
-            store.Save();
-            FillList();
-            UpdateButtons();
-            Status("Saved to the list: it will remember where you stop.");
-        }
-
-        void FillList()
-        {
-            int selected = listBox.SelectedIndex;
-            listBox.BeginUpdate();
-            listBox.Items.Clear();
-            foreach (Saved s in store.State.List)
-            {
-                int at = s.Id == store.State.CurrentId ? position : s.Position;
-                int percent = s.Length > 0 ? (int)Math.Round(100.0 * Math.Min(at, s.Length) / s.Length) : 0;
-                string place = percent <= 0 ? "not started" : percent + "% read";
-                listBox.Items.Add((s.Id == store.State.CurrentId ? "> " : "") + s.Title + "   (" + place + ", " + s.Added + ")");
-            }
-            listBox.EndUpdate();
-            if (selected >= 0 && selected < listBox.Items.Count) { listBox.SelectedIndex = selected; }
-            listLabel.Text = "To read later (" + store.State.List.Count + "): each remembers where you stopped";
-        }
-
-        public int ListCount { get { return store.State.List.Count; } }
-
-        void OpenSelected()
-        {
-            int i = listBox.SelectedIndex;
-            if (i < 0 || i >= store.State.List.Count) { return; }
-            Saved item = store.State.List[i];
-            LoadText(store.Read(store.ItemFile(item.Id)), item.Position, item.Id);
-            Status(item.Position > 0 ? "Play goes on from where you stopped." : "");
-        }
-
-        void RemoveSelected()
-        {
-            int i = listBox.SelectedIndex;
-            if (i < 0 || i >= store.State.List.Count) { return; }
-            Saved item = store.State.List[i];
-            store.State.List.RemoveAt(i);
-            try { File.Delete(store.ItemFile(item.Id)); } catch (Exception) { }
-            if (store.State.CurrentId == item.Id) { store.State.CurrentId = ""; }   // the text stays in the box
-            Remember();
-            FillList();
-            UpdateButtons();
-        }
-
         void UpdateButtons()
         {
             bool has = box.TextLength > 0 && voiceBox.Items.Count > 0;
-            playButton.Enabled = has && mode != Mode.Playing;
-            pauseButton.Enabled = mode != Mode.Stopped;
-            pauseButton.Text = mode == Mode.Paused ? "Resume" : "Pause";
+            bool playing = mode == Mode.Playing;
+            playButton.Enabled = has;
+            playButton.Text = symbols ? (playing ? "\uE769" : "\uE768") : (playing ? "Pause" : "Play");
+            tips.SetToolTip(playButton, playing ? "Pause" : (mode == Mode.Paused ? "Go on" : "Play"));
             stopButton.Enabled = mode != Mode.Stopped;
             startButton.Enabled = has;
-            saveButton.Enabled = box.TextLength > 0 && store.State.CurrentId == "";
-            openButton.Enabled = listBox.SelectedIndex >= 0;
-            removeButton.Enabled = listBox.SelectedIndex >= 0;
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -1505,7 +1540,8 @@ namespace ModernVoicesReader
         public int Position { get { return position; } }
         public string BoxText { get { return box.Text; } }
         public void TestLoad(string text, int at) { LoadText(text, at, ""); }
-        public void TestSave() { SaveToList(); }
+        public void TestPlace(int at) { position = at; }
+        public string PlayLabel { get { return playButton.Text; } }
         public void TestTidy(bool on) { tidyBox.Checked = on; }
         public bool TestChooseOurs()
         {
@@ -1616,9 +1652,15 @@ namespace ModernVoicesReader
                 string fromWord = Files.Read(word);
                 log.AppendLine("docx: " + fromWord.Replace("\r\n", " / "));
                 Check(fromWord == "Dear reader,\r\nThis is bold and tabbed.\r\nNext line.\r\n\r\n", "a Word document's paragraphs, runs, tabs and line breaks are read (not its field codes)");
-                string fromHtml = Files.FromHtml("<html><head><title>T</title><style>p{color:red}</style></head><body><h1>Heading</h1><p>One &amp; two<br>three.</p><script>x()</script><p>Last&nbsp;one.</p></body></html>");
+                string fromHtml = Html.ToText("<html><head><title>T</title><style>p{color:red}</style></head><body><h1>Heading</h1><p>One &amp; two<br>three.</p><script>x()</script><p>Last&nbsp;one.</p></body></html>");
                 log.AppendLine("html: " + fromHtml.Replace("\r\n", " / "));
-                Check(fromHtml == "Heading\r\nOne & two\r\nthree.\r\nLast\u00a0one.", "a web page's words are read (not its scripts or styles)");
+                Check(fromHtml == "Heading\r\n\r\nOne & two\r\nthree.\r\n\r\nLast\u00a0one.", "a web page's words are read, an empty line between its paragraphs (not its scripts or styles)");
+                string copied = "Version:0.9\r\nStartHTML:0\r\n<html><body><!--StartFragment--><p>Intro:</p><ul><li>First</li><li>Second <b>bold</b><ul><li>Nested</li></ul></li></ul>" +
+                    "<ol><li><p>One</p></li><li><p>Two</p></li></ol><p>End.</p><!--EndFragment--></body></html>";
+                string laidOut = Html.ToText(Html.Fragment(copied));
+                log.AppendLine("copied: " + laidOut.Replace("\r\n", " / "));
+                Check(laidOut == "Intro:\r\n\r\n\u2022 First\r\n\u2022 Second bold\r\n    \u2022 Nested\r\n\r\n1. One\r\n2. Two\r\n\r\nEnd.", "a formatted copy keeps its paragraphs, bullets and numbers");
+                Check(Cleaner.Prepare("\u2022 First\r\n\u2022 Second", true).Text == "First\r\nSecond", "bullets are not read out (with tidying on)");
                 Check(Files.SafeName("What: is/this? ") == "What is this", "a file name is made from a title");
 
                 // The window, with nothing kept from before.
@@ -1697,14 +1739,21 @@ namespace ModernVoicesReader
                     Check(saved && seconds > 4 && seconds < 40, "the text is saved as a WAV file (" + seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s of sound)");
 
                     // Kept between runs: the text, its place, and the list.
-                    form.TestSave();
-                    Check(form.ListCount == 1, "the text is saved to the list");
+                    // A file's place is kept for when it is opened again.
+                    string plainFile = Path.Combine(made, "utf8.txt");
+                    form.OpenFile(plainFile);
+                    form.TestPlace(5);
+                    form.OpenFile(word);
+                    form.OpenFile(plainFile);
+                    Check(form.Position == 5, "a file opened again goes on from where it was left (" + form.Position + ")");
+                    form.TestLoad(text, paused);
+                    Check(form.PlayLabel == (form.PlayLabel.Length == 1 ? "\uE768" : "Play"), "the play button shows play when nothing is being read");
                     form.Close();
                     form.Dispose();
                     MainForm again = new MainForm(new Store(data), true);
                     again.Show();
                     Application.DoEvents();
-                    Check(again.BoxText == text && again.Position == paused && again.ListCount == 1, "opened again: the same text, place (" + again.Position + ") and list");
+                    Check(again.BoxText == text && again.Position == paused, "opened again: the same text and place (" + again.Position + ")");
                     again.Close();
                     again.Dispose();
                 }

@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.9.0'
+$Version = '0.9.1'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -1844,7 +1844,7 @@ function Register-Program {
         $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $StartMenu 'Modern Voices Reader.lnk'))
         $link.TargetPath = $readerExe
         $link.WorkingDirectory = Split-Path $readerExe -Parent
-        $link.Description = 'Reads text aloud with the Modern Voices: pasted or copied text, and a list to read later'
+        $link.Description = 'Reads text aloud with the Modern Voices: pasted or copied text, files, and text on the screen'
         $link.IconLocation = "$env:SystemRoot\System32\SpeechUX\sapi.cpl,0"
         $link.Save()
     }

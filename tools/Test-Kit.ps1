@@ -236,7 +236,7 @@ if (Test-Path $readerExe) {
     if (-not $readerRun.WaitForExit(300000)) { $readerRun.Kill(); Check $false "the Reader's own test finished" }
     $readerLog = Join-Path $screens 'reader-selftest.log'
     if (Test-Path $readerLog) { Get-Content $readerLog | Out-Host }
-    Check ($readerRun.HasExited -and $readerRun.ExitCode -eq 0) "the Reader: tidying, reading with a Modern Voice, pause, the place kept, the list, light and dark"
+    Check ($readerRun.HasExited -and $readerRun.ExitCode -eq 0) "the Reader: tidying, reading with a Modern Voice, pause, the place kept, files, pictures, light and dark"
     Remove-Item (Join-Path $screens 'data') -Recurse -Force -ErrorAction SilentlyContinue
 }
 

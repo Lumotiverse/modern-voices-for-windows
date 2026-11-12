@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.9.0
+Modern Voices for Windows 0.9.1
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -38,8 +38,8 @@ Afterwards, from the Start menu (Modern Voices for Windows):
   Modern Voices   the window: Voice manager (installed voices, how they sound, Windows' default
                   voice), Speed and pauses, Pronunciation, and Add or remove voices
   Modern Voices Reader
-                  reads text aloud with the voices: pasted or copied text, and a list to read
-                  later (see "The Reader" below)
+                  reads text aloud with the voices: pasted or copied text, files, text on the
+                  screen (see "The Reader" below)
   Test voices     hear each voice, with each word shown as the engine reports it
   Repair          registers everything again (if a voice went missing from programs)
   Uninstall       removes everything (also in Windows' Installed apps)
@@ -135,31 +135,33 @@ The Reader
 ----------
 Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Reader) reads text aloud:
 
-  * Paste text into the box (or press Read clipboard) and press Play. Pause and Resume; Stop keeps
-    the place, and Play goes on from the start of the sentence it was in. Click in the text to read
-    from somewhere else; From the start goes back to the top. The word being read is marked.
+  * Paste text into the box (or press Read clipboard) and press the play button. While it reads,
+    that button is pause. Stop keeps the place, and play goes on from the start of the sentence it
+    was in. Click in the text to read from somewhere else; the first button reads from the start.
+    The word being read is marked.
+  * What is pasted (or read from the clipboard) is laid out as it was where it was copied: an empty
+    line between paragraphs, lists with their bullets and numbers.
   * Voice lists the Modern Voices (by nickname, where one has a nickname), then Windows' other
     voices. Speed is the program's own rate (as other programs have), on top of the Dictation speed.
   * "about 3:20 left" is an estimate: from a typical pace at first, then from how fast the voice is
     actually reading.
-  * "Read text as soon as it is copied": while the Reader is open (minimised is fine), anything
-    copied in another program is read straight away.
-  * "Leave out links, code and symbols": web addresses are read as "link", blocks of code are
-    skipped, and the marks of formatted text (#, **, `, table lines) aren't read out.
+  * "Read copied text instantly": while the Reader is open (minimised is fine), anything copied in
+    another program is read straight away.
+  * "Don't read links, code or symbols": web addresses are read as "link", blocks of code are
+    skipped, and bullets and the marks of formatted text (#, **, `, table lines) aren't read out.
   * Open a file: plain text (.txt, .md), Word documents (.docx), rich text (.rtf) and web pages
-    (.html). A file dropped on the text is opened too. (Not PDF or the older .doc: copy the text
-    from those and press Read clipboard.)
+    (.html). A file dropped on the text is opened too. A file opened again goes on from where you
+    stopped in it (while its text is unchanged). (Not PDF or the older .doc: copy the text from those
+    and press Read clipboard.)
   * Read from the screen: for text that can't be selected or copied (a picture, a game, some PDFs).
     The screen dims; drag a box around the text, and Windows' own text recognition reads it into the
     box and starts reading. Recognition is not perfect, small or fancy print least of all. It works
     for the languages Windows has text recognition for (Settings > Time & language > Language).
   * Save as sound: the text as a WAV file, in the voice and at the speed chosen, made as fast as the
     voice can (not played). About 2.6 MB a minute.
-  * To read later: Save this text to the list, or Add the clipboard to the list. Each text in the
-    list remembers where you stopped; Open (or a double click) carries on from there.
   * The text in the box and its place are kept when the Reader is closed.
 
-Its texts are kept in %APPDATA%\Modern Voices Reader (removed by Uninstall).
+Its text and places are kept in %APPDATA%\Modern Voices Reader (removed by Uninstall).
 
 
 Light and dark
