@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.10.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.10.2.0")]
 
 namespace ModernVoicesReader
 {
@@ -596,6 +596,7 @@ namespace ModernVoicesReader
     {
         public string Voice = "";
         public int Rate;
+        public int Volume = 100;             // of the Reader's own speech (0 to 100)
         public bool AutoRead;
         public bool Tidy = true;
         public int Position;                 // in the text in the box
@@ -723,6 +724,7 @@ namespace ModernVoicesReader
         public string Name;      // what Windows calls it (what is asked for)
         public string Shown;     // its nickname, if it has one
         public string TokenId;   // its name in Windows' list of voices (the registry)
+        public string Spoken;    // the name the speech object knows it by (its name when the program started)
         public bool Ours;
         public override string ToString() { return Shown; }
     }
@@ -850,6 +852,7 @@ namespace ModernVoicesReader
         public readonly float Dpi;
 
         ComboBox voiceBox;
+        TrackBar volumeBar;              // how loud the Reader speaks
         TextBox nickBox;                 // a new nickname for the voice chosen
         Button nickButton;
         Panel underPanel;                // the line under the buttons: its four things are placed by AlignLine
@@ -934,8 +937,8 @@ namespace ModernVoicesReader
             Text = "Modern Voices: Reader";
             Font = new Font("Segoe UI", 9f);
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(Px(920), Px(380));
-            Size = new Size(Px(920), Px(640));
+            MinimumSize = new Size(Px(950), Px(380));
+            Size = new Size(Px(950), Px(640));
             Padding = new Padding(Px(8));
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception) { }
             synth = new SpeechSynthesizer();
@@ -1080,6 +1083,23 @@ namespace ModernVoicesReader
             VoiceChanged();
         }
 
+        // A voice's name as Windows has it now.
+        static string NameNow(string tokenId, string otherwise)
+        {
+            try
+            {
+                using (RegistryKey token = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Speech\Voices\Tokens\" + tokenId))
+                {
+                    if (token == null) { return otherwise; }
+                    string name = "";
+                    using (RegistryKey attributes = token.OpenSubKey("Attributes")) { if (attributes != null) { name = Convert.ToString(attributes.GetValue("Name", "")); } }
+                    if (name.Length == 0) { name = Convert.ToString(token.GetValue("", "")); }
+                    return name.Length > 0 ? name : otherwise;
+                }
+            }
+            catch (Exception) { return otherwise; }
+        }
+
         // What Windows lists as voices now, and under what names (to notice a voice added, removed or renamed
         // in Modern Voices Config while this window was open).
         static string VoicesNow()
@@ -1193,6 +1213,8 @@ namespace ModernVoicesReader
             catch (Exception e) { Status("Windows' default voice was not changed: " + e.Message); }
         }
         public void TestSetDefault(int row) { SetDefaultVoice((VoiceChoice)voiceBox.Items[row]); }
+        public string TopRow { get { return voiceBox.Height + "/" + nickBox.Height + "/" + nickButton.Width + "x" + nickButton.Height; } }
+        public bool TopRowEven { get { return nickBox.Height == voiceBox.Height && nickButton.Height == voiceBox.Height && nickButton.Width == voiceBox.Height; } }
         public string TestToken(int row) { return ((VoiceChoice)voiceBox.Items[row]).TokenId; }
 
         void DrawVoice(object sender, DrawItemEventArgs e)
@@ -1276,6 +1298,7 @@ namespace ModernVoicesReader
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
+            nickBox.Height = voiceBox.Height; nickButton.Size = new Size(voiceBox.Height, voiceBox.Height);     // (as the list is, once drawn)
             AlignLine();
         }
 
@@ -1377,6 +1400,11 @@ namespace ModernVoicesReader
             };
             nickButton = NewSymbolButton("\uE73E", "Set", "Give the voice chosen this nickname (Windows asks for permission)", delegate { ChangeNickname(); });
             nickButton.Enabled = false;
+            // (Both as tall as the voice list beside them; the tick's button square.)
+            nickBox.AutoSize = false; nickBox.Height = voiceBox.Height;
+            nickButton.AutoSize = false; nickButton.Padding = new Padding(0); nickButton.Anchor = AnchorStyles.Left;
+            nickButton.Size = new Size(voiceBox.Height, voiceBox.Height);
+            if (symbols) { nickButton.Font = new Font("Segoe MDL2 Assets", 8.5f); }
             top.Controls.Add(nickBox, 2, 0);
             top.Controls.Add(nickButton, 3, 0);
             top.Controls.Add(NewLabel("Speed", false), 5, 0);
@@ -1435,13 +1463,32 @@ namespace ModernVoicesReader
                 b.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;    // (all one height)
                 buttons.Controls.Add(b);
             }
+            // Between Save as audio and undo: how loud (a small speaker, and its slider).
+            Label volumeLabel = NewLabel(symbols ? "\uE767" : "Volume", false);
+            if (symbols) { volumeLabel.Font = symbolFont; }
+            volumeLabel.Anchor = AnchorStyles.None; volumeLabel.Margin = new Padding(Px(12), 0, 0, 0);
+            volumeBar = new TrackBar();
+            volumeBar.Minimum = 0; volumeBar.Maximum = 100; volumeBar.Value = 100; volumeBar.SmallChange = 5; volumeBar.LargeChange = 10;
+            volumeBar.TickStyle = TickStyle.None; volumeBar.AutoSize = false; volumeBar.Width = Px(88); volumeBar.Height = Px(26);
+            volumeBar.Anchor = AnchorStyles.None; volumeBar.Margin = new Padding(0, Px(8), 0, 0);     // (its bar is drawn above its middle)
+            tips.SetToolTip(volumeBar, "Volume"); tips.SetToolTip(volumeLabel, "Volume");
+            volumeBar.ValueChanged += delegate
+            {
+                tips.SetToolTip(volumeBar, "Volume: " + volumeBar.Value + "%");
+                if (loading) { return; }
+                store.State.Volume = volumeBar.Value;
+                try { synth.Volume = volumeBar.Value; } catch (Exception) { }     // (heard at once, mid-sentence too)
+            };
+            volumeBar.MouseUp += delegate { store.Save(); };
+            volumeBar.KeyUp += delegate { store.Save(); };
+            buttons.Controls.Add(volumeLabel); buttons.Controls.Add(volumeBar);
             // (A wider gap after Stop: the three that play, then the four that bring text in or take it out.)
             fileButton.Margin = new Padding(fileButton.Margin.Left + Px(14), fileButton.Margin.Top, fileButton.Margin.Right, fileButton.Margin.Bottom);
             clearButton.MinimumSize = new Size((int)(clearButton.PreferredSize.Width * 1.3), 0);
             // At the far end: undo, redo, Clear (with a gap always left before them).
             FlowLayoutPanel ends = NewFlow();
             ends.WrapContents = false; ends.Dock = DockStyle.None; ends.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
-            ends.Margin = new Padding(Px(28), 0, 0, 0);
+            ends.Margin = new Padding(Px(12), 0, 0, 0);
             foreach (Button b in new Button[] { undoButton, redoButton, clearButton })
             {
                 b.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
@@ -1519,9 +1566,12 @@ namespace ModernVoicesReader
             {
                 if (!v.Enabled) { continue; }
                 VoiceChoice choice = new VoiceChoice();
-                choice.Name = v.VoiceInfo.Name;
-                choice.Shown = choice.Name;
+                // (The speech object goes on giving the names voices had when the program started, even a
+                // new one: a voice's name now is read from where Windows keeps it.)
+                choice.Spoken = v.VoiceInfo.Name;
                 choice.TokenId = v.VoiceInfo.Id;
+                choice.Name = NameNow(choice.TokenId, choice.Spoken);
+                choice.Shown = choice.Name;
                 choice.Ours = v.VoiceInfo.Id.StartsWith("ModernVoices_", StringComparison.OrdinalIgnoreCase);
                 if (choice.Ours)
                 {
@@ -1561,7 +1611,7 @@ namespace ModernVoicesReader
         {
             VoiceChoice v = CurrentVoice;
             if (v == null) { return; }
-            store.State.Voice = v.Name;
+            store.State.Voice = v.TokenId;      // (not its name, which a nickname changes)
             store.Save();
             UpdateNickButton();
             charsPerSecond = 0;
@@ -1596,10 +1646,11 @@ namespace ModernVoicesReader
             if (Width > area.Width) { Width = area.Width; }
             if (Height > area.Height) { Height = area.Height; }
             rateBar.Value = Math.Max(-10, Math.Min(10, s.Rate));
+            volumeBar.Value = Math.Max(0, Math.Min(100, s.Volume));
             autoBox.Checked = s.AutoRead;
             tidyBox.Checked = s.Tidy;
             int chosen = -1;
-            for (int i = 0; i < voiceBox.Items.Count; i++) { if (((VoiceChoice)voiceBox.Items[i]).Name == s.Voice) { chosen = i; } }
+            for (int i = 0; i < voiceBox.Items.Count; i++) { VoiceChoice kept = (VoiceChoice)voiceBox.Items[i]; if (kept.TokenId == s.Voice || kept.Name == s.Voice) { chosen = i; } }
             if (chosen < 0 && voiceBox.Items.Count > 0) { chosen = 0; }
             voiceBox.SelectedIndex = chosen;
             voiceIndex = chosen;
@@ -1656,8 +1707,9 @@ namespace ModernVoicesReader
             try
             {
                 if (silent) { synth.SetOutputToNull(); } else { synth.SetOutputToDefaultAudioDevice(); }
-                synth.SelectVoice(CurrentVoice.Name);
+                synth.SelectVoice(CurrentVoice.Spoken);
                 synth.Rate = rateBar.Value;
+                synth.Volume = volumeBar.Value;
                 stopping = false;
                 synth.SpeakAsync(prepared.Text.Substring(start));
             }
@@ -1985,8 +2037,9 @@ namespace ModernVoicesReader
             try
             {
                 saver = new SpeechSynthesizer();
-                saver.SelectVoice(CurrentVoice.Name);
+                saver.SelectVoice(CurrentVoice.Spoken);
                 saver.Rate = rateBar.Value;
+                saver.Volume = volumeBar.Value;
                 saver.SetOutputToWaveFile(path, new SpeechAudioFormatInfo(22050, AudioBitsPerSample.Sixteen, AudioChannel.Mono));
                 savingTo = path;
                 saver.SpeakProgress += delegate(object sender, SpeakProgressEventArgs e)
@@ -2438,6 +2491,7 @@ namespace ModernVoicesReader
                         if (defaultThen == null) { key.DeleteValue("DefaultTokenId", false); } else { key.SetValue("DefaultTokenId", defaultThen); }
                     }
                 }
+                Check(form.TopRowEven, "the nickname box and its tick are as tall as the voice list (" + form.TopRow + ")");
                 Check(MainForm.CleanNickname("  My (best)\r\n voice ") == "My best voice", "a nickname is tidied (no brackets or line ends)");
                 // Text in a picture (where this PC has Windows' text recognition).
                 string picture = Path.Combine(made, "words.png");
