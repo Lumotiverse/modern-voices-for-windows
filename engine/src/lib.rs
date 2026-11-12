@@ -649,6 +649,11 @@ impl Engine_Impl {
                 }
             }
         }
+        // A short tail of silence after the last word, so that what gets swallowed at the end of the
+        // stream is silence and not the word's last sound.
+        if out.written > 0 && !out.aborted() {
+            out.silence((voice.model.sample_rate as u64 * TAIL_MS as u64 / 1000) as usize);
+        }
         Ok(())
     }
 
@@ -710,8 +715,9 @@ impl Engine_Impl {
     fn say_piece(&self, voice: &Voice, run: &Run, (from, to): (usize, usize), (head, tail): (bool, bool),
                  config: &GenerationConfig, settings: &Settings, dictionary: &Dictionary, (shift, gain): (f32, f32),
                  out: &mut Output) -> bool {
-        // Said as the pronunciation dictionary has it (the words reported to the program stay the text's own).
-        let text = dictionary.apply(&String::from_utf16_lossy(&run.text[from..to]));
+        // Said as the pronunciation dictionary has it (the words reported to the program stay the text's
+        // own), and with an end mark where it has none, which the voice needs to finish its last word.
+        let text = with_end_mark(&dictionary.apply(&String::from_utf16_lossy(&run.text[from..to])));
         let started = Instant::now();
         let made = {
             let _turn = voice.model.busy.lock();

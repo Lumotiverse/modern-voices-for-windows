@@ -11,9 +11,11 @@ mkdir -p "$D/src"
 cp "$REPO"/engine/src/*.rs "$D/src/"
 cp "$HERE/rustc-wrap.sh" "$D/" && chmod +x "$D/rustc-wrap.sh"
 sed '/^\[dependencies\]/,$!d' "$REPO/engine/Cargo.toml" > /tmp/deps.$$
-{ sed '/^\[dependencies\]/,$d' "$REPO/engine/Cargo.toml"; cat /tmp/deps.$$; printf '\n[patch.crates-io]\nwindows-future = { path = "stub-wf" }\nwindows-strings = { path = "stub-ws" }\n'; } > "$D/Cargo.toml"
+# Fetched before the patch lines go in: cargo won't fetch with a patch pointing at a folder not yet made.
+{ sed '/^\[dependencies\]/,$d' "$REPO/engine/Cargo.toml"; cat /tmp/deps.$$; } > "$D/Cargo.toml"
 rm /tmp/deps.$$
 (cd "$D" && cargo fetch -q 2>/dev/null || true)
+printf '\n[patch.crates-io]\nwindows-future = { path = "stub-wf" }\nwindows-strings = { path = "stub-ws" }\n' >> "$D/Cargo.toml"
 REG=$(ls -d ~/.cargo/registry/src/*/ | head -1)
 WF=$(ls -d "$REG"windows-future-0.3.* | sort -V | tail -1); WS=$(ls -d "$REG"windows-strings-0.5.* | sort -V | tail -1)
 rm -rf "$D/stub-wf" "$D/stub-ws"; cp -r "$WF" "$D/stub-wf"; cp -r "$WS" "$D/stub-ws"

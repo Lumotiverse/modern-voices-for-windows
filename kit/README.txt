@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.9.3
+Modern Voices for Windows 0.9.4
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -168,7 +168,8 @@ Its text and places are kept in %APPDATA%\Modern Voices Reader (removed by Unins
 
 Light and dark
 --------------
-The moon in either window switches between dark and light; the choice is shared by both and kept.
+The moon (top right of Modern Voices Config, bottom right of the Reader) switches between dark and light; the choice is
+shared by both and kept.
 They are dark until you choose light. A few parts are Windows' own and stay as Windows draws them (the ticks of tick boxes, the
 sliders' tracks).
 

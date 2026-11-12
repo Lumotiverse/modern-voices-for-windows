@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.9.3.0")]
+[assembly: System.Reflection.AssemblyVersion("0.9.4.0")]
 
 namespace ModernVoicesReader
 {
@@ -922,8 +922,8 @@ namespace ModernVoicesReader
             buttonLine.Controls.Add(clearButton, 1, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(buttonLine, 0, row++);
 
-            // How far, how long is left; what is read; light or dark.
-            TableLayoutPanel under = NewLine(true, false);
+            // How far, how long is left; what is read.
+            TableLayoutPanel under = NewLine(true);
             FlowLayoutPanel left = NewFlow();
             left.WrapContents = false;     // (one line: the window is never narrower than it needs)
             Font lineFont = new Font("Segoe UI", 10f);     // (this line a little larger than the buttons' words)
@@ -943,12 +943,20 @@ namespace ModernVoicesReader
             tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
             left.Controls.Add(progress); left.Controls.Add(timeLabel); left.Controls.Add(autoBox); left.Controls.Add(tidyBox);
             under.Controls.Add(left, 0, 0);
-            // A moon to click (no button around it): light to dark and back, shared with Modern Voices Config.
-            themeButton = new Label();
-            themeButton.AutoSize = true; themeButton.Anchor = AnchorStyles.Right; themeButton.Cursor = Cursors.Hand;
+            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(under, 0, row++);
+
+            // The last line: what is happening (left) and, in grey at the far right, a moon to click (no
+            // button around it): light to dark and back, shared with Modern Voices Config.
+            TableLayoutPanel last = NewLine(true, false);
+            statusLabel = NewLabel("", true);
+            statusLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right; statusLabel.AutoEllipsis = true;
+            statusLabel.AutoSize = false; statusLabel.Height = Px(20); statusLabel.Dock = DockStyle.Fill;
+            last.Controls.Add(statusLabel, 0, 0);
+            themeButton = NewLabel("Dark", true);     // ("muted": the grey of the status line, not the text's white)
+            themeButton.Anchor = AnchorStyles.Right; themeButton.Cursor = Cursors.Hand;
             themeButton.Margin = new Padding(Px(6), 0, Px(4), 0);
             if (symbols) { themeButton.Font = new Font("Segoe MDL2 Assets", 15f); themeButton.Text = "\uE708"; }
-            else { themeButton.Font = lineFont; themeButton.Text = "Dark"; }
+            else { themeButton.Font = lineFont; }
             themeButton.Click += delegate
             {
                 Theme.Choice = Theme.IsDark() ? "light" : "dark";
@@ -956,13 +964,8 @@ namespace ModernVoicesReader
                 ShowTheme();
                 AlignLine();
             };
-            under.Controls.Add(themeButton, 1, 0);
-            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(under, 0, row++);
-
-            statusLabel = NewLabel("", true);
-            statusLabel.Anchor = AnchorStyles.Left | AnchorStyles.Right; statusLabel.AutoEllipsis = true;
-            statusLabel.AutoSize = false; statusLabel.Height = Px(20); statusLabel.Dock = DockStyle.Fill;
-            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(statusLabel, 0, row++);
+            last.Controls.Add(themeButton, 1, 0);
+            page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(last, 0, row++);
             page.RowCount = row;
         }
 

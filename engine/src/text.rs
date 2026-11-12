@@ -253,6 +253,25 @@ pub fn clauses(text: &[u16], from: usize, to: usize) -> Vec<(usize, usize)> {
     }).collect()
 }
 
+/// Silence written after the last thing a Speak call says, in milliseconds: the voice's audio ends on
+/// the final phoneme's last sample, and audio devices and format converters often swallow the last few
+/// ms of a stream, taking a quiet final "s" or "t" with them. Piper's own program adds 200 ms after
+/// every sentence; this is added once, at the end.
+pub const TAIL_MS: u32 = 150;
+
+/// The text as the voice should be given it: ending in a full stop when it ends in a letter or digit
+/// (or a closing quote or bracket after one). A Piper voice says a sentence with no end mark more
+/// abruptly, clipping its last sound, since the end mark is part of what it learned a sentence is.
+/// Pieces ending in a comma, colon or the like are left alone: those marks give the voice its ending.
+pub fn with_end_mark(text: &str) -> String {
+    let trimmed = text.trim_end();
+    let last = trimmed.chars().rev().find(|c| !matches!(c, '"' | '\'' | '\u{201d}' | '\u{2019}' | ')' | ']' | '}' | '\u{bb}'));
+    match last {
+        Some(c) if c.is_alphanumeric() => format!("{trimmed}."),
+        _ => text.to_string(),
+    }
+}
+
 /// The part of `audio` from just before its first sound to just after its last (sound: above a fiftieth
 /// of its loudest), keeping `margin` samples of the silence on each side that is trimmed: where a
 /// sentence is said in parts (a gap at its commas), the silence each part starts and ends with comes
@@ -362,6 +381,22 @@ mod tests {
     use super::*;
 
     fn utf16(s: &str) -> Vec<u16> { s.encode_utf16().collect() }
+
+    #[test]
+    fn end_marks() {
+        assert_eq!(with_end_mark("this is a test"), "this is a test.");
+        assert_eq!(with_end_mark("a test "), "a test.");
+        assert_eq!(with_end_mark("in 2026"), "in 2026.");
+        assert_eq!(with_end_mark("he said \"test\""), "he said \"test\".");
+        assert_eq!(with_end_mark("(a test)"), "(a test).");
+        assert_eq!(with_end_mark("this is a test."), "this is a test.");
+        assert_eq!(with_end_mark("Really?"), "Really?");
+        assert_eq!(with_end_mark("first,"), "first,");
+        assert_eq!(with_end_mark("note:"), "note:");
+        assert_eq!(with_end_mark("Hello!\""), "Hello!\"");
+        assert_eq!(with_end_mark("100%"), "100%");
+        assert_eq!(with_end_mark(""), "");
+    }
     fn texts(s: &str, ranges: &[(usize, usize)]) -> Vec<String> {
         let t = utf16(s);
         ranges.iter().map(|&(a, b)| String::from_utf16_lossy(&t[a..b])).collect()

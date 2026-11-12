@@ -55,7 +55,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.9.3'
+$Version = '0.9.4'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -769,9 +769,13 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $pageHost = New-Object System.Windows.Forms.Panel
     $pageHost.Dock = 'Fill'
     $form.Controls.Add($pageHost)
-    $tabStrip = New-UiFlow
-    $tabStrip.Dock = 'Top'; $tabStrip.WrapContents = $false
+    # The strip across the top: the tabs' buttons at the left and, at the far right, the moon.
+    $tabStrip = New-UiLine @('auto', 'fill', 'auto')
+    $tabStrip.Dock = 'Top'
     $form.Controls.Add($tabStrip)
+    $tabFlow = New-UiFlow
+    $tabFlow.WrapContents = $false
+    $tabStrip.Controls.Add($tabFlow, 0, 0)
     $pages = @(); $tabButtons = @()
     foreach ($title in 'Voice manager', 'Speed and pauses', 'Pronunciation', 'Add or remove voices') {
         $tab = New-Object System.Windows.Forms.Panel
@@ -783,13 +787,25 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         $tabButton.Margin = New-Object System.Windows.Forms.Padding(0, 0, (Get-Px 2), 0)
         $tabButton.Tag = $pages.Count - 1
         $tabButton.add_Click({ param($sender, $e) Show-UiPage ([int]$sender.Tag) })
-        $tabStrip.Controls.Add($tabButton)
+        $tabFlow.Controls.Add($tabButton)
         $tabButtons += $tabButton
     }
     $tabInstalled = $pages[0]; $tabPauses = $pages[1]; $tabWords = $pages[2]; $tabAdd = $pages[3]
+    # A moon to click (no button around it), in grey at the right of the strip, its right edge over the
+    # right edge of the lists below (the pages' 6 px of padding): dark to light and back (the choice is
+    # shared with the Reader).
+    $themeButton = New-UiLabel 'Dark' -Grey
+    $themeButton.Dock = 'None'; $themeButton.Anchor = 'Right'; $themeButton.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $themeButton.Margin = New-Object System.Windows.Forms.Padding((Get-Px 4), 0, (Get-Px 6), 0)
+    $moonFont = New-Object System.Drawing.Font('Segoe MDL2 Assets', 15)
+    if ($moonFont.Name -eq 'Segoe MDL2 Assets') { $themeButton.Font = $moonFont; $themeButton.Text = [string][char]0xE708 }    # Windows' own symbols
+    $themeTip = New-Object System.Windows.Forms.ToolTip
+    $themeTip.SetToolTip($themeButton, 'Dark or light')
+    $themeButton.add_Click({ Set-ThemeChoice $(if (Test-DarkTheme) { 'light' } else { 'dark' }); Set-UiTheme })
+    $tabStrip.Controls.Add($themeButton, 2, 0)
 
     # ---- bottom of the window: progress while applying changes
-    $bottom = New-UiLine @('auto', 'fill', 'auto', 'auto')
+    $bottom = New-UiLine @('fill', 'auto', 'auto')
     $bottom.Dock = 'Bottom'
     $bottom.RowStyles.Clear()
     [void]$bottom.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, (Get-Px 20))))
@@ -798,24 +814,13 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $progress = New-Object System.Windows.Forms.ProgressBar
     $progress.Dock = 'Fill'; $progress.Visible = $false
     $progress.Margin = New-Object System.Windows.Forms.Padding(3, (Get-Px 6), 3, 0)
-    $bottom.Controls.Add($progress, 0, 0); $bottom.SetColumnSpan($progress, 4)
+    $bottom.Controls.Add($progress, 0, 0); $bottom.SetColumnSpan($progress, 3)
     $status = New-UiLabel '' -Grey
     $status.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 34))
     $apply = New-UiButton 'Apply changes'
     $close = New-UiButton 'Close'
     $close.DialogResult = 'Cancel'
-    # A moon to click (no button around it): dark to light and back (the choice is shared with the Reader).
-    $themeButton = New-Object System.Windows.Forms.Label
-    $themeButton.AutoSize = $true; $themeButton.Anchor = 'Left'; $themeButton.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $themeButton.Margin = New-Object System.Windows.Forms.Padding((Get-Px 4), 0, (Get-Px 8), 0)
-    $moonFont = New-Object System.Drawing.Font('Segoe MDL2 Assets', 15)
-    if ($moonFont.Name -eq 'Segoe MDL2 Assets') { $themeButton.Font = $moonFont; $themeButton.Text = [string][char]0xE708 }    # Windows' own symbols
-    else { $themeButton.Text = 'Dark' }
-    $themeTip = New-Object System.Windows.Forms.ToolTip
-    $themeTip.SetToolTip($themeButton, 'Dark or light')
-    $themeButton.add_Click({ Set-ThemeChoice $(if (Test-DarkTheme) { 'light' } else { 'dark' }); Set-UiTheme })
-    $bottom.Controls.Add($themeButton, 0, 1)
-    $bottom.Controls.Add($status, 1, 1); $bottom.Controls.Add($apply, 2, 1); $bottom.Controls.Add($close, 3, 1)
+    $bottom.Controls.Add($status, 0, 1); $bottom.Controls.Add($apply, 1, 1); $bottom.Controls.Add($close, 2, 1)
     $form.Controls.Add($bottom)
     $form.CancelButton = $close
 

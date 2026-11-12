@@ -192,6 +192,13 @@ Remove-Item $dictFile -ErrorAction SilentlyContinue
 $basePara = Measure-Speech $albaName $para
 $baseComma = Measure-Speech $albaName $comma
 $baseOne = Measure-Speech $albaName $one
+# The last word is heard whole: a tail of silence after it (the stream's end swallows that, not the
+# word's last sound), and a sentence with no full stop is said as if it had one (without, the voice
+# clipped "test" to "tes").
+Check ($baseOne.Tail -ge 100 -and $baseOne.Tail -le 500) ("tail of silence after the last word: {0:N0} ms (150 ms added)" -f $baseOne.Tail)
+$marked = Measure-Speech $albaName 'This is a test.'
+$unmarked = Measure-Speech $albaName 'This is a test'
+Check ([math]::Abs($marked.Seconds - $unmarked.Seconds) -lt 0.03) ("'This is a test' without a full stop said as with one: {0:N2} s and {1:N2} s" -f $unmarked.Seconds, $marked.Seconds)
 $baseMale = Measure-Speech $maleName $two
 Set-GlobalPauses $settingsFile 1000 0 2000
 Check-Added 'sentence gap 1000 ms, rate 0' $base (Measure-Speech $albaName $two) 1000 30
