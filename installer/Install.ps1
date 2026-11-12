@@ -1142,7 +1142,12 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         Enable-UiDarkHeader $view
         # The last column takes the width left over (so that no strip of plain heading shows beside it).
         $view.Columns[$view.Columns.Count - 1].Width = -2
-        $view.add_Resize({ param($sender, $e) $sender.Columns[$sender.Columns.Count - 1].Width = -2 })
+        $view.add_Resize({
+            param($sender, $e)
+            $resized = if ($sender -is [System.Windows.Forms.ListView]) { $sender } else { $this }
+            $last = if ($resized -is [System.Windows.Forms.ListView] -and $resized.Columns.Count) { $resized.Columns[$resized.Columns.Count - 1] } else { $null }
+            if ($last) { $last.Width = -2 }
+        })
     }
     Set-UiTheme
     $form.add_Activated({ Set-UiTheme })
