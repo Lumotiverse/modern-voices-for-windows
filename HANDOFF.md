@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.9.3 (12 Nov 2026).
+Last updated at version 0.9.4 (12 Nov 2026).
 
 ## What it is
 
@@ -16,7 +16,7 @@ with Windows' voices but can't use Narrator's natural voices. It must keep worki
 | Modern Voices Config | The installer and settings window: Voice manager, Speed and pauses, Pronunciation, Add or remove voices. | PowerShell 5.1 + WinForms | `installer/Install.ps1` (plus `VoiceConvert.ps1`, `Test.ps1`, `Speak.ps1`, `Ocr.ps1`, `Uninstall.ps1`) |
 | Modern Voices: Reader | A small app that reads pasted or copied text, files and screen regions. It has play/pause/stop, time left, saves as WAV, and remembers its place per file. | C# 5 (built with Windows' own `csc.exe`, .NET Framework 4) | `reader/Reader.cs`, `reader/Build.ps1` |
 
-The user-facing documentation is `kit/README.txt`, and it is accurate for 0.9.3. Read it to see what
+The user-facing documentation is `kit/README.txt`, and it is accurate for 0.9.4. Read it to see what
 each feature does.
 
 ## Luke's standing rules
@@ -24,7 +24,7 @@ each feature does.
 - **Before any build request, say whether it needs Fable (complicated: new features, engine work,
   multi-part changes) or Opus 5.5 (simple and safe changes to working code)**, so he can switch model
   first. If he's already on the right one, say so and proceed.
-- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.9.3.zip`.
+- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.9.4.zip`.
 - Builds assume a fresh install: he uninstalls the old version first. Never add upgrade or migration code.
 - Bump the version in all three places: `engine/Cargo.toml`, `$Version` in `installer/Install.ps1`, and
   the first line of `kit/README.txt`. The Reader's `AssemblyVersion` in `reader/Reader.cs` is stamped
@@ -119,11 +119,15 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.9.3)
+## Current state (0.9.4)
 
 Everything above works and is tested on the CI Windows machine. Luke has been using it and sending UI
-tweaks one batch at a time; the last batch is done. Not yet confirmed by Luke:
+tweaks one batch at a time; the last batch (0.9.4) is done and delivered: the moon moved and greyed in
+both windows, and the clipped last word fixed in the engine (`with_end_mark` in `text.rs` adds a full
+stop to an unmarked sentence end; `TAIL_MS` of silence is written after a Speak call's last word).
+Not yet confirmed by Luke:
 
+- the last word now heard whole, both in playback and in the Reader's saved WAV;
 - the icon now showing in the taskbar and Start menu;
 - the Reader's progress row lining up with the buttons on his screen;
 - pasting from real browsers keeping paragraphs and bullets.
