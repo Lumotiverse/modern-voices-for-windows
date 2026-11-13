@@ -106,6 +106,8 @@ function Use-ConsoleApi {
 [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr window, int show);
 [DllImport("user32.dll")] public static extern bool MoveWindow(System.IntPtr window, int x, int y, int width, int height, bool repaint);
 [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern int SetCurrentProcessExplicitAppUserModelID(string id);
+[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(System.IntPtr window, int attribute, ref int value, int size);
+[DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] public static extern int SetWindowTheme(System.IntPtr window, string app, string ids);
 '@
     }
 }
@@ -652,6 +654,17 @@ function Get-UiPalette([bool]$Dark) {
               Selected = [System.Drawing.SystemColors]::Highlight }
 }
 
+# Dark or light scroll bars (and list lines) for a control. Its window is not made for this: one not made yet
+# gets them when Windows makes it (asking for it here would make every one at once, slowly, before the window shows).
+$script:UiScrollHooked = New-Object System.Collections.Generic.HashSet[object]
+function Set-UiScrollTheme($Control) {
+    if ($Control.IsHandleCreated) {
+        try { [void][ModernVoices.Console]::SetWindowTheme($Control.Handle, $(if ($script:UiPalette.Dark) { 'DarkMode_Explorer' } else { 'Explorer' }), [NullString]::Value) } catch { }
+    } elseif ($script:UiScrollHooked.Add($Control)) {
+        $Control.add_HandleCreated({ param($sender, $e) Set-UiScrollTheme $sender })
+    }
+}
+
 function Set-UiThemeOn($Control, $P) {
     if ($Control -is [System.Windows.Forms.Button]) {
         if ($Control.Tag -is [int]) { }   # a tab's button: Show-UiPage colours those
@@ -663,7 +676,7 @@ function Set-UiThemeOn($Control, $P) {
     elseif ($Control -is [System.Windows.Forms.TextBox] -or $Control -is [System.Windows.Forms.ListView] -or $Control -is [System.Windows.Forms.ListBox]) {
         $Control.BackColor = $P.Input; $Control.ForeColor = $P.Text
         if ($Control -is [System.Windows.Forms.ListView]) { $Control.OwnerDraw = $P.Dark }
-        try { [void][ModernVoices.Look]::SetWindowTheme($Control.Handle, $(if ($P.Dark) { 'DarkMode_Explorer' } else { 'Explorer' }), [NullString]::Value) } catch { }
+        Set-UiScrollTheme $Control
     }
     elseif ($Control -is [System.Windows.Forms.ComboBox]) {
         $Control.FlatStyle = $(if ($P.Dark) { 'Flat' } else { 'Standard' }); $Control.BackColor = $P.Input; $Control.ForeColor = $P.Text
@@ -677,7 +690,7 @@ function Set-UiThemeOn($Control, $P) {
     else {
         $Control.BackColor = $P.Back; $Control.ForeColor = $P.Text
         if ($Control.Tag -is [string] -and $Control.Tag -eq 'page') {   # a page's own scroll bar
-            try { [void][ModernVoices.Look]::SetWindowTheme($Control.Handle, $(if ($P.Dark) { 'DarkMode_Explorer' } else { 'Explorer' }), [NullString]::Value) } catch { }
+            Set-UiScrollTheme $Control
         }
     }
     foreach ($child in $Control.Controls) { Set-UiThemeOn $child $P }
@@ -692,20 +705,15 @@ function Set-UiTheme {
     $p = Get-UiPalette $dark
     $script:UiPalette = $p
     Add-StartupTime '    theme: palette'
-    if (-not ('ModernVoices.Look' -as [type])) {
-        Add-Type -Namespace ModernVoices -Name Look -MemberDefinition @'
-[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(System.IntPtr window, int attribute, ref int value, int size);
-[DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] public static extern int SetWindowTheme(System.IntPtr window, string app, string ids);
-'@
-    }
-    Add-StartupTime '    theme: Look type compiled'
+    Use-ConsoleApi      # (the one helper type: compiled once, usually already when the console was moved)
+    Add-StartupTime '    theme: helper type ready'
     $form = $script:Ui.Form
     $form.SuspendLayout()
     $form.BackColor = $p.Back; $form.ForeColor = $p.Text
     try {
         # The title bar (Windows 10 version 2004 and later: 20; before that: 19).
         $on = [int]$dark
-        if ([ModernVoices.Look]::DwmSetWindowAttribute($form.Handle, 20, [ref]$on, 4) -ne 0) { [void][ModernVoices.Look]::DwmSetWindowAttribute($form.Handle, 19, [ref]$on, 4) }
+        if ([ModernVoices.Console]::DwmSetWindowAttribute($form.Handle, 20, [ref]$on, 4) -ne 0) { [void][ModernVoices.Console]::DwmSetWindowAttribute($form.Handle, 19, [ref]$on, 4) }
     } catch { }
     Add-StartupTime '    theme: title bar'
     foreach ($child in $form.Controls) { Set-UiThemeOn $child $p }
