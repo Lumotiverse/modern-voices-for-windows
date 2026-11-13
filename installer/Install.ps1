@@ -54,12 +54,47 @@ if (-not $isAdmin -and -not $PickerSelfTest -and -not $FunctionsOnly) {
     exit
 }
 if (-not [Environment]::Is64BitProcess -and -not $FunctionsOnly) { throw 'Run this from 64-bit PowerShell (use Install.cmd).' }
+
+# Where the Config window opens, and its size: centred on the main screen, 900 x 1000 at 100% scaling (scaled
+# up with the display), never larger than the screen. The console is put there first, at that size, so the
+# window seems to take its place when it opens.
+function Get-UiWindowBounds {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $screenGraphics = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
+    $scale = [math]::Max(1.0, $screenGraphics.DpiX / 96.0)
+    $screenGraphics.Dispose()
+    $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+    $w = [math]::Min([int][math]::Round(900 * $scale), $area.Width)
+    $h = [math]::Min([int][math]::Round(1000 * $scale), $area.Height)
+    return New-Object System.Drawing.Rectangle(($area.X + [int](($area.Width - $w) / 2)), ($area.Y + [int](($area.Height - $h) / 2)), $w, $h)
+}
+
+# This PowerShell's console window: hidden, shown or moved.
+function Use-ConsoleApi {
+    if (-not ('ModernVoices.Console' -as [type])) {
+        Add-Type -Namespace ModernVoices -Name Console -MemberDefinition @'
+[DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
+[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr window, int show);
+[DllImport("user32.dll")] public static extern bool MoveWindow(System.IntPtr window, int x, int y, int width, int height, bool repaint);
+'@
+    }
+}
+function Move-ConsoleToUiWindow {
+    try {
+        $b = Get-UiWindowBounds
+        Use-ConsoleApi
+        $window = [ModernVoices.Console]::GetConsoleWindow()
+        if ($window -ne [System.IntPtr]::Zero) { [void][ModernVoices.Console]::MoveWindow($window, $b.X, $b.Y, $b.Width, $b.Height, $true) }
+    } catch { }
+}
+if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices -or $Unattended)) { Move-ConsoleToUiWindow }
 # -File passes "a,b" as one string: split it.
 $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.10.6'
+$Version = '0.10.7'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -758,9 +793,9 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $script:UiScale = [math]::Max(1.0, $screenGraphics.DpiX / 96.0)
     $screenGraphics.Dispose()
     $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-    $form.Size = New-Object System.Drawing.Size([math]::Min((Get-Px 900), $area.Width), [math]::Min((Get-Px 800), $area.Height))
     $form.MinimumSize = New-Object System.Drawing.Size([math]::Min((Get-Px 600), $area.Width), [math]::Min((Get-Px 400), $area.Height))
-    $form.StartPosition = 'CenterScreen'
+    $form.StartPosition = 'Manual'
+    $form.Bounds = Get-UiWindowBounds      # (exactly where the console was put)
     $form.Padding = New-Object System.Windows.Forms.Padding (Get-Px 8)
     # In front of the console it was started from (else it can open behind it, unseen).
     $form.TopMost = $true
@@ -2120,12 +2155,7 @@ function Set-InstalledVoices([string[]]$Wanted, [bool]$UsTags, $ByKey) {
 # Hides or shows this PowerShell's console window.
 function Set-ConsoleShown([bool]$Shown) {
     try {
-        if (-not ('ModernVoices.Console' -as [type])) {
-            Add-Type -Namespace ModernVoices -Name Console -MemberDefinition @'
-[DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
-[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr window, int show);
-'@
-        }
+        Use-ConsoleApi
         $window = [ModernVoices.Console]::GetConsoleWindow()
         if ($window -ne [System.IntPtr]::Zero) { [void][ModernVoices.Console]::ShowWindow($window, $(if ($Shown) { 5 } else { 0 })) }
     } catch { }
