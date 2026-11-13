@@ -24,8 +24,35 @@ param(
     [string]$InstallDir,      # where to install (a folder named Modern Voices for Windows is made in it); else asked
     [switch]$PickerSelfTest,  # builds the voice list window without showing it (for the build's tests)
     [string]$ScreenshotDir,   # with -PickerSelfTest: pictures of the window's tabs are saved here
-    [switch]$FunctionsOnly    # defines the functions and stops (for tests)
+    [switch]$FunctionsOnly,   # defines the functions and stops (for tests)
+    [long]$StartedAt          # (given to the administrator's window: when the first window started, for the timings)
 )
+
+# How long opening takes, step by step: written to %LOCALAPPDATA%\ModernVoices\config-startup.txt when the
+# window appears (and shown in the console).
+$script:StartupTimes = New-Object System.Collections.Generic.List[string]
+$script:StartupFirst = [System.Diagnostics.Process]::GetCurrentProcess().StartTime
+$script:StartupLast = $script:StartupFirst
+function Add-StartupTime([string]$Step) {
+    $now = Get-Date
+    $script:StartupTimes.Add(('{0,6:0.00}s  {1,6:0.00}s total   {2}' -f ($now - $script:StartupLast).TotalSeconds, ($now - $script:StartupFirst).TotalSeconds, $Step))
+    $script:StartupLast = $now
+}
+function Save-StartupTimes {
+    try {
+        $dir = Join-Path $env:LOCALAPPDATA 'ModernVoices'
+        New-Item $dir -ItemType Directory -Force | Out-Null
+        $text = "Modern Voices Config $Version, opened $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`r`n" +
+            "  step    since start`r`n" + (($script:StartupTimes | ForEach-Object { $_ }) -join "`r`n") + "`r`n"
+        [System.IO.File]::WriteAllText((Join-Path $dir 'config-startup.txt'), $text)
+    } catch { }
+}
+if ($StartedAt -gt 0) {
+    $script:StartupFirst = New-Object DateTime $StartedAt
+    $script:StartupLast = [System.Diagnostics.Process]::GetCurrentProcess().StartTime
+    $script:StartupTimes.Add(('{0,6:0.00}s  {1,6:0.00}s total   {2}' -f ($script:StartupLast - $script:StartupFirst).TotalSeconds, ($script:StartupLast - $script:StartupFirst).TotalSeconds, 'first window to the administrator window (includes the Windows permission prompt)'))
+}
+Add-StartupTime 'PowerShell started'
 
 # (Said at once: Windows can take a while over what follows. Install.cmd says it itself, before PowerShell starts.)
 if (-not $FunctionsOnly -and -not $env:MV_LOADING_SAID) { Write-Host 'Loading program...' }
@@ -49,6 +76,7 @@ if (-not $isAdmin -and -not $PickerSelfTest -and -not $FunctionsOnly) {
     if ($NoPause) { $forward += '-NoPause' }
     if ($UsEnglishTags) { $forward += '-UsEnglishTags' }
     if ($InstallDir) { $forward += '-InstallDir'; $forward += "`"$InstallDir`"" }
+    $forward += '-StartedAt'; $forward += [string]$script:StartupFirst.Ticks
     $env:MV_LOADING_SAID = $null      # (the administrator's window says it for itself)
     Start-Process powershell.exe -Verb RunAs -ArgumentList $forward
     exit
@@ -94,13 +122,13 @@ function Move-ConsoleToUiWindow {
 function Set-UiTaskbarIdentity {
     try { Use-ConsoleApi; [void][ModernVoices.Console]::SetCurrentProcessExplicitAppUserModelID('ModernVoicesForWindows.Config') } catch { }
 }
-if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices -or $Unattended)) { Set-UiTaskbarIdentity; Move-ConsoleToUiWindow }
+if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices -or $Unattended)) { Set-UiTaskbarIdentity; Move-ConsoleToUiWindow; Add-StartupTime 'console moved (loads Windows Forms)' }
 # -File passes "a,b" as one string: split it.
 $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.10.8'
+$Version = '0.10.9'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -238,6 +266,7 @@ function Get-Catalogue {
     New-Item (Split-Path $cache -Parent) -ItemType Directory -Force | Out-Null
     try {
         Get-Download "$Base/voices.json" $cache
+        Add-StartupTime 'voice list downloaded from Hugging Face'
     } catch {
         if (-not (Test-Path $cache)) { throw "Could not download the voice list from Hugging Face: $($_.Exception.Message)" }
         Write-Host "  (could not refresh the voice list; using the one from last time)" -ForegroundColor Yellow
@@ -2405,10 +2434,14 @@ try {
     $usTags = [bool]$UsEnglishTags
     if (-not $UsEnglishTags -and (Test-Path $Settings)) { $usTags = ((Get-ItemProperty $Settings).UsEnglishTags -eq 1) }
 
+    Add-StartupTime 'script loaded, folder found'
     Write-Host "`nEngine"
     Install-AndRegisterEngine
+    Add-StartupTime 'engine copied and registered'
     Register-Program
+    Add-StartupTime 'Installed apps entry and Start menu'
     Add-DefaultRules
+    Add-StartupTime 'default pronunciation rules'
     Write-Host ("  {0}{1}" -f $Dll64, $(if (Test-Path $Dll32) { ' and 32-bit' } else { ' (no 32-bit engine in this build)' }))
 
     Write-Host "`nVoice list"
@@ -2416,6 +2449,7 @@ try {
     Write-Host "  $($catalogue.Count) English voices"
     $byKey = @{}
     foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
+    Add-StartupTime 'voice list read'
 
     $allGood = $true
     if ($interactive -and $updating) {
@@ -2425,11 +2459,18 @@ try {
             Write-Host "`nVoices"
             try { [void](Set-InstalledVoices $have $usTags $byKey) }
             catch { Write-Host "  The voices were left as they were ($($_.Exception.Message)). Modern Voices Repair (Start menu) registers them again." -ForegroundColor Yellow }
+            Add-StartupTime 'installed voices registered again (updating)'
         }
     }
     if ($interactive) {
         # The window is the program: the console behind it is hidden while it is open.
         $ui = New-ManagerForm $catalogue @(Get-InstalledIds) $usTags $byKey
+        Add-StartupTime 'window built'
+        $ui.Form.add_Shown({
+            Add-StartupTime 'window shown'
+            Save-StartupTimes
+            foreach ($line in $script:StartupTimes) { Write-Host $line }
+        })
         Write-Host "`nThe Modern Voices window is open (if you can't see it, it's on the taskbar)."
         Set-ConsoleShown $false
         try { [void]$ui.Form.ShowDialog() } finally { Set-ConsoleShown $true }
