@@ -691,12 +691,14 @@ function Set-UiTheme {
     $script:UiDark = $dark
     $p = Get-UiPalette $dark
     $script:UiPalette = $p
+    Add-StartupTime '    theme: palette'
     if (-not ('ModernVoices.Look' -as [type])) {
         Add-Type -Namespace ModernVoices -Name Look -MemberDefinition @'
 [DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(System.IntPtr window, int attribute, ref int value, int size);
 [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] public static extern int SetWindowTheme(System.IntPtr window, string app, string ids);
 '@
     }
+    Add-StartupTime '    theme: Look type compiled'
     $form = $script:Ui.Form
     $form.SuspendLayout()
     $form.BackColor = $p.Back; $form.ForeColor = $p.Text
@@ -705,11 +707,16 @@ function Set-UiTheme {
         $on = [int]$dark
         if ([ModernVoices.Look]::DwmSetWindowAttribute($form.Handle, 20, [ref]$on, 4) -ne 0) { [void][ModernVoices.Look]::DwmSetWindowAttribute($form.Handle, 19, [ref]$on, 4) }
     } catch { }
+    Add-StartupTime '    theme: title bar'
     foreach ($child in $form.Controls) { Set-UiThemeOn $child $p }
+    Add-StartupTime '    theme: every control coloured'
     if ($script:Ui.ThemeButton.Text.Length -gt 1) { $script:Ui.ThemeButton.Text = $(if ($dark) { 'Light' } else { 'Dark' }) }
     Show-UiPage $script:Ui.PageIndex
+    Add-StartupTime '    theme: page shown'
     $form.ResumeLayout()
+    Add-StartupTime '    theme: layout'
     $form.Refresh()
+    Add-StartupTime '    theme: drawn'
 }
 
 # Shows one of the tabs' pages; its button stands out.
