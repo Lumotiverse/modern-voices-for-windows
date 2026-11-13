@@ -168,7 +168,14 @@ one batch at a time; every batch so far is done and delivered. He installs each 
   Set-UiTheme ~1.3-1.7s: a second Add-Type (merged into `ModernVoices.Console` via `Use-ConsoleApi`) and
   `.Handle` on every list/textbox forcing all windows early (now `Set-UiScrollTheme`, on HandleCreated).
   Consequence: lists on hidden tabs have no handle until shown (the self-test makes WordList's itself).
-  Next candidates: Voice manager tab ~0.45s; not needing admin to open Config (the UAC relaunch).
+  Lumoti's 0.10.11 timings (Win10): total 6.5s = UAC + second PowerShell ~3.0s (includes his click), PowerShell
+  start 0.8s, installer steps + catalogue 0.6s, window 2.3s (theme now 0.25s; 'form and fonts' 0.8s on his PC
+  vs 0.14s on CI: suspect Get-InstalledIds walking every SAPI token with Get-ItemProperty, unconfirmed).
+  Agreed next step if wanted (Fable): Config opens without administrator rights and asks only on Apply
+  changes. Needs: voice settings (voice.json in each voice's folder), nicknames, pronunciation dictionary and
+  settings.json moved (or mirrored) to a per-user/ProgramData location writable without admin, read by the
+  engine, with existing settings migrated; registration steps skipped when opened in place; elevation (RunAs
+  of a helper) only for install/remove/registration. Not started.
 - `Loading program...` is printed by Install.cmd before PowerShell starts (env `MV_LOADING_SAID`).
 - Default pronunciation rules: `$DefaultRuleSets` / `Add-DefaultRules` add each named set once (registry
   value `RuleSets`), never overwriting, re-adding or re-ticking a rule the person changed or removed.
