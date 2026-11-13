@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.10.5.0")]
+[assembly: System.Reflection.AssemblyVersion("0.10.6.0")]
 
 namespace ModernVoicesReader
 {
@@ -874,6 +874,29 @@ namespace ModernVoicesReader
         static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr w, string l);
         [DllImport("user32.dll")]
         static extern bool GetComboBoxInfo(IntPtr combo, ref ComboInfo info);
+        // The volume of the Reader's own sound (its audio session, as Windows' Volume Mixer shows it). Given a
+        // device number rather than an open device, this sets the whole program's session; it is heard at once,
+        // mid-word, where the speech object's own Volume is taken only when reading starts.
+        [DllImport("winmm.dll")]
+        static extern int waveOutSetVolume(IntPtr device, uint volume);
+        [DllImport("winmm.dll")]
+        static extern int waveOutGetVolume(IntPtr device, out uint volume);
+        void ApplyVolume()
+        {
+            uint level = (uint)(0xFFFF * Math.Max(0, Math.Min(100, volumeBar.Value)) / 100);
+            try { waveOutSetVolume(IntPtr.Zero, level | (level << 16)); } catch (Exception) { }
+        }
+        // The session's volume now, 0 to 100 (-1 if Windows would not say): for the build's test.
+        public int SessionVolume
+        {
+            get
+            {
+                uint v;
+                try { if (waveOutGetVolume(IntPtr.Zero, out v) != 0) { return -1; } } catch (Exception) { return -1; }
+                return (int)Math.Round((v & 0xFFFF) * 100.0 / 0xFFFF);
+            }
+        }
+        public void TestVolume(int value) { volumeBar.Value = value; }
         [StructLayout(LayoutKind.Sequential)]
         struct ComboInfo
         {
@@ -1521,7 +1544,7 @@ namespace ModernVoicesReader
                 tips.SetToolTip(volumeBar, "Volume: " + volumeBar.Value + "%");
                 if (loading) { return; }
                 store.State.Volume = volumeBar.Value;
-                try { synth.Volume = volumeBar.Value; } catch (Exception) { }     // (heard at once, mid-sentence too)
+                ApplyVolume();      // (heard at once, mid-sentence too)
             };
             volumeBar.MouseUp += delegate { store.Save(); };
             volumeBar.KeyUp += delegate { store.Save(); };
@@ -1694,6 +1717,7 @@ namespace ModernVoicesReader
             if (Height > area.Height) { Height = area.Height; }
             rateBar.Value = Math.Max(-10, Math.Min(10, s.Rate));
             volumeBar.Value = Math.Max(0, Math.Min(100, s.Volume));
+            ApplyVolume();
             autoBox.Checked = s.AutoRead;
             tidyBox.Checked = s.Tidy;
             int chosen = -1;
@@ -1767,7 +1791,7 @@ namespace ModernVoicesReader
             if (mode == Mode.Playing) { return; }
             if (box.TextLength == 0) { Status("Nothing to read: paste some text, or press Paste and read."); return; }
             if (CurrentVoice == null) { Status("Choose a voice first."); return; }
-            if (position >= box.TextLength) { position = 0; }
+            if (finished || position >= box.TextLength) { position = 0; }
             StartAt(position);
         }
 
@@ -1778,9 +1802,11 @@ namespace ModernVoicesReader
             int start = prepared.FromOriginal(Cleaner.SentenceStart(text, from));
             if (start >= prepared.Text.Length || prepared.Text.Substring(start).Trim().Length == 0)
             {
+                // Nothing left to read from here (the end, or only blank lines after it): from the start again.
                 position = 0;
+                if (from > 0) { StartAt(0); return; }
                 ShowPlace();
-                Status("That is the end of the text.");
+                Status("Nothing to read here.");
                 return;
             }
             spokenFrom = start; spokenAt = start; measuredFrom = start;
@@ -1791,7 +1817,8 @@ namespace ModernVoicesReader
                 if (silent) { synth.SetOutputToNull(); } else { synth.SetOutputToDefaultAudioDevice(); }
                 synth.SelectVoice(CurrentVoice.Spoken);
                 synth.Rate = rateBar.Value;
-                synth.Volume = volumeBar.Value;
+                synth.Volume = 100;      // (the slider sets the Reader's sound as a whole: ApplyVolume)
+                ApplyVolume();
                 stopping = false;
                 finished = false;
                 synth.SpeakAsync(prepared.Text.Substring(start));
@@ -2635,6 +2662,21 @@ namespace ModernVoicesReader
                     Check(form.Misplaced == 0, "each word is reported at its own place in the text (" + form.Misplaced + " misplaced)");
                     Check(form.FirstWord == "The" && form.LastWord.StartsWith("with", StringComparison.Ordinal), "the first and last words are the text's");
                     Check(form.Position == 0, "at the end, the place goes back to the start");
+
+                    // From blank lines after the last sentence (a click below the text): Play reads from the start.
+                    string trailing = text + "\r\n\r\n";
+                    form.TestLoad(trailing, trailing.Length - 1);
+                    form.Play();
+                    WaitWhile(delegate { return form.FirstWord == "" && form.Reading; }, 60);
+                    Check(form.FirstWord == "The", "Play with nothing left after the place reads from the start (first word '" + form.FirstWord + "')");
+                    form.Stop();
+
+                    // The volume slider sets the Reader's own sound at once, while reading too.
+                    form.TestVolume(40);
+                    int session = form.SessionVolume;
+                    if (session < 0) { log.AppendLine("(this PC would not report the Reader's sound volume: the slider not checked)"); }
+                    else { Check(session == 40, "the volume slider sets the Reader's sound (" + session + "%)"); }
+                    form.TestVolume(100);
 
                     // From a place in the second sentence: reading starts at that sentence.
                     form.TestLoad(text, text.IndexOf("second", StringComparison.Ordinal));

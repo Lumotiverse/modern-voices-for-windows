@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.10.5 (12 Nov 2026).
+Last updated at version 0.10.6 (13 Nov 2026).
 
 ## What it is
 
@@ -16,7 +16,7 @@ with Windows' voices but can't use Narrator's natural voices. It must keep worki
 | Modern Voices Config | The installer and settings window: Voice manager, Speed and pauses, Pronunciation, Add or remove voices. | PowerShell 5.1 + WinForms | `installer/Install.ps1` (plus `VoiceConvert.ps1`, `Test.ps1`, `Speak.ps1`, `Ocr.ps1`, `Uninstall.ps1`) |
 | Modern Voices: Reader | A small app that reads pasted or copied text, files and screen regions. It has play/pause/stop, time left, saves as WAV, and remembers its place per file. | C# 5 (built with Windows' own `csc.exe`, .NET Framework 4) | `reader/Reader.cs`, `reader/Build.ps1` |
 
-The user-facing documentation is `kit/README.txt`, and it is accurate for 0.10.5. Read it to see what
+The user-facing documentation is `kit/README.txt`, and it is accurate for 0.10.6. Read it to see what
 each feature does.
 
 ## Lumoti's standing rules
@@ -24,7 +24,7 @@ each feature does.
 - **Before any build request, say whether it needs Fable (complicated: new features, engine work,
   multi-part changes) or Opus 5.5 (simple and safe changes to working code)**, so he can switch model
   first. If he's already on the right one, say so and proceed.
-- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.10.5.zip`.
+- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.10.6.zip`.
 - Every build must update in place (since 0.9.6): the new kit's Install.cmd run over the installed version
   keeps voices, settings, nicknames and pronunciations, with no uninstall and no re-download. If a build
   changes where or how any of those are stored, it must carry the old ones over. Test-Kit has an 'Update' step.
@@ -134,7 +134,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.10.5)
+## Current state (0.10.6)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last
@@ -181,8 +181,13 @@ one batch at a time; every batch so far is done and delivered. He installs each 
   `SelectVoice`. The chosen voice is saved by token id. `RefreshVoices` runs after a nickname and when the
   window is activated and `VoicesNow` differs.
 - Button row: restart, play, stop | Open a file, Paste and read, magnifying glass (E721, read a screen
-  area), Save as audio | volume (E767 speaker + slider, the Reader's own `synth.Volume`, `State.Volume`) |
-  undo, redo (E7A7, E7A6), Clear.
+  area), Save as audio | volume (E767 speaker + slider, `State.Volume`) | undo, redo (E7A7, E7A6), Clear.
+- Volume (0.10.6): the slider sets the Reader process's audio-session volume with `waveOutSetVolume(0, ...)`
+  (`ApplyVolume`), heard at once; `synth.Volume` stays 100 for playback. Setting `synth.Volume` mid-read
+  did nothing because the engine reads `GetVolume` once per Speak call (`lib.rs`, `speak`). Save as audio
+  still uses `saver.Volume`. Engine-side fix (honour `SPVES_VOLUME` mid-Speak, for all programs) not done.
+- Play after the end (0.10.6): `Play` starts from 0 when `finished`; `StartAt` with nothing readable left
+  from the place (blank lines after the last sentence) starts from 0 instead of saying "end of the text".
 - Row under the buttons is a Panel placed by `AlignLine`: progress bar as wide as restart+play, the time
   after it, "Instantly read copy" under Paste and read, "Don't read links" under Save as audio (it still
   leaves out code and symbols; the tooltip says so).
@@ -203,7 +208,7 @@ from there, even when he only clicked to type. He called it an "unintended featu
 it kept, or the bar and time to change only while reading.
 
 **Not yet confirmed on his machine:** the cog opening Config; the icon in the taskbar and Start menu;
-pasting from real browsers keeping paragraphs and bullets; the volume slider; the greyed Apply button's
+pasting from real browsers keeping paragraphs and bullets; the volume slider changing live (0.10.6); the greyed Apply button's
 look in dark mode.
 
 ## Ideas discussed but not built (only when Lumoti asks)

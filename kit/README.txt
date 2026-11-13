@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.10.5
+Modern Voices for Windows 0.10.6
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -154,6 +154,7 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
   * Paste text into the box (or press Paste and read) and press the play button. While it reads,
     that button is pause. Stop keeps the place, and play goes on from the start of the sentence it
     was in. Click in the text to read from somewhere else; the first button reads from the start.
+    Once it has read to the end, play reads the whole text again from the start.
     The word being read is marked.
   * What is pasted (or read from the clipboard) is laid out as it was where it was copied: an empty
     line between paragraphs, lists with their bullets and numbers.
@@ -171,7 +172,8 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     voices. Speed is the program's own rate (as other programs have), on top of the Dictation speed.
   * The slider with the small speaker (between Save as audio and undo) is how loud the Reader
     speaks: the Reader's own volume, on top of each voice's Volume in Modern Voices Config. It
-    applies to Save as audio too.
+    changes the sound at once, while reading too (it is the Reader's level in Windows' Volume
+    Mixer), and applies to Save as audio too.
   * The bar under the play buttons is what is left to read: full as reading starts, emptying
     towards the right, empty when the reading has finished.
   * "about 3:20 left" is an estimate: from a typical pace at first, then from how fast the voice is
