@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.10.10 (13 Nov 2026).
+Last updated at version 0.10.11 (13 Nov 2026).
 
 ## What it is
 
@@ -16,7 +16,7 @@ with Windows' voices but can't use Narrator's natural voices. It must keep worki
 | Modern Voices Config | The installer and settings window: Voice manager, Speed and pauses, Pronunciation, Add or remove voices. | PowerShell 5.1 + WinForms | `installer/Install.ps1` (plus `VoiceConvert.ps1`, `Test.ps1`, `Speak.ps1`, `Ocr.ps1`, `Uninstall.ps1`) |
 | Modern Voices: Reader | A small app that reads pasted or copied text, files and screen regions. It has play/pause/stop, time left, saves as WAV, and remembers its place per file. | C# 5 (built with Windows' own `csc.exe`, .NET Framework 4) | `reader/Reader.cs`, `reader/Build.ps1` |
 
-The user-facing documentation is `kit/README.txt`, and it is accurate for 0.10.10. Read it to see what
+The user-facing documentation is `kit/README.txt`, and it is accurate for 0.10.11. Read it to see what
 each feature does.
 
 ## Lumoti's standing rules
@@ -24,7 +24,7 @@ each feature does.
 - **Before any build request, say whether it needs Fable (complicated: new features, engine work,
   multi-part changes) or Opus 5.5 (simple and safe changes to working code)**, so he can switch model
   first. If he's already on the right one, say so and proceed.
-- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.10.10.zip`.
+- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.10.11.zip`.
 - Every build must update in place (since 0.9.6): the new kit's Install.cmd run over the installed version
   keeps voices, settings, nicknames and pronunciations, with no uninstall and no re-download. If a build
   changes where or how any of those are stored, it must carry the old ones over. Test-Kit has an 'Update' step.
@@ -134,7 +134,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.10.10)
+## Current state (0.10.11)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last
@@ -164,7 +164,11 @@ one batch at a time; every batch so far is done and delivered. He installs each 
   first window's start into the elevated one. Purpose: decide whether to open from the cached voice list and
   skip engine/program registration when Config opens in place. Lumoti's first timings (Win10, 0.10.9): download
   0.17s, registration ~0.25s, building the window 2.82s of 6.6s. 0.10.10 adds `  window: ...` marks inside
-  New-ManagerForm (also printed as `timing:` lines by the build's self-test) to find the slow part.
+  New-ManagerForm (also printed as `timing:` lines by the build's self-test) to find the slow part. CI showed
+  Set-UiTheme ~1.3-1.7s: a second Add-Type (merged into `ModernVoices.Console` via `Use-ConsoleApi`) and
+  `.Handle` on every list/textbox forcing all windows early (now `Set-UiScrollTheme`, on HandleCreated).
+  Consequence: lists on hidden tabs have no handle until shown (the self-test makes WordList's itself).
+  Next candidates: Voice manager tab ~0.45s; not needing admin to open Config (the UAC relaunch).
 - `Loading program...` is printed by Install.cmd before PowerShell starts (env `MV_LOADING_SAID`).
 - Default pronunciation rules: `$DefaultRuleSets` / `Add-DefaultRules` add each named set once (registry
   value `RuleSets`), never overwriting, re-adding or re-ticking a rule the person changed or removed.
