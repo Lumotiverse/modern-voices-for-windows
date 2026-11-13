@@ -128,7 +128,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.10.9'
+$Version = '0.10.10'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -839,6 +839,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $script:UiBold = $bold
     $red = [System.Drawing.Color]::Firebrick
 
+    Add-StartupTime '  window: form and fonts'
     # The tabs: a button each and a page each (drawn by the program, so that they can be dark too).
     $pageHost = New-Object System.Windows.Forms.Panel
     $pageHost.Dock = 'Fill'
@@ -898,6 +899,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $form.Controls.Add($bottom)
     $form.CancelButton = $close
 
+    Add-StartupTime '  window: tab strip, moon, bottom bar'
     # ---- Voice manager
     $page = New-UiPage $tabInstalled
     $installedList = New-Object System.Windows.Forms.ListView
@@ -999,6 +1001,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     Add-UiRow $page (New-UiLabel ("Changes are saved as you move a slider and take effect straight away, also in programs already using the " +
         "voice (from the next thing they say): press Preview to hear them. A voice's speakers share its settings.") -Grey)
 
+    Add-StartupTime '  window: Voice manager tab'
     # ---- Speed and pauses (every voice; pauses for those without their own)
     $page = New-UiPage $tabPauses
     Add-UiRow $page (New-UiLabel 'Speed and pauses for every voice (a voice can adjust its speed and have its own pauses: Voice manager)' -Bold)
@@ -1047,6 +1050,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $resetLine.Controls.Add($pausesReset, 0, 0); $resetLine.Controls.Add($pausesNote, 1, 0)
     Add-UiRow $page $resetLine
 
+    Add-StartupTime '  window: Speed and pauses tab'
     # ---- Pronunciation: words and names said another way, by every voice in every program
     $page = New-UiPage $tabWords
     Add-UiRow $page (New-UiLabel 'Words and names said your way: by every voice, in every program that uses these voices' -Bold)
@@ -1090,6 +1094,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         "`"catalogue`". Match capitals: `"US`" but not `"us`". Where two rules fit, the longer one is used, and a rule never changes " +
         "another rule's result. Programs still show and highlight the original words.") -Grey)
 
+    Add-StartupTime '  window: Pronunciation tab'
     # ---- Add or remove voices (the list takes the room there is; the tab scrolls below a minimum)
     $addGrid = New-Object System.Windows.Forms.TableLayoutPanel
     $addGrid.ColumnCount = 1
@@ -1167,6 +1172,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         WordList = $wordList; WordFrom = $wordFrom; WordTo = $wordTo; WordWhole = $wordWhole; WordCase = $wordCase
         WordSave = $wordSave; WordRemove = $wordRemove
         NickBox = $nickBox; NickButton = $nickButton; NameClick = $false }
+    Add-StartupTime '  window: Add or remove tab (list filled)'
     $list.add_SelectedIndexChanged({ Update-UiSelection })
     $list.add_ItemChecked({ if (-not $script:Ui.Filling) { Update-UiSummary } })
     # A click on a speaker's name only selects it (to play its sample); its box is what ticks it.
@@ -1208,6 +1214,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     $wordHear.add_Click({ Invoke-UiWordPreview })
     $wordStop.add_Click({ Stop-UiPreview })
     Update-UiWordList
+    Add-StartupTime '  window: events wired, word list filled'
     $apply.add_Click({ Invoke-UiApply })
     $resetButton.add_Click({ Reset-UiSettings })
     $ownBox.add_CheckedChanged({ Update-UiOwnPauses })
@@ -1225,11 +1232,17 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
         Stop-UiPreview
     })
     Set-UiGlobalBars (Get-Pauses $SettingsFile) (Get-GlobalSpeed $SettingsFile)
+    Add-StartupTime '  window: Set-UiGlobalBars'
     Update-UiWindowsRate
+    Add-StartupTime '  window: Update-UiWindowsRate'
     Update-UiAddLayout
+    Add-StartupTime '  window: Update-UiAddLayout'
     Update-UiInstalledList
+    Add-StartupTime '  window: Update-UiInstalledList'
     Update-UiSummary
+    Add-StartupTime '  window: Update-UiSummary'
     Update-UiApply
+    Add-StartupTime '  window: Update-UiApply'
     $applyTimer = New-Object System.Windows.Forms.Timer
     $applyTimer.Interval = 300
     $applyTimer.add_Tick({ Update-UiApply })
@@ -1249,7 +1262,9 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
             if ($last) { $last.Width = -2 }
         })
     }
+    Add-StartupTime '  window: dark list headings'
     Set-UiTheme
+    Add-StartupTime '  window: theme (dark or light)'
     $form.add_Activated({ Set-UiTheme })
     Show-UiPage $(if ($installedList.Items.Count -eq 0) { 3 } else { 0 })
     return $script:Ui
@@ -2234,7 +2249,10 @@ try {
         $byKey = @{}; foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
         $real = @(Get-InstalledIds)
         $ids = if ($real.Count) { $real } else { @('en_GB-alba-medium', 'en_GB-vctk-medium#p239') }
+        Add-StartupTime 'before building the window'
         $ui = New-ManagerForm $catalogue $ids $false $byKey
+        Add-StartupTime 'window built'
+        foreach ($line in $script:StartupTimes) { Write-Output "timing: $line" }
         $null = $ui.Form.Handle; $null = $ui.List.Handle; $null = $ui.InstalledList.Handle
         Write-Output ("window: {0} voices in the catalogue, {1} installed shown; {2}" -f $ui.List.Items.Count, $ui.InstalledList.Items.Count, $ui.SizeLabel.Text)
         # As the window opens, nothing is waiting to be applied: Apply changes is greyed out.
