@@ -2363,6 +2363,7 @@ try {
             if ($named -notlike '*(Test Name)' -or -not $listed -or $shown -ne 'Test Name' -or $restored -ne $plain -or
                 @(Get-OurVoiceNames) -notcontains $plain) { $bad += 'nickname' }
             # A pronunciation rule: added, changed, switched off and removed, each saved to the dictionary file.
+            [void]$ui.WordList.Handle      # (the list made, as opening its tab would: selecting a row needs it)
             $rulesBefore = @(Get-Dictionary $DictionaryFile).Count
             $ui.WordFrom.Text = ' Niamh '; $ui.WordTo.Text = 'Neev'
             Save-UiWord
