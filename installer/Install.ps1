@@ -77,6 +77,7 @@ function Use-ConsoleApi {
 [DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
 [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr window, int show);
 [DllImport("user32.dll")] public static extern bool MoveWindow(System.IntPtr window, int x, int y, int width, int height, bool repaint);
+[DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern int SetCurrentProcessExplicitAppUserModelID(string id);
 '@
     }
 }
@@ -88,13 +89,18 @@ function Move-ConsoleToUiWindow {
         if ($window -ne [System.IntPtr]::Zero) { [void][ModernVoices.Console]::MoveWindow($window, $b.X, $b.Y, $b.Width, $b.Height, $true) }
     } catch { }
 }
-if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices -or $Unattended)) { Move-ConsoleToUiWindow }
+# Config's own identity on the taskbar: else Windows counts its window as PowerShell's and shows PowerShell's
+# logo there; with its own, the taskbar shows the window's icon (the cog in a speech bubble). Before any window.
+function Set-UiTaskbarIdentity {
+    try { Use-ConsoleApi; [void][ModernVoices.Console]::SetCurrentProcessExplicitAppUserModelID('ModernVoicesForWindows.Config') } catch { }
+}
+if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices -or $Unattended)) { Set-UiTaskbarIdentity; Move-ConsoleToUiWindow }
 # -File passes "a,b" as one string: split it.
 $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.10.7'
+$Version = '0.10.8'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -934,7 +940,7 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     Add-UiRow $page $soundLine
     $sliders = @{}
     $soundGrid = New-UiSliderGrid
-    foreach ($spec in @(@('Volume', 0, 100, 1, 5, 10), @('Boost', 10, 40, 1, 5, 5), @('Speed', 25, 200, 1, 5, 25))) {
+    foreach ($spec in @(@('Volume', 0, 100, 10, 10, 10), @('Boost', 10, 40, 1, 5, 5), @('Speed', 25, 200, 1, 5, 25))) {
         $sliders[$spec[0]] = Add-UiSlider $soundGrid $spec[0] $spec[1] $spec[2] $spec[3] $spec[4] $spec[5]
     }
     Add-UiRow $page $soundGrid
@@ -948,6 +954,12 @@ function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey
     }
     $gapGrid.Visible = $false
     Add-UiRow $page $gapGrid
+    # Volume moves in tens only (0, 10, ... 100): dragged, it snaps to the nearest.
+    $sliders.Volume.Bar.add_ValueChanged({
+        $bar = $script:Ui.Sliders.Volume.Bar
+        $snapped = [int]([math]::Round($bar.Value / 10.0, [MidpointRounding]::AwayFromZero) * 10)
+        if ($bar.Value -ne $snapped) { $bar.Value = $snapped }
+    })
     foreach ($k in @($sliders.Keys)) {
         $sliders[$k].Bar.Enabled = $false
         $sliders[$k].Bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.SaveTimer.Stop(); $script:Ui.SaveTimer.Start() } })
@@ -1514,7 +1526,7 @@ function Update-UiInstalled {
         $ui.Sliders['Sentence gap'].Bar.Value = [int][math]::Min($PauseLimits.Sentence, $shown.Sentence)
         $ui.Sliders['Comma gap'].Bar.Value = [int][math]::Min($PauseLimits.Comma, $shown.Comma)
         $ui.Sliders['Paragraph gap'].Bar.Value = [int][math]::Min($PauseLimits.Paragraph, $shown.Paragraph)
-        $ui.Sliders.Volume.Bar.Value = [int][math]::Max(0, [math]::Min(100, [math]::Round($peak * 100)))
+        $ui.Sliders.Volume.Bar.Value = [int][math]::Max(0, [math]::Min(100, [math]::Round($peak * 10, [MidpointRounding]::AwayFromZero) * 10))
         $ui.Sliders.Boost.Bar.Value = [int][math]::Max(10, [math]::Min(40, [math]::Round($boost * 10)))
         $ui.Sliders.Speed.Bar.Value = [int][math]::Max(25, [math]::Min(200, [math]::Round(100 / $lengthScale)))
         Update-UiSliderLabels
@@ -2224,7 +2236,9 @@ try {
             Update-UiInstalled
             $dir = $ui.CurrentInstalled.Dir
             $was = Get-VoiceSettings $dir
-            $ui.Sliders.Volume.Bar.Value = 60; $ui.Sliders.Boost.Bar.Value = 20; $ui.Sliders.Speed.Bar.Value = 80
+            $ui.Sliders.Volume.Bar.Value = 57; $ui.Sliders.Boost.Bar.Value = 20; $ui.Sliders.Speed.Bar.Value = 80
+            Write-Output ("volume 57 snaps to {0}" -f $ui.Sliders.Volume.Bar.Value)
+            if ($ui.Sliders.Volume.Bar.Value -ne 60) { $bad += 'volume in tens' }
             Save-UiSettings
             $now = Get-VoiceSettings $dir
             Write-Output ("sliders: {0} -> peak {1}, boost {2}, length_scale {3}" -f $ui.CurrentInstalled.Title, $now.Peak, $now.Boost, $now.LengthScale)
