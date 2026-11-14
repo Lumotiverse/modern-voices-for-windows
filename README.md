@@ -110,7 +110,8 @@ collection (version 1.0.0). They are not part of this project and keep their own
 |---|---|
 | `engine/` | the SAPI 5 engine (Rust, sherpa-onnx built in), with its own class ID: text handling, pauses, pronunciation rules, and the events programs follow speech by (bookmarks, sentence and word boundaries) |
 | `engine/espeak-ng-data/` | eSpeak NG's data, read at run time |
-| `installer/` | `Install.ps1` (install, update, the Modern Voices Config window, repair), `VoiceConvert.ps1` (Piper model to engine folder; voice settings), `Speak.ps1` (Preview), `Test.ps1`, `Uninstall.ps1` |
+| `installer/` | `Install.ps1` (install, update, repair, and adding or removing voices for Modern Voices Config), `VoiceConvert.ps1` (Piper model to engine folder; voice settings), `Nickname.ps1`, `Test.ps1`, `Uninstall.ps1` |
+| `config/` | Modern Voices Config (C#, Windows Forms): the settings window |
 | `reader/` | Modern Voices Reader (C#, Windows Forms) |
 | `kit/` | what goes at the top of the packaged kit (`Install.cmd`, `README.txt`) |
 | `tools/` | `Package.ps1` (sign and package), `Get-SherpaX86.ps1` (32-bit sherpa-onnx), `Test-Kit.ps1` (end-to-end test), `make_icons.py` |

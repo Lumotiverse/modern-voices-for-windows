@@ -1,7 +1,7 @@
 <#
 Modern Voices for Windows - uninstaller. Removes the voices (64- and 32-bit), the engine's
 registration and its certificate's trust, the Start menu folder, the Installed apps entry, the
-program's folder (the Reader with it) and the Reader's saved texts. Nothing else is touched.
+program's folder (Modern Voices Config and the Reader with it) and the Reader's saved texts. Nothing else is touched.
 #>
 param([switch]$NoPause)
 
@@ -30,6 +30,10 @@ $Cer = Join-Path $App 'engine\modern_voices.cer'
 
 Write-Host "Uninstalling $AppName" -ForegroundColor Cyan
 try {
+    # Modern Voices Config, if it is open, is closed (its file is about to be deleted).
+    foreach ($open in @(Get-Process 'ModernVoicesConfig' -ErrorAction SilentlyContinue)) {
+        try { $open.Kill(); [void]$open.WaitForExit(5000) } catch { }
+    }
     foreach ($tokens in 'HKLM:\SOFTWARE\Microsoft\Speech\Voices\Tokens', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Speech\Voices\Tokens') {
         if (-not (Test-Path $tokens)) { continue }
         foreach ($key in Get-ChildItem $tokens) {

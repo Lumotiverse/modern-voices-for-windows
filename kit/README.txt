@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.10.11
+Modern Voices for Windows 0.11.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -43,7 +43,9 @@ change its files (every program that speaks loads the engine from it).
 Afterwards, from the Start menu (Modern Voices for Windows):
   Modern Voices Config
                   the window: Voice manager (installed voices, how they sound, Windows'
-                  default voice), Speed and pauses, Pronunciation, and Add or remove voices
+                  default voice), Speed and pauses, Pronunciation, and Add or remove voices.
+                  A program of its own: Windows asks for permission as it opens (it changes the
+                  voices for every program), and it opens without the internet
   Modern Voices Reader
                   reads text aloud with the voices: pasted or copied text, files, text on the
                   screen (see "The Reader" below)

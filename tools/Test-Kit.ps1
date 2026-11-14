@@ -1,7 +1,7 @@
 <#
 The build's end-to-end test of a packaged kit, on a Windows machine, in Windows PowerShell as users run
-it: the manager window builds and its controls work (speakers, duplicate warning, sliders saving to
-voice.json); install three voices (one a speaker of a multi-speaker voice); each speaks through
+it: Modern Voices Config builds its window and its controls work (speakers, duplicate warning, sliders
+saving to voice.json, Apply changes handing the ticked voices to the installer); install three voices (one a speaker of a multi-speaker voice); each speaks through
 System.Speech (SAPI 5) in 64-bit and, when built, 32-bit PowerShell, reporting words and a bookmark, at
 the loudness its voice.json sets (measured); a settings change takes effect, also in a process already
 speaking; speed works; repair; change the voices (removed ones go); uninstall (nothing left).
@@ -46,6 +46,24 @@ function Invoke-Install([string[]]$Arguments, [int]$Seconds = 1200) {
     Write-Host ("  (exit code {0}, {1:N0} s)" -f $code, ((Get-Date) - $started).TotalSeconds)
     return $code
 }
+# Runs Modern Voices Config's own test (ModernVoicesConfig.exe --selftest FOLDER ...), with a time limit,
+# shows its log, and returns its exit code: the number of failures (-1 when it had to be stopped).
+function Invoke-ConfigTest([string]$Exe, [string[]]$Options = @(), [string]$Dir = '', [int]$Seconds = 300) {
+    if (-not $Dir) { $Dir = Join-Path $env:TEMP ('mv-config-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8)) }
+    $started = Get-Date
+    $log = Join-Path $Dir 'config-selftest.log'
+    Remove-Item $log -ErrorAction SilentlyContinue
+    if (-not (Test-Path $Exe)) { Write-Host "  $Exe is missing" -ForegroundColor Red; return -1 }
+    $run = Start-Process $Exe -ArgumentList (@('--selftest', "`"$Dir`"") + $Options) -PassThru
+    $null = $run.Handle
+    $finished = $run.WaitForExit($Seconds * 1000)
+    if (-not $finished) { try { $run.Kill() } catch { } } else { $run.WaitForExit() }
+    if (Test-Path $log) { Get-Content $log | Out-Host } else { Write-Host '  (it wrote no log)' -ForegroundColor Red }
+    $code = if ($finished) { $run.ExitCode } else { -1 }
+    if (-not $finished) { Write-Host "  STOPPED after $Seconds s: it was waiting for something" -ForegroundColor Red }
+    Write-Host ("  (exit code {0}, {1:N0} s)" -f $code, ((Get-Date) - $started).TotalSeconds)
+    return $code
+}
 # Speaks with every voice (Test.ps1 -Quiet), checks words and bookmark, and returns the results by
 # name; $Peaks maps a voice name to the peak it should reach (else 1, full).
 function Test-Speech([string]$PowerShell, [int]$Bits, [int]$Expected, [hashtable]$Peaks = @{}) {
@@ -76,13 +94,15 @@ $PS32 = "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
 $albaDir = Join-Path $App 'voices\en_GB-alba-medium'
 $albaName = 'Alba (British)'
 
-Step 'Manager window (before installing)'
+Step 'The "where to install" screen, and Modern Voices Config (before installing)'
 $code = Invoke-Install @('-PickerSelfTest') 300
-Check ($code -eq 0) 'the window builds from the real catalogue; speakers and duplicate warning work'
+Check ($code -eq 0) 'the "where to install" screen builds, and makes its own folder in the one chosen'
+$code = Invoke-ConfigTest (Join-Path $Kit 'config\ModernVoicesConfig.exe')
+Check ($code -eq 0) "Modern Voices Config's window builds from the real catalogue; speakers and duplicate warning work"
 
 Step 'Install: Alba, Northern English Male, VCTK speaker p239'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium,en_GB-northern_english_male-medium,en_GB-vctk-medium#p239', '-Unattended', '-NoPause',
-    '-InstallDir', $InstallParent)
+    '-Progress', '-InstallDir', $InstallParent)
 Check ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows').InstallLocation -eq $App) "installed in the chosen folder ($App)"
 $users = (New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-545').Translate([Security.Principal.NTAccount]).Value
 $rules = @((Get-Acl $App).Access)
@@ -99,6 +119,12 @@ $signature = Get-AuthenticodeSignature (Join-Path $App 'engine\x64\modern_voices
 Check ($signature.Status -eq 'Valid') "64-bit engine signature trusted ($($signature.Status))"
 $menu = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Modern Voices for Windows'
 Check ((Test-Path "$menu\Modern Voices Config.lnk") -and (Test-Path "$menu\Modern Voices Repair.lnk") -and (Test-Path "$menu\Modern Voices Test.lnk")) 'Start menu: Modern Voices Config, Modern Voices Repair, Modern Voices Test'
+$configExe = Join-Path $App 'config\ModernVoicesConfig.exe'
+Check ((Test-Path $configExe) -and (Get-AuthenticodeSignature $configExe).Status -eq 'Valid') 'Modern Voices Config is installed, and signed by the build (trusted as the engine is)'
+$configLink = (New-Object -ComObject WScript.Shell).CreateShortcut("$menu\Modern Voices Config.lnk")
+Check ($configLink.TargetPath -eq $configExe -and -not $configLink.Arguments) "Start menu: Modern Voices Config starts the program itself ($($configLink.TargetPath))"
+Check ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows').ModifyPath -eq "`"$configExe`"") "Installed apps' Modify opens Modern Voices Config"
+Check (Test-Path (Join-Path $App 'catalogue.json')) 'the voice list is kept in the program folder (Modern Voices Config opens from it, without the internet)'
 Check (Test-Path (Join-Path $App 'installer\repair.ico')) "Repair's icon (the wrench) is installed"
 $rulesFile = Join-Path $App 'dictionary.txt'
 $rulesText = if (Test-Path $rulesFile) { Get-Content $rulesFile -Raw } else { '' }
@@ -116,9 +142,9 @@ Step 'Speaking through System.Speech (SAPI 5), at the set loudness'
 $normal = Test-Speech $PS64 64 3
 if ($has32) { [void](Test-Speech $PS32 32 3) }
 
-Step 'Manager window (installed voices: sliders save to voice.json)'
-$code = Invoke-Install @('-PickerSelfTest') 300
-Check ($code -eq 0) 'sliders save the settings'
+Step 'Modern Voices Config (installed voices: sliders save to voice.json)'
+$code = Invoke-ConfigTest $configExe
+Check ($code -eq 0) 'Modern Voices Config: sliders, pauses, nickname, pronunciation rules, default voice'
 
 Step 'Settings take effect: volume, speed'
 . (Join-Path $App 'installer\VoiceConvert.ps1')
@@ -239,8 +265,10 @@ Set-GlobalSpeed $settingsFile 100
 [void](Set-Noise $albaDir $albaNoise)
 [void](Set-Noise $maleDir $maleNoise)
 $screens = Join-Path (Split-Path (Resolve-Path $Kit).Path -Parent) 'screens'
-$code = Invoke-Install @('-PickerSelfTest', '-ScreenshotDir', $screens) 300
-Check ($code -eq 0) 'window: pause sliders save (Speed and pauses tab and a voice of its own), preview voices, pictures'
+$code = Invoke-ConfigTest $configExe @('--pictures', '--apply') $screens 1800
+Check ($code -eq 0) 'Modern Voices Config again, with pictures; Apply changes adds a voice and removes it (the installer run from the window)'
+Check ((Get-OurTokens $Tokens64).Count -eq 3) "after that, the 3 voices are as they were ($((Get-OurTokens $Tokens64) -join ', '))"
+Check (@(Get-ChildItem $screens -Filter '*.png' -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^(open|dark|small)-[1-4]\.png$' }).Count -eq 12) 'pictures of its four tabs: as it opens, dark, and made small'
 
 Step 'The Reader'
 $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
@@ -355,6 +383,12 @@ $code = Invoke-Install @('-Voices', 'en_GB-alba-medium', '-Unattended', '-NoPaus
 Check ($code -eq 0) 'change finished without errors'
 Check ((Get-OurTokens $Tokens64).Count -eq 1) 'one voice left'
 Check (-not (Test-Path (Join-Path $App 'voices\en_GB-vctk-medium'))) 'removed voice''s files gone'
+
+Step 'Remove every voice (Modern Voices Config with nothing ticked: -ExactVoices and no voices)'
+$code = Invoke-Install @('-ExactVoices', '-Unattended', '-NoPause')
+Check ($code -eq 0) 'finished without errors'
+Check ((Get-OurTokens $Tokens64).Count -eq 0 -and (Get-OurTokens $Tokens32).Count -eq 0) 'no voices left'
+Check ((Test-Path $configExe) -and -not (Test-Path (Join-Path $App 'voices\en_GB-alba-medium'))) "the last voice's files are gone; the program stays"
 
 Step 'Uninstall'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Uninstall.ps1') -NoPause

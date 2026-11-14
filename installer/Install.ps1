@@ -4,12 +4,16 @@ Modern Voices for Windows - install, choose voices, repair.
 Adds modern, offline voices (Piper, English) to Windows' speech API (SAPI 5), for programs that use
 Windows' installed voices but cannot use Narrator's natural voices. 64-bit and 32-bit programs both.
 
-  Install.ps1                       install, or change which voices are installed (a list to tick)
+  Install.ps1                       install or update, then open Modern Voices Config (the settings window,
+                                    a program of its own: config\ModernVoicesConfig.exe)
   Install.ps1 -Repair               register everything again as it is installed (and apply loudness
                                     changes made in a voice's voice.json)
   Install.ps1 -Voices a,b -Unattended
-                                    no list, no questions: exactly these voices (catalogue keys, such as
+                                    no window, no questions: exactly these voices (catalogue keys, such as
                                     en_GB-alba-medium; a speaker of a multi-speaker voice as key#speaker)
+  Install.ps1 -ExactVoices -Voices a,b -Unattended -NoPause -Progress
+                                    what Modern Voices Config's Apply changes runs: the voices ticked there
+                                    (none given: none installed), with each download's progress printed
 
 Everything goes in C:\Program Files\Modern Voices for Windows (engine, voices, these scripts), with
 an entry in Installed apps and a Start menu folder.
@@ -22,37 +26,11 @@ param(
     [switch]$NoPause,
     [switch]$UsEnglishTags,
     [string]$InstallDir,      # where to install (a folder named Modern Voices for Windows is made in it); else asked
-    [switch]$PickerSelfTest,  # builds the voice list window without showing it (for the build's tests)
-    [string]$ScreenshotDir,   # with -PickerSelfTest: pictures of the window's tabs are saved here
-    [switch]$FunctionsOnly,   # defines the functions and stops (for tests)
-    [long]$StartedAt          # (given to the administrator's window: when the first window started, for the timings)
+    [switch]$ExactVoices,     # exactly -Voices, also when that is none (else: none given means the ones installed)
+    [switch]$Progress,        # prints "##progress N" (percent) lines while a file downloads
+    [switch]$PickerSelfTest,  # builds the "where to install" screen without showing it (for the build's tests)
+    [switch]$FunctionsOnly    # defines the functions and stops (for tests)
 )
-
-# How long opening takes, step by step: written to %LOCALAPPDATA%\ModernVoices\config-startup.txt when the
-# window appears (and shown in the console).
-$script:StartupTimes = New-Object System.Collections.Generic.List[string]
-$script:StartupFirst = [System.Diagnostics.Process]::GetCurrentProcess().StartTime
-$script:StartupLast = $script:StartupFirst
-function Add-StartupTime([string]$Step) {
-    $now = Get-Date
-    $script:StartupTimes.Add(('{0,6:0.00}s  {1,6:0.00}s total   {2}' -f ($now - $script:StartupLast).TotalSeconds, ($now - $script:StartupFirst).TotalSeconds, $Step))
-    $script:StartupLast = $now
-}
-function Save-StartupTimes {
-    try {
-        $dir = Join-Path $env:LOCALAPPDATA 'ModernVoices'
-        New-Item $dir -ItemType Directory -Force | Out-Null
-        $text = "Modern Voices Config $Version, opened $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`r`n" +
-            "  step    since start`r`n" + (($script:StartupTimes | ForEach-Object { $_ }) -join "`r`n") + "`r`n"
-        [System.IO.File]::WriteAllText((Join-Path $dir 'config-startup.txt'), $text)
-    } catch { }
-}
-if ($StartedAt -gt 0) {
-    $script:StartupFirst = New-Object DateTime $StartedAt
-    $script:StartupLast = [System.Diagnostics.Process]::GetCurrentProcess().StartTime
-    $script:StartupTimes.Add(('{0,6:0.00}s  {1,6:0.00}s total   {2}' -f ($script:StartupLast - $script:StartupFirst).TotalSeconds, ($script:StartupLast - $script:StartupFirst).TotalSeconds, 'first window to the administrator window (includes the Windows permission prompt)'))
-}
-Add-StartupTime 'PowerShell started'
 
 # (Said at once: Windows can take a while over what follows. Install.cmd says it itself, before PowerShell starts.)
 if (-not $FunctionsOnly -and -not $env:MV_LOADING_SAID) { Write-Host 'Loading program...' }
@@ -76,16 +54,18 @@ if (-not $isAdmin -and -not $PickerSelfTest -and -not $FunctionsOnly) {
     if ($NoPause) { $forward += '-NoPause' }
     if ($UsEnglishTags) { $forward += '-UsEnglishTags' }
     if ($InstallDir) { $forward += '-InstallDir'; $forward += "`"$InstallDir`"" }
-    $forward += '-StartedAt'; $forward += [string]$script:StartupFirst.Ticks
+    if ($ExactVoices) { $forward += '-ExactVoices' }
+    if ($Progress) { $forward += '-Progress' }
     $env:MV_LOADING_SAID = $null      # (the administrator's window says it for itself)
     Start-Process powershell.exe -Verb RunAs -ArgumentList $forward
     exit
 }
 if (-not [Environment]::Is64BitProcess -and -not $FunctionsOnly) { throw 'Run this from 64-bit PowerShell (use Install.cmd).' }
 
-# Where the Config window opens, and its size: centred on the main screen, 900 x 1000 at 100% scaling (scaled
-# up with the display), never larger than the screen. The console is put there first, at that size, so the
-# window seems to take its place when it opens.
+# Where the Modern Voices Config window opens, and its size: centred on the main screen, 900 x 1000 at 100%
+# scaling (scaled up with the display), never larger than the screen (ConfigForm.WindowBounds in
+# config\Config.cs: keep the two in step). When installing or updating, this console is put there first, at
+# that size, so the window seems to take its place when it opens.
 function Get-UiWindowBounds {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
@@ -98,7 +78,7 @@ function Get-UiWindowBounds {
     return New-Object System.Drawing.Rectangle(($area.X + [int](($area.Width - $w) / 2)), ($area.Y + [int](($area.Height - $h) / 2)), $w, $h)
 }
 
-# This PowerShell's console window: hidden, shown or moved.
+# This PowerShell's console window, moved; and the program's own identity on the taskbar.
 function Use-ConsoleApi {
     if (-not ('ModernVoices.Console' -as [type])) {
         Add-Type -Namespace ModernVoices -Name Console -MemberDefinition @'
@@ -106,8 +86,6 @@ function Use-ConsoleApi {
 [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr window, int show);
 [DllImport("user32.dll")] public static extern bool MoveWindow(System.IntPtr window, int x, int y, int width, int height, bool repaint);
 [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern int SetCurrentProcessExplicitAppUserModelID(string id);
-[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(System.IntPtr window, int attribute, ref int value, int size);
-[DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] public static extern int SetWindowTheme(System.IntPtr window, string app, string ids);
 '@
     }
 }
@@ -119,18 +97,19 @@ function Move-ConsoleToUiWindow {
         if ($window -ne [System.IntPtr]::Zero) { [void][ModernVoices.Console]::MoveWindow($window, $b.X, $b.Y, $b.Width, $b.Height, $true) }
     } catch { }
 }
-# Config's own identity on the taskbar: else Windows counts its window as PowerShell's and shows PowerShell's
-# logo there; with its own, the taskbar shows the window's icon (the cog in a speech bubble). Before any window.
+# The installer's own identity on the taskbar: else Windows counts its "where to install" window as
+# PowerShell's and shows PowerShell's logo there; with its own, the taskbar shows the window's icon (the cog
+# in a speech bubble). Before any window.
 function Set-UiTaskbarIdentity {
     try { Use-ConsoleApi; [void][ModernVoices.Console]::SetCurrentProcessExplicitAppUserModelID('ModernVoicesForWindows.Config') } catch { }
 }
-if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices -or $Unattended)) { Set-UiTaskbarIdentity; Move-ConsoleToUiWindow; Add-StartupTime 'console moved (loads Windows Forms)' }
+if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices -or $Unattended -or $ExactVoices)) { Set-UiTaskbarIdentity; Move-ConsoleToUiWindow }
 # -File passes "a,b" as one string: split it.
 $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.10.11'
+$Version = '0.11.0'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -211,35 +190,30 @@ function Read-Json([string]$Text) {
     return $serializer.DeserializeObject($Text)
 }
 
-# A line of progress: to the console, and to the window's status line while it is applying changes.
+# A line of progress. (Modern Voices Config, applying changes, shows these lines in its window.)
 function Write-Status([string]$Text, [string]$Color = 'Gray') {
     Write-Host $Text -ForegroundColor $Color
-    if ($script:Ui -and $script:Ui.Busy) {
-        $script:Ui.Status.Text = $Text.Trim()
-        [System.Windows.Forms.Application]::DoEvents()
-    }
 }
 
-# Downloads to $Path (through a .part file). While the window is applying changes, in the background
-# with its progress shown ($Bytes: the size to expect, when known), so the window keeps responding.
+# Downloads to $Path (through a .part file). With -Progress, how far it has got is printed as it goes
+# ("##progress 42": percent of $Bytes, the size to expect, when known), for Modern Voices Config's bar.
 function Get-Download([string]$Url, [string]$Path, [double]$Bytes = 0) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $part = "$Path.part"
     $client = New-Object Net.WebClient
     $client.Headers.Add('User-Agent', "ModernVoicesForWindows/$Version")
     try {
-        if ($script:Ui -and $script:Ui.Busy) {
+        if ($Progress -and $Bytes -gt 0) {
+            $said = -1
             $client.DownloadFileAsync([uri]$Url, $part)
             while ($client.IsBusy) {
-                [System.Windows.Forms.Application]::DoEvents()
-                Start-Sleep -Milliseconds 50
-                if ($Bytes -gt 0 -and (Test-Path $part)) {
-                    $done = (Get-Item $part).Length
-                    $script:Ui.Progress.Value = [int][math]::Min(100, 100 * $done / $Bytes)
-                }
+                Start-Sleep -Milliseconds 200
+                $done = if (Test-Path $part) { (Get-Item $part).Length } else { 0 }
+                $percent = [int][math]::Floor([math]::Min(100, 100 * $done / $Bytes))
+                if ($percent -ne $said) { $said = $percent; Write-Host "##progress $percent" }
             }
             $got = if (Test-Path $part) { (Get-Item $part).Length } else { 0 }
-            if ($got -eq 0 -or ($Bytes -gt 0 -and $got -ne $Bytes)) { throw "The download of $Url stopped part way (check the internet connection)." }
+            if ($got -ne $Bytes) { throw "The download of $Url stopped part way (check the internet connection)." }
         } else {
             $client.DownloadFile($Url, $part)
         }
@@ -268,7 +242,6 @@ function Get-Catalogue {
     New-Item (Split-Path $cache -Parent) -ItemType Directory -Force | Out-Null
     try {
         Get-Download "$Base/voices.json" $cache
-        Add-StartupTime 'voice list downloaded from Hugging Face'
     } catch {
         if (-not (Test-Path $cache)) { throw "Could not download the voice list from Hugging Face: $($_.Exception.Message)" }
         Write-Host "  (could not refresh the voice list; using the one from last time)" -ForegroundColor Yellow
@@ -341,6 +314,16 @@ function Get-InstalledIds {
 function Set-UiIcon($Form) {
     $icon = Join-Path $Here 'manager.ico'
     if (Test-Path $icon) { try { $Form.Icon = New-Object System.Drawing.Icon $icon } catch { } }
+}
+
+function New-Control([string]$Type, $Parent, [int]$X, [int]$Y, [int]$Width, [int]$Height, [string]$Text, [string]$Anchor) {
+    $c = New-Object "System.Windows.Forms.$Type"
+    $c.Location = New-Object System.Drawing.Point($X, $Y)
+    $c.Size = New-Object System.Drawing.Size($Width, $Height)
+    if ($Text) { $c.Text = $Text }
+    if ($Anchor) { $c.Anchor = $Anchor }
+    $Parent.Controls.Add($c)
+    return $c
 }
 
 function New-LocationForm([string]$Default) {
@@ -436,20 +419,11 @@ function Protect-AppFolder {
     if ($LASTEXITCODE) { throw "Could not set who may change $App (icacls: $LASTEXITCODE)." }
 }
 
-# --- the manager window ------------------------------------------------------------------------------
-# Two tabs: Voice manager (the installed voices: how each sounds, sliders saved to its voice.json as
-# they move, which the engine reads while speaking; Preview; Windows' default voice) and Add or remove
-# voices (the catalogue to tick, with samples, sizes and a warning about duplicate qualities; changes
-# applied in the window, with progress). The window's controls and state live in $script:Ui: its event
-# handlers run later (while it is shown), in the script's scope.
-
-# Three lines, so that Preview also has paragraph gaps in it.
-$PreviewText = ("Speaking a preview of the selected voice, to hear how natural it sounds.`r`n" +
-    "Change the dictation speed, and 'Comma pause' values, to adjust the sound to your liking.`r`n" +
-    "Change the 'Paragraph gap', to adjust the wait before a new paragraph.")
+# --- names --------------------------------------------------------------------------------------------
 
 # A nickname of your own for a voice, shown in brackets in its name in place of its accent ("VCTK p262
-# (Irish Female)"): kept by voice id under the program's settings key.
+# (Irish Female)"): kept by voice id under the program's settings key. (Set in Modern Voices Config or the
+# Reader; registering a voice keeps it.)
 $Nicknames = "$Settings\Nicknames"
 function Get-Nickname([string]$Id) {
     if (-not (Test-Path $Nicknames)) { return '' }
@@ -469,1398 +443,6 @@ function Format-DisplayName($Entry, [string]$SpeakerName, [string]$Nick) {
 function Get-DisplayName($Entry, [string]$SpeakerName) {
     $id = if ($SpeakerName) { "$($Entry.Key)#$SpeakerName" } else { $Entry.Key }
     return (Format-DisplayName $Entry $SpeakerName (Get-Nickname $id))
-}
-
-# Sets (or, empty, removes) a voice's nickname and renames it where Windows lists it, for 64- and 32-bit
-# programs. Returns its name now.
-function Set-VoiceNickname($Entry, [string]$SpeakerName, [string]$Nick) {
-    $id = if ($SpeakerName) { "$($Entry.Key)#$SpeakerName" } else { $Entry.Key }
-    if (-not (Test-Path $Nicknames)) { New-Item $Nicknames -Force | Out-Null }
-    if ($Nick) { Set-ItemProperty $Nicknames -Name $id -Value $Nick }
-    else { Remove-ItemProperty $Nicknames -Name $id -ErrorAction SilentlyContinue }
-    $display = Get-DisplayName $Entry $SpeakerName
-    foreach ($root in $Tokens64, $Tokens32) {
-        $token = Join-Path $root (Get-TokenName $id)
-        if (Test-Path $token) {
-            Set-ItemProperty $token -Name '(default)' -Value $display
-            Set-ItemProperty "$token\Attributes" -Name 'Name' -Value $display
-        }
-    }
-    return $display
-}
-
-function Get-FolderMb([string]$Path) {
-    if (-not (Test-Path $Path)) { return 0 }
-    return [math]::Round(((Get-ChildItem $Path -Recurse -File | Measure-Object Length -Sum).Sum) / 1MB)
-}
-
-function New-Control([string]$Type, $Parent, [int]$X, [int]$Y, [int]$Width, [int]$Height, [string]$Text, [string]$Anchor) {
-    $c = New-Object "System.Windows.Forms.$Type"
-    $c.Location = New-Object System.Drawing.Point($X, $Y)
-    $c.Size = New-Object System.Drawing.Size($Width, $Height)
-    if ($Text) { $c.Text = $Text }
-    if ($Anchor) { $c.Anchor = $Anchor }
-    $Parent.Controls.Add($c)
-    return $c
-}
-
-# SAPI's default voice (what sapi.cpl sets): a token id under the current user. The same id serves 64-
-# and 32-bit programs (each reads it in its own view of the registry, where this program registers the
-# voice under the same name).
-$DefaultVoiceKey = 'HKCU:\Software\Microsoft\Speech\Voices'
-function Get-DefaultVoiceToken {
-    if (-not (Test-Path $DefaultVoiceKey)) { return '' }
-    $id = (Get-ItemProperty $DefaultVoiceKey -ErrorAction SilentlyContinue).DefaultTokenId
-    if (-not $id) { return '' }
-    return ($id -split '\\')[-1]
-}
-function Set-DefaultVoiceToken([string]$TokenName) {
-    New-Item $DefaultVoiceKey -Force -ErrorAction SilentlyContinue | Out-Null
-    Set-ItemProperty $DefaultVoiceKey -Name 'DefaultTokenId' -Value "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\$TokenName"
-}
-
-# ---- the window's building blocks. Rows are laid out by what is in them (grids that size themselves),
-# so text and sliders can't overlap whatever the display's text size.
-function Get-Px([double]$N) { return [int][math]::Round($N * $script:UiScale) }
-
-# Text that wraps to the width it is given.
-function New-UiLabel([string]$Text, [switch]$Grey, [switch]$Bold) {
-    $l = New-Object System.Windows.Forms.Label
-    $l.AutoSize = $true; $l.Dock = 'Fill'; $l.Text = $Text
-    $l.Margin = New-Object System.Windows.Forms.Padding(3, (Get-Px 3), 3, (Get-Px 3))
-    if ($Grey) { $l.ForeColor = [System.Drawing.Color]::DimGray; $l.Tag = 'muted' }
-    if ($Bold) { $l.Font = $script:UiBold }
-    return $l
-}
-
-function New-UiButton([string]$Text) {
-    $b = New-Object System.Windows.Forms.Button
-    $b.Text = $Text; $b.AutoSize = $true; $b.AutoSizeMode = 'GrowAndShrink'
-    $b.Padding = New-Object System.Windows.Forms.Padding((Get-Px 8), (Get-Px 2), (Get-Px 8), (Get-Px 2))
-    $b.Anchor = 'Left'
-    return $b
-}
-
-# A tab's rows, each the tab's width, top to bottom; the tab scrolls when they don't fit.
-function New-UiPage($Tab) {
-    $g = New-Object System.Windows.Forms.TableLayoutPanel
-    $g.ColumnCount = 1
-    [void]$g.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
-    $g.AutoSize = $true; $g.AutoSizeMode = 'GrowAndShrink'; $g.Dock = 'Top'
-    $g.Padding = New-Object System.Windows.Forms.Padding (Get-Px 6)
-    $Tab.Controls.Add($g)
-    return $g
-}
-
-# The next row of a page: as tall as the control needs, or (-Fill) taking the room left over.
-function Add-UiRow($Grid, $Control, [switch]$Fill) {
-    $Grid.RowCount++
-    $style = if ($Fill) { New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent, 100) }
-             else { New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize) }
-    [void]$Grid.RowStyles.Add($style)
-    $Grid.Controls.Add($Control, 0, ($Grid.RowCount - 1))
-}
-
-# One row of controls side by side: each column fits its control ('auto') or stretches ('fill').
-function New-UiLine([string[]]$Columns) {
-    $g = New-Object System.Windows.Forms.TableLayoutPanel
-    $g.ColumnCount = $Columns.Count; $g.RowCount = 1
-    foreach ($kind in $Columns) {
-        $style = if ($kind -eq 'fill') { New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100) }
-                 else { New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::AutoSize) }
-        [void]$g.ColumnStyles.Add($style)
-    }
-    [void]$g.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
-    $g.AutoSize = $true; $g.AutoSizeMode = 'GrowAndShrink'; $g.Dock = 'Fill'
-    $g.Margin = New-Object System.Windows.Forms.Padding 0
-    return $g
-}
-
-# Controls one after another, onto the next line when they don't fit.
-function New-UiFlow {
-    $f = New-Object System.Windows.Forms.FlowLayoutPanel
-    $f.AutoSize = $true; $f.AutoSizeMode = 'GrowAndShrink'; $f.Dock = 'Fill'; $f.WrapContents = $true
-    $f.Margin = New-Object System.Windows.Forms.Padding 0
-    return $f
-}
-
-# Sliders: name | slider | value, a row each (and notes under a slider, in its column).
-function New-UiSliderGrid { return (New-UiLine @('auto', 'fill', 'auto')) }
-function Add-UiGridRow($Grid) {
-    if ($Grid.Controls.Count -gt 0) { $Grid.RowCount++; [void]$Grid.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize))) }
-    return ($Grid.RowCount - 1)
-}
-# What the sliders are called in the window (their names in the code stay as they are).
-$script:SliderNames = @{ 'Speed' = 'Dictation speed'; 'Sentence gap' = 'Sentence pause'; 'Comma gap' = 'Comma pause'; 'Paragraph gap' = 'Paragraph gap' }
-# Scrolls the tab a control is on, as the mouse wheel would.
-function Send-UiWheelToPage($Control, [int]$Delta) {
-    $tab = $Control.Parent
-    while ($tab -and -not ($tab.Tag -is [string] -and $tab.Tag -eq 'page')) { $tab = $tab.Parent }
-    if (-not $tab -or -not $tab.VerticalScroll.Visible) { return }
-    $lines = [System.Windows.Forms.SystemInformation]::MouseWheelScrollLines
-    if ($lines -le 0) { $lines = 3 }
-    $step = [int]($Delta / 120 * $lines * $tab.Font.Height)
-    $y = [math]::Max(0, [math]::Min($tab.VerticalScroll.Maximum, -$tab.AutoScrollPosition.Y - $step))
-    $tab.AutoScrollPosition = New-Object System.Drawing.Point(0, $y)
-}
-
-function Add-UiSlider($Grid, [string]$Name, [int]$Min, [int]$Max, [int]$Small, [int]$Large, [int]$Tick) {
-    $row = Add-UiGridRow $Grid
-    $label = New-UiLabel $(if ($script:SliderNames.ContainsKey($Name)) { $script:SliderNames[$Name] } else { $Name })
-    $label.Dock = 'None'; $label.Anchor = 'Left'
-    $bar = New-Object System.Windows.Forms.TrackBar
-    $bar.Maximum = $Max; $bar.Minimum = $Min; $bar.SmallChange = $Small; $bar.LargeChange = $Large; $bar.TickFrequency = $Tick
-    $bar.Dock = 'Fill'
-    $bar.Margin = New-Object System.Windows.Forms.Padding 0
-    # The mouse wheel over a slider scrolls the tab, not the slider (it moves by dragging, clicking or the arrow keys).
-    $bar.add_MouseWheel({ param($sender, $e) if ($e -is [System.Windows.Forms.HandledMouseEventArgs]) { $e.Handled = $true }; Send-UiWheelToPage $sender $e.Delta })
-    $value = New-UiLabel ''
-    $value.Dock = 'None'; $value.Anchor = 'Left'
-    $value.MinimumSize = New-Object System.Drawing.Size((Get-Px 150), 0)
-    $Grid.Controls.Add($label, 0, $row); $Grid.Controls.Add($bar, 1, $row); $Grid.Controls.Add($value, 2, $row)
-    return @{ Bar = $bar; Value = $value }
-}
-function Add-UiNote($Grid, $Label) {
-    $row = Add-UiGridRow $Grid
-    $Grid.Controls.Add($Label, 1, $row)
-}
-
-# ---- light and dark: as last chosen with the moon button (kept for the Windows user and shared with the
-# Reader); dark until light is chosen.
-$ThemeKey = 'HKCU:\Software\Modern Voices for Windows'
-function Get-ThemeChoice {
-    $found = Get-ItemProperty $ThemeKey -Name Theme -ErrorAction SilentlyContinue
-    if ($found -and @('light', 'dark') -contains $found.Theme) { return [string]$found.Theme }
-    return 'auto'
-}
-function Set-ThemeChoice([string]$Choice) {
-    if (-not (Test-Path $ThemeKey)) { New-Item $ThemeKey -Force | Out-Null }
-    Set-ItemProperty $ThemeKey -Name Theme -Value $Choice
-}
-function Test-DarkTheme {
-    $choice = if ($script:UiThemeOverride) { $script:UiThemeOverride } else { Get-ThemeChoice }
-    return ($choice -ne 'light')      # dark until light is chosen
-}
-function Get-UiPalette([bool]$Dark) {
-    $rgb = { param($r, $g, $b) [System.Drawing.Color]::FromArgb($r, $g, $b) }
-    if ($Dark) {
-        return @{ Dark = $true; Back = (& $rgb 32 32 32); Raised = (& $rgb 51 51 51); Input = (& $rgb 24 24 24); Text = (& $rgb 240 240 240)
-                  Muted = (& $rgb 160 160 160); Warn = (& $rgb 255 128 128); Border = (& $rgb 90 90 90); Tab = (& $rgb 20 20 20)
-                  Selected = (& $rgb 0 84 153) }
-    }
-    return @{ Dark = $false; Back = [System.Drawing.SystemColors]::Control; Raised = [System.Drawing.SystemColors]::Control
-              Input = [System.Drawing.SystemColors]::Window; Text = [System.Drawing.SystemColors]::ControlText; Muted = [System.Drawing.Color]::DimGray
-              Warn = [System.Drawing.Color]::Firebrick; Border = [System.Drawing.SystemColors]::ControlDark; Tab = [System.Drawing.SystemColors]::ControlLight
-              Selected = [System.Drawing.SystemColors]::Highlight }
-}
-
-# Dark or light scroll bars (and list lines) for a control. Its window is not made for this: one not made yet
-# gets them when Windows makes it (asking for it here would make every one at once, slowly, before the window shows).
-$script:UiScrollHooked = New-Object System.Collections.Generic.HashSet[object]
-function Set-UiScrollTheme($Control) {
-    if ($Control.IsHandleCreated) {
-        try { [void][ModernVoices.Console]::SetWindowTheme($Control.Handle, $(if ($script:UiPalette.Dark) { 'DarkMode_Explorer' } else { 'Explorer' }), [NullString]::Value) } catch { }
-    } elseif ($script:UiScrollHooked.Add($Control)) {
-        $Control.add_HandleCreated({ param($sender, $e) Set-UiScrollTheme $sender })
-    }
-}
-
-function Set-UiThemeOn($Control, $P) {
-    if ($Control -is [System.Windows.Forms.Button]) {
-        if ($Control.Tag -is [int]) { }   # a tab's button: Show-UiPage colours those
-        elseif ($P.Dark) {
-            $Control.FlatStyle = 'Flat'; $Control.BackColor = $P.Raised; $Control.ForeColor = $P.Text
-            $Control.FlatAppearance.BorderColor = $P.Border
-        } else { $Control.FlatStyle = 'Standard'; $Control.ForeColor = $P.Text; $Control.UseVisualStyleBackColor = $true }
-    }
-    elseif ($Control -is [System.Windows.Forms.TextBox] -or $Control -is [System.Windows.Forms.ListView] -or $Control -is [System.Windows.Forms.ListBox]) {
-        $Control.BackColor = $P.Input; $Control.ForeColor = $P.Text
-        if ($Control -is [System.Windows.Forms.ListView]) { $Control.OwnerDraw = $P.Dark }
-        Set-UiScrollTheme $Control
-    }
-    elseif ($Control -is [System.Windows.Forms.ComboBox]) {
-        $Control.FlatStyle = $(if ($P.Dark) { 'Flat' } else { 'Standard' }); $Control.BackColor = $P.Input; $Control.ForeColor = $P.Text
-    }
-    elseif ($Control -is [System.Windows.Forms.Label]) {
-        $Control.ForeColor = $(if ($Control.Tag -is [string] -and $Control.Tag -eq 'muted') { $P.Muted } elseif ($Control.Tag -is [string] -and $Control.Tag -eq 'warn') { $P.Warn } else { $P.Text })
-    }
-    elseif ($Control -is [System.Windows.Forms.CheckBox]) { $Control.ForeColor = $P.Text }
-    elseif ($Control -is [System.Windows.Forms.TrackBar]) { $Control.BackColor = $P.Back }
-    elseif ($Control -is [System.Windows.Forms.ProgressBar]) { }
-    else {
-        $Control.BackColor = $P.Back; $Control.ForeColor = $P.Text
-        if ($Control.Tag -is [string] -and $Control.Tag -eq 'page') {   # a page's own scroll bar
-            Set-UiScrollTheme $Control
-        }
-    }
-    foreach ($child in $Control.Controls) { Set-UiThemeOn $child $P }
-}
-
-# Makes the window light or dark as chosen (nothing to do when it already is).
-function Set-UiTheme {
-    if (-not $script:Ui) { return }
-    $dark = Test-DarkTheme
-    if ($null -ne $script:UiDark -and $script:UiDark -eq $dark) { return }
-    $script:UiDark = $dark
-    $p = Get-UiPalette $dark
-    $script:UiPalette = $p
-    Add-StartupTime '    theme: palette'
-    Use-ConsoleApi      # (the one helper type: compiled once, usually already when the console was moved)
-    Add-StartupTime '    theme: helper type ready'
-    $form = $script:Ui.Form
-    $form.SuspendLayout()
-    $form.BackColor = $p.Back; $form.ForeColor = $p.Text
-    try {
-        # The title bar (Windows 10 version 2004 and later: 20; before that: 19).
-        $on = [int]$dark
-        if ([ModernVoices.Console]::DwmSetWindowAttribute($form.Handle, 20, [ref]$on, 4) -ne 0) { [void][ModernVoices.Console]::DwmSetWindowAttribute($form.Handle, 19, [ref]$on, 4) }
-    } catch { }
-    Add-StartupTime '    theme: title bar'
-    foreach ($child in $form.Controls) { Set-UiThemeOn $child $p }
-    Add-StartupTime '    theme: every control coloured'
-    if ($script:Ui.ThemeButton.Text.Length -gt 1) { $script:Ui.ThemeButton.Text = $(if ($dark) { 'Light' } else { 'Dark' }) }
-    Show-UiPage $script:Ui.PageIndex
-    Add-StartupTime '    theme: page shown'
-    $form.ResumeLayout()
-    Add-StartupTime '    theme: layout'
-    $form.Refresh()
-    Add-StartupTime '    theme: drawn'
-}
-
-# Shows one of the tabs' pages; its button stands out.
-function Show-UiPage([int]$Index) {
-    $ui = $script:Ui
-    $p = $script:UiPalette
-    $ui.PageIndex = $Index
-    for ($i = 0; $i -lt $ui.Pages.Count; $i++) {
-        $ui.Pages[$i].Visible = ($i -eq $Index)
-        $b = $ui.TabButtons[$i]
-        $b.Font = $(if ($i -eq $Index) { $script:UiBold } else { $ui.Form.Font })
-        if ($p) {
-            $b.BackColor = $(if ($i -eq $Index) { $p.Input } else { $p.Tab })
-            $b.ForeColor = $(if ($i -eq $Index) { $p.Text } else { $p.Muted })
-        }
-    }
-}
-
-# A list's column headings are drawn by the program when dark (Windows draws them light only).
-function Enable-UiDarkHeader($View) {
-    $View.add_DrawColumnHeader({
-        param($sender, $e)
-        $p = $script:UiPalette
-        $fill = New-Object System.Drawing.SolidBrush $p.Raised
-        $e.Graphics.FillRectangle($fill, $e.Bounds)
-        $fill.Dispose()
-        $line = New-Object System.Drawing.Pen $p.Border
-        $e.Graphics.DrawLine($line, $e.Bounds.Right - 1, $e.Bounds.Top + 3, $e.Bounds.Right - 1, $e.Bounds.Bottom - 4)
-        $line.Dispose()
-        $flags = [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis
-        if ($e.Header.TextAlign -eq 'Center') { $flags = $flags -bor [System.Windows.Forms.TextFormatFlags]::HorizontalCenter }
-        $inside = New-Object System.Drawing.Rectangle(($e.Bounds.X + 4), $e.Bounds.Y, ($e.Bounds.Width - 8), $e.Bounds.Height)
-        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $e.Header.Text, $sender.Font, $inside, $p.Text, $flags)
-    })
-    # ...and so are its rows (Windows would draw the selected one unreadably on a dark list).
-    $View.add_DrawItem({ param($sender, $e) })
-    $View.add_DrawSubItem({
-        param($sender, $e)
-        $p = $script:UiPalette
-        $column = $sender.Columns[$e.ColumnIndex]
-        $cell = New-Object System.Drawing.Rectangle($e.Bounds.X, $e.Bounds.Y, $column.Width, $e.Bounds.Height)
-        $fill = New-Object System.Drawing.SolidBrush $(if ($e.Item.Selected) { $p.Selected } else { $p.Input })
-        $e.Graphics.FillRectangle($fill, $cell)
-        $fill.Dispose()
-        $left = $cell.X + 4
-        if ($e.ColumnIndex -eq 0 -and $sender.CheckBoxes) {
-            $state = if ($e.Item.Checked) { [System.Windows.Forms.VisualStyles.CheckBoxState]::CheckedNormal } else { [System.Windows.Forms.VisualStyles.CheckBoxState]::UncheckedNormal }
-            $size = [System.Windows.Forms.CheckBoxRenderer]::GetGlyphSize($e.Graphics, $state)
-            $at = New-Object System.Drawing.Point($left, ($cell.Y + [int](($cell.Height - $size.Height) / 2)))
-            [System.Windows.Forms.CheckBoxRenderer]::DrawCheckBox($e.Graphics, $at, $state)
-            $left += $size.Width + 4
-        }
-        $flags = [System.Windows.Forms.TextFormatFlags]::VerticalCenter -bor [System.Windows.Forms.TextFormatFlags]::EndEllipsis -bor [System.Windows.Forms.TextFormatFlags]::NoPrefix
-        if ($column.TextAlign -eq 'Center') { $flags = $flags -bor [System.Windows.Forms.TextFormatFlags]::HorizontalCenter }
-        $inside = New-Object System.Drawing.Rectangle($left, $cell.Y, [math]::Max(0, $cell.Right - $left - 4), $cell.Height)
-        [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, $e.SubItem.Text, $e.Item.Font, $inside, $p.Text, $flags)
-    })
-}
-
-# The names Windows has for this program's voices (what Preview asks for).
-function Get-OurVoiceNames {
-    $tokens = 'HKLM:\SOFTWARE\Microsoft\Speech\Voices\Tokens'
-    return @(Get-ChildItem $tokens | Where-Object { $_.PSChildName -like 'ModernVoices_*' } | ForEach-Object { (Get-ItemProperty $_.PSPath).'(default)' })
-}
-
-# Pictures of the window's tabs (the build's test looks at them): as it opens, and made small.
-function Save-UiPictures([string]$Dir) {
-    $ui = $script:Ui
-    New-Item $Dir -ItemType Directory -Force | Out-Null
-    $ui.Form.Show()
-    foreach ($shape in @(@('open', 0, 0, 'light'), @('dark', 0, 0, 'dark'), @('small', 640, 440, 'light'))) {
-        if ($shape[1]) { $ui.Form.Size = New-Object System.Drawing.Size($shape[1], $shape[2]) }
-        $script:UiThemeOverride = $shape[3]
-        Set-UiTheme
-        for ($i = 0; $i -lt $ui.Pages.Count; $i++) {
-            Show-UiPage $i
-            [System.Windows.Forms.Application]::DoEvents()
-            Start-Sleep -Milliseconds 150
-            [System.Windows.Forms.Application]::DoEvents()
-            $picture = New-Object System.Drawing.Bitmap($ui.Form.Width, $ui.Form.Height)
-            $ui.Form.DrawToBitmap($picture, (New-Object System.Drawing.Rectangle(0, 0, $ui.Form.Width, $ui.Form.Height)))
-            $picture.Save((Join-Path $Dir ("{0}-{1}.png" -f $shape[0], ($i + 1))), [System.Drawing.Imaging.ImageFormat]::Png)
-            $picture.Dispose()
-        }
-    }
-    $script:UiThemeOverride = $null
-    Set-UiTheme
-    Show-UiPage 0
-    $ui.Form.Hide()
-    Write-Output "pictures of the window: $Dir"
-}
-
-# The Add or remove tab's rows: the tab's size, but no shorter than they need (the tab then scrolls).
-function Update-UiAddLayout {
-    if (-not $script:Ui -or -not $script:Ui.AddGrid) { return }
-    $tab = $script:Ui.AddTab
-    $wide = $tab.ClientSize.Width
-    $high = [math]::Max($tab.ClientSize.Height, (Get-Px 520))
-    $grid = $script:Ui.AddGrid
-    if ($grid.Width -ne $wide -or $grid.Height -ne $high) { $grid.Size = New-Object System.Drawing.Size($wide, $high) }
-}
-
-function New-ManagerForm($Catalogue, [string[]]$Installed, [bool]$UsTags, $ByKey) {
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    [System.Windows.Forms.Application]::EnableVisualStyles()
-
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Modern Voices Config $Version"
-    Set-UiIcon $form
-    $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-    # Sizes here are for a display at 100%; one scaled up (125%, 150%, ...) gets them scaled with its
-    # text. Rows are laid out by what is in them, so nothing overlaps at any text size; the window never
-    # opens larger than the screen, and a tab that doesn't fit scrolls.
-    $screenGraphics = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
-    $script:UiScale = [math]::Max(1.0, $screenGraphics.DpiX / 96.0)
-    $screenGraphics.Dispose()
-    $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-    $form.MinimumSize = New-Object System.Drawing.Size([math]::Min((Get-Px 600), $area.Width), [math]::Min((Get-Px 400), $area.Height))
-    $form.StartPosition = 'Manual'
-    $form.Bounds = Get-UiWindowBounds      # (exactly where the console was put)
-    $form.Padding = New-Object System.Windows.Forms.Padding (Get-Px 8)
-    # In front of the console it was started from (else it can open behind it, unseen).
-    $form.TopMost = $true
-    $form.add_Shown({ $script:Ui.Form.Activate(); $script:Ui.Form.TopMost = $false })
-    $bold = New-Object System.Drawing.Font($form.Font, [System.Drawing.FontStyle]::Bold)
-    $script:UiBold = $bold
-    $red = [System.Drawing.Color]::Firebrick
-
-    Add-StartupTime '  window: form and fonts'
-    # The tabs: a button each and a page each (drawn by the program, so that they can be dark too).
-    $pageHost = New-Object System.Windows.Forms.Panel
-    $pageHost.Dock = 'Fill'
-    $form.Controls.Add($pageHost)
-    # The strip across the top: the tabs' buttons at the left and, at the far right, the moon.
-    $tabStrip = New-UiLine @('auto', 'fill', 'auto')
-    $tabStrip.Dock = 'Top'
-    $form.Controls.Add($tabStrip)
-    $tabFlow = New-UiFlow
-    $tabFlow.WrapContents = $false
-    $tabStrip.Controls.Add($tabFlow, 0, 0)
-    $pages = @(); $tabButtons = @()
-    foreach ($title in 'Voice manager', 'Speed and pauses', 'Pronunciation', 'Add or remove voices') {
-        $tab = New-Object System.Windows.Forms.Panel
-        $tab.Dock = 'Fill'; $tab.AutoScroll = $true; $tab.Tag = 'page'; $tab.Visible = $false
-        $pageHost.Controls.Add($tab)
-        $pages += $tab
-        $tabButton = New-UiButton $title
-        $tabButton.FlatStyle = 'Flat'; $tabButton.FlatAppearance.BorderSize = 0; $tabButton.TabStop = $false
-        $tabButton.Margin = New-Object System.Windows.Forms.Padding(0, 0, (Get-Px 2), 0)
-        $tabButton.Tag = $pages.Count - 1
-        $tabButton.add_Click({ param($sender, $e) Show-UiPage ([int]$sender.Tag) })
-        $tabFlow.Controls.Add($tabButton)
-        $tabButtons += $tabButton
-    }
-    $tabInstalled = $pages[0]; $tabPauses = $pages[1]; $tabWords = $pages[2]; $tabAdd = $pages[3]
-    # A moon to click (no button around it), in grey at the right of the strip, its right edge over the
-    # right edge of the lists below (the pages' 6 px of padding): dark to light and back (the choice is
-    # shared with the Reader).
-    $themeButton = New-UiLabel 'Dark' -Grey
-    $themeButton.Dock = 'None'; $themeButton.Anchor = 'Right'; $themeButton.Cursor = [System.Windows.Forms.Cursors]::Hand
-    $themeButton.Margin = New-Object System.Windows.Forms.Padding((Get-Px 4), 0, (Get-Px 6), 0)
-    $moonFont = New-Object System.Drawing.Font('Segoe MDL2 Assets', 15)
-    if ($moonFont.Name -eq 'Segoe MDL2 Assets') { $themeButton.Font = $moonFont; $themeButton.Text = [string][char]0xE708 }    # Windows' own symbols
-    $themeTip = New-Object System.Windows.Forms.ToolTip
-    $themeTip.SetToolTip($themeButton, 'Dark or light (here and in the Reader)')
-    $themeButton.add_Click({ Set-ThemeChoice $(if (Test-DarkTheme) { 'light' } else { 'dark' }); Set-UiTheme })
-    $tabStrip.Controls.Add($themeButton, 2, 0)
-
-    # ---- bottom of the window: progress while applying changes
-    $bottom = New-UiLine @('fill', 'auto', 'auto')
-    $bottom.Dock = 'Bottom'
-    $bottom.RowStyles.Clear()
-    [void]$bottom.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute, (Get-Px 20))))
-    [void]$bottom.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::AutoSize)))
-    $bottom.RowCount = 2
-    $progress = New-Object System.Windows.Forms.ProgressBar
-    $progress.Dock = 'Fill'; $progress.Visible = $false
-    $progress.Margin = New-Object System.Windows.Forms.Padding(3, (Get-Px 6), 3, 0)
-    $bottom.Controls.Add($progress, 0, 0); $bottom.SetColumnSpan($progress, 3)
-    $status = New-UiLabel '' -Grey
-    $status.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 34))
-    $apply = New-UiButton 'Apply changes'
-    $close = New-UiButton 'Close'
-    $close.DialogResult = 'Cancel'
-    $bottom.Controls.Add($status, 0, 1); $bottom.Controls.Add($apply, 1, 1); $bottom.Controls.Add($close, 2, 1)
-    $form.Controls.Add($bottom)
-    $form.CancelButton = $close
-
-    Add-StartupTime '  window: tab strip, moon, bottom bar'
-    # ---- Voice manager
-    $page = New-UiPage $tabInstalled
-    $installedList = New-Object System.Windows.Forms.ListView
-    $installedList.View = 'Details'; $installedList.FullRowSelect = $true; $installedList.HideSelection = $false
-    $installedList.MultiSelect = $false
-    $installedList.Dock = 'Fill'; $installedList.Height = Get-Px 300
-    $installedList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 300))
-    [void]$installedList.Columns.Add('Voice', (Get-Px 210))
-    [void]$installedList.Columns.Add('Speaker', (Get-Px 80))
-    $installedList.Columns[1].TextAlign = 'Center'
-    [void]$installedList.Columns.Add('Nickname', (Get-Px 190))
-    [void]$installedList.Columns.Add('On disk', (Get-Px 70))
-    [void]$installedList.Columns.Add('Windows default', (Get-Px 110))
-    [void]$installedList.Columns.Add('Folder', (Get-Px 170))
-    Add-UiRow $page $installedList
-    $speakersOf = [ordered]@{}
-    foreach ($id in $Installed) {
-        $idParts = Split-VoiceId $id
-        if (-not $speakersOf.Contains($idParts[0])) { $speakersOf[$idParts[0]] = @() }
-        if ($null -ne $idParts[1]) { $speakersOf[$idParts[0]] += $idParts[1] }
-    }
-
-    # The selected voice (a row for each installed speaker): hear it, make it Windows' default.
-    $voiceLine = New-UiLine @('fill', 'auto', 'auto')
-    $voiceTools = New-UiFlow
-    $voiceTools.WrapContents = $false
-    $previewButton = New-UiButton 'Preview'
-    $stopButton = New-UiButton 'Stop'
-    $nickBox = New-Object System.Windows.Forms.TextBox
-    $nickBox.Width = Get-Px 190; $nickBox.MaxLength = 40; $nickBox.Anchor = 'Left'; $nickBox.Enabled = $false
-    $nickBox.Margin = New-Object System.Windows.Forms.Padding((Get-Px 12), 3, 3, 3)
-    $nickButton = New-UiButton 'Set nickname'
-    $nickButton.Enabled = $false
-    $defaultButton = New-UiButton 'Make default voice'
-    $sapiButton = New-UiButton 'Windows speech settings'
-    $previewButton.Enabled = $false; $defaultButton.Enabled = $false
-    foreach ($c in $previewButton, $stopButton, $nickBox, $nickButton) { $voiceTools.Controls.Add($c) }
-    $defaultButton.Anchor = 'Right'; $sapiButton.Anchor = 'Right'
-    $voiceLine.Controls.Add($voiceTools, 0, 0); $voiceLine.Controls.Add($defaultButton, 1, 0); $voiceLine.Controls.Add($sapiButton, 2, 0)
-    Add-UiRow $page $voiceLine
-    $nickTip = New-Object System.Windows.Forms.ToolTip
-    $nickTip.AutoPopDelay = 20000
-    foreach ($c in $nickButton, $nickBox) {
-        $nickTip.SetToolTip($c, ("A name of your own for the selected voice, shown in brackets in place of its accent:`r`n" +
-            "VCTK p262 (British) becomes VCTK p262 (Irish Female).`r`n" +
-            "Type it in the box and press Set nickname; with the box empty, the accent is put back.`r`n" +
-            "Programs that were open show the new name after a restart."))
-    }
-    $previewLine = New-UiLine @('auto', 'fill')
-    $previewLabel = New-UiLabel 'Preview says'
-    $previewLabel.Dock = 'None'; $previewLabel.Anchor = 'Top, Left'
-    $previewBox = New-Object System.Windows.Forms.TextBox
-    # Several lines (Enter starts a new one: a paragraph pause), three showing.
-    $previewBox.Multiline = $true; $previewBox.AcceptsReturn = $true; $previewBox.WordWrap = $true; $previewBox.ScrollBars = 'Vertical'
-    $previewBox.Text = $PreviewText; $previewBox.Dock = 'Fill'
-    $previewBox.MinimumSize = New-Object System.Drawing.Size(0, ($previewBox.Font.Height * 3 + (Get-Px 18)))
-    $previewBox.Height = $previewBox.MinimumSize.Height
-    $previewLine.Controls.Add($previewLabel, 0, 0); $previewLine.Controls.Add($previewBox, 1, 0)
-    Add-UiRow $page $previewLine
-    $defaultLabel = New-UiLabel ''
-    Add-UiRow $page $defaultLabel
-
-    $soundLine = New-UiLine @('fill', 'auto')
-    $soundLabel = New-UiLabel 'Select a voice above to set how it sounds.' -Bold
-    $soundLabel.Dock = 'None'; $soundLabel.Anchor = 'Left'
-    $resetButton = New-UiButton 'Reset'
-    $resetButton.Enabled = $false
-    $soundLine.Controls.Add($soundLabel, 0, 0); $soundLine.Controls.Add($resetButton, 1, 0)
-    Add-UiRow $page $soundLine
-    $sliders = @{}
-    $soundGrid = New-UiSliderGrid
-    foreach ($spec in @(@('Volume', 0, 100, 10, 10, 10), @('Boost', 10, 40, 1, 5, 5), @('Speed', 25, 200, 1, 5, 25))) {
-        $sliders[$spec[0]] = Add-UiSlider $soundGrid $spec[0] $spec[1] $spec[2] $spec[3] $spec[4] $spec[5]
-    }
-    Add-UiRow $page $soundGrid
-    $ownBox = New-Object System.Windows.Forms.CheckBox
-    $ownBox.Text = 'Modify pause duration for the selected voice'
-    $ownBox.AutoSize = $true; $ownBox.Enabled = $false; $ownBox.Checked = $false
-    Add-UiRow $page $ownBox
-    $gapGrid = New-UiSliderGrid
-    foreach ($spec in @(@('Sentence gap', $PauseLimits.Sentence), @('Comma gap', $PauseLimits.Comma), @('Paragraph gap', $PauseLimits.Paragraph))) {
-        $sliders[$spec[0]] = Add-UiSlider $gapGrid $spec[0] 0 $spec[1] 50 250 250
-    }
-    $gapGrid.Visible = $false
-    Add-UiRow $page $gapGrid
-    # Volume moves in tens only (0, 10, ... 100): dragged, it snaps to the nearest.
-    $sliders.Volume.Bar.add_ValueChanged({
-        $bar = $script:Ui.Sliders.Volume.Bar
-        $snapped = [int]([math]::Round($bar.Value / 10.0, [MidpointRounding]::AwayFromZero) * 10)
-        if ($bar.Value -ne $snapped) { $bar.Value = $snapped }
-    })
-    foreach ($k in @($sliders.Keys)) {
-        $sliders[$k].Bar.Enabled = $false
-        $sliders[$k].Bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.SaveTimer.Stop(); $script:Ui.SaveTimer.Start() } })
-    }
-    Add-UiRow $page (New-UiLabel ("Volume: each sentence's loudest moment (0 = as Piper made it). Boost: lifts quiet parts more than loud ones " +
-        "(higher sounds more compressed). Dictation speed: 100% = the speed for every voice (Speed and pauses tab). Unticked, the voice uses the pauses " +
-        "for every voice; ticked, its own.") -Grey)
-    Add-UiRow $page (New-UiLabel ("Changes are saved as you move a slider and take effect straight away, also in programs already using the " +
-        "voice (from the next thing they say): press Preview to hear them. A voice's speakers share its settings.") -Grey)
-
-    Add-StartupTime '  window: Voice manager tab'
-    # ---- Speed and pauses (every voice; pauses for those without their own)
-    $page = New-UiPage $tabPauses
-    Add-UiRow $page (New-UiLabel 'Speed and pauses for every voice (a voice can adjust its speed and have its own pauses: Voice manager)' -Bold)
-    $hearLine = New-UiFlow
-    $hearLabel = New-UiLabel 'Preview with'
-    $hearLabel.Dock = 'None'; $hearLabel.Anchor = 'Left'
-    $previewVoiceBox = New-Object System.Windows.Forms.ComboBox
-    $previewVoiceBox.DropDownStyle = 'DropDownList'; $previewVoiceBox.Width = Get-Px 280; $previewVoiceBox.Anchor = 'Left'
-    $globalPreview = New-UiButton 'Preview'
-    $globalStop = New-UiButton 'Stop'
-    $globalPreview.Enabled = $false
-    foreach ($c in $hearLabel, $previewVoiceBox, $globalPreview, $globalStop) { $hearLine.Controls.Add($c) }
-    Add-UiRow $page $hearLine
-    $globalGrid = New-UiSliderGrid
-    $speedSlider = Add-UiSlider $globalGrid 'Speed' 25 200 5 25 25
-    $speedBar = $speedSlider.Bar; $speedValue = $speedSlider.Value
-    $speedValue.Font = $bold
-    Add-UiNote $globalGrid (New-UiLabel ("how fast every voice speaks before a program's own rate: 100% by default, the voices' own pace (rate +2 is about 125%) " +
-        "(each voice's own Dictation speed, on the Voice manager, adjusts from here)") -Grey)
-    $rateWarn = New-UiLabel ''
-    $rateWarn.ForeColor = $red; $rateWarn.Tag = 'warn'
-    Add-UiNote $globalGrid $rateWarn
-    $rateReset = New-UiButton "Set Windows' speed to 0"
-    $rateReset.Visible = $false
-    $globalGrid.Controls.Add($rateReset, 2, ($globalGrid.RowCount - 1))
-    $speedBar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.GlobalTimer.Stop(); $script:Ui.GlobalTimer.Start() } })
-    $globalBars = @{}
-    foreach ($spec in @(@('Sentence gap', $PauseLimits.Sentence, 'after each sentence, when another follows (none after the last)'),
-                        @('Comma gap', $PauseLimits.Comma, 'at each , ; or : (0 = commas left as the voice says them)'),
-                        @('Paragraph gap', $PauseLimits.Paragraph, 'at a line break, in place of the sentence pause (Enter in Preview says starts a new line)'))) {
-        $slider = Add-UiSlider $globalGrid $spec[0] 0 $spec[1] 50 250 250
-        $slider.Value.Font = $bold
-        Add-UiNote $globalGrid (New-UiLabel $spec[2] -Grey)
-        $example = New-UiLabel ''
-        Add-UiNote $globalGrid $example
-        $globalBars[$spec[0]] = @{ Bar = $slider.Bar; Value = $slider.Value; Example = $example }
-        $slider.Bar.add_ValueChanged({ Update-UiSliderLabels; if (-not $script:Ui.Filling) { $script:Ui.GlobalTimer.Stop(); $script:Ui.GlobalTimer.Start() } })
-    }
-    Add-UiRow $page $globalGrid
-    Add-UiRow $page (New-UiLabel ("Each pause is silence added to the voice's own, in milliseconds at 100% dictation speed and a program's rate 0. " +
-        "Faster speech uses a smaller share of it and slower a larger share, in step with the speech (the line under each shows what you get). " +
-        "A comma pause above 0 has the voice say each part of a sentence separately, so the intonation can sound a little more broken up.") -Grey)
-    $resetLine = New-UiLine @('auto', 'fill')
-    $pausesReset = New-UiButton 'Reset to defaults'
-    $pausesNote = New-UiLabel 'Defaults: dictation speed 100%, sentence 500 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.' -Grey
-    $resetLine.Controls.Add($pausesReset, 0, 0); $resetLine.Controls.Add($pausesNote, 1, 0)
-    Add-UiRow $page $resetLine
-
-    Add-StartupTime '  window: Speed and pauses tab'
-    # ---- Pronunciation: words and names said another way, by every voice in every program
-    $page = New-UiPage $tabWords
-    Add-UiRow $page (New-UiLabel 'Words and names said your way: by every voice, in every program that uses these voices' -Bold)
-    $wordList = New-Object System.Windows.Forms.ListView
-    $wordList.View = 'Details'; $wordList.CheckBoxes = $true; $wordList.FullRowSelect = $true; $wordList.HideSelection = $false
-    $wordList.MultiSelect = $false; $wordList.Dock = 'Fill'; $wordList.Height = Get-Px 260
-    $wordList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 260))
-    [void]$wordList.Columns.Add('Word or phrase (ticked: in use)', (Get-Px 250))
-    [void]$wordList.Columns.Add('Said as', (Get-Px 270))
-    [void]$wordList.Columns.Add('Matches', (Get-Px 260))
-    Add-UiRow $page $wordList
-    $wordLine = New-UiLine @('auto', 'fill', 'auto', 'fill')
-    $wordFromLabel = New-UiLabel 'Word or phrase'
-    $wordFromLabel.Dock = 'None'; $wordFromLabel.Anchor = 'Left'
-    $wordFrom = New-Object System.Windows.Forms.TextBox
-    $wordFrom.Dock = 'Fill'; $wordFrom.MaxLength = 200
-    $wordToLabel = New-UiLabel 'Say it as'
-    $wordToLabel.Dock = 'None'; $wordToLabel.Anchor = 'Left'
-    $wordTo = New-Object System.Windows.Forms.TextBox
-    $wordTo.Dock = 'Fill'; $wordTo.MaxLength = 200
-    $wordLine.Controls.Add($wordFromLabel, 0, 0); $wordLine.Controls.Add($wordFrom, 1, 0)
-    $wordLine.Controls.Add($wordToLabel, 2, 0); $wordLine.Controls.Add($wordTo, 3, 0)
-    Add-UiRow $page $wordLine
-    $wordTools = New-UiFlow
-    $wordWhole = New-Object System.Windows.Forms.CheckBox
-    $wordWhole.Text = 'Whole words only'; $wordWhole.AutoSize = $true; $wordWhole.Checked = $true; $wordWhole.Anchor = 'Left'
-    $wordCase = New-Object System.Windows.Forms.CheckBox
-    $wordCase.Text = 'Match capitals'; $wordCase.AutoSize = $true; $wordCase.Anchor = 'Left'
-    $wordSave = New-UiButton 'Add rule'
-    $wordNew = New-UiButton 'New rule'
-    $wordRemove = New-UiButton 'Remove'
-    $wordHear = New-UiButton 'Hear it'
-    $wordStop = New-UiButton 'Stop'
-    $wordRemove.Enabled = $false
-    foreach ($c in $wordWhole, $wordCase, $wordSave, $wordNew, $wordRemove, $wordHear, $wordStop) { $wordTools.Controls.Add($c) }
-    Add-UiRow $page $wordTools
-    Add-UiRow $page (New-UiLabel ("To add a rule: type the word or phrase and how to say it (spell it as it sounds: Niamh as Neev), then Add rule. " +
-        "To change one: select it, edit, then Save rule. Untick a rule to switch it off without removing it. Hear it says the " +
-        "`"Say it as`" text with the voice selected on the Voice manager, to try a spelling before saving.") -Grey)
-    Add-UiRow $page (New-UiLabel ("Rules apply from the next thing a program says. Whole words only: `"cat`" changes `"the cat's`" but not " +
-        "`"catalogue`". Match capitals: `"US`" but not `"us`". Where two rules fit, the longer one is used, and a rule never changes " +
-        "another rule's result. Programs still show and highlight the original words.") -Grey)
-
-    Add-StartupTime '  window: Pronunciation tab'
-    # ---- Add or remove voices (the list takes the room there is; the tab scrolls below a minimum)
-    $addGrid = New-Object System.Windows.Forms.TableLayoutPanel
-    $addGrid.ColumnCount = 1
-    [void]$addGrid.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, 100)))
-    $addGrid.Padding = New-Object System.Windows.Forms.Padding (Get-Px 6)
-    $addGrid.Location = New-Object System.Drawing.Point(0, 0)
-    $tabAdd.Controls.Add($addGrid)
-    Add-UiRow $addGrid (New-UiLabel ("Tick the voices to install; untick one to remove it. Select a voice and press Play sample to hear it. " +
-        "Then press Apply changes: the window shows the progress below.") )
-    $list = New-Object System.Windows.Forms.ListView
-    $list.View = 'Details'; $list.CheckBoxes = $true; $list.FullRowSelect = $true; $list.HideSelection = $false
-    $list.MultiSelect = $false; $list.Dock = 'Fill'
-    [void]$list.Columns.Add('Voice', (Get-Px 220))
-    [void]$list.Columns.Add('Accent', (Get-Px 90))
-    [void]$list.Columns.Add('Quality', (Get-Px 70))
-    [void]$list.Columns.Add('Speakers', (Get-Px 90))
-    [void]$list.Columns.Add('Download', (Get-Px 80))
-    [void]$list.Columns.Add('Catalogue key', (Get-Px 220))
-    $chosenSpeakers = @{}
-    foreach ($key in $speakersOf.Keys) { if (@($speakersOf[$key]).Count) { $chosenSpeakers[$key] = @($speakersOf[$key]) -join ', ' } }
-    foreach ($v in $Catalogue) {
-        $item = New-Object System.Windows.Forms.ListViewItem($v.Display)
-        [void]$item.SubItems.Add($v.Accent)
-        [void]$item.SubItems.Add($v.Quality)
-        [void]$item.SubItems.Add($(if ($v.Speakers.Count -gt 1) { "$($v.Speakers.Count) speakers" } else { '1' }))
-        [void]$item.SubItems.Add("$($v.SizeMb) MB")
-        [void]$item.SubItems.Add($v.Key)
-        $item.Tag = $v
-        $item.Checked = $speakersOf.Contains($v.Key)
-        if ($item.Checked) { $item.Font = $bold }
-        [void]$list.Items.Add($item)
-    }
-    Add-UiRow $addGrid $list -Fill
-    $playLine = New-UiLine @('auto', 'fill')
-    $play = New-UiButton 'Play sample'
-    $speakerLabel = New-UiLabel 'Select a voice with several speakers to choose which of them to install (each becomes a voice).'
-    $playLine.Controls.Add($play, 0, 0); $playLine.Controls.Add($speakerLabel, 1, 0)
-    Add-UiRow $addGrid $playLine
-    $speakerList = New-Object System.Windows.Forms.CheckedListBox
-    $speakerList.MultiColumn = $true; $speakerList.ColumnWidth = Get-Px 90; $speakerList.CheckOnClick = $true
-    $speakerList.IntegralHeight = $false; $speakerList.Enabled = $false
-    $speakerList.Dock = 'Fill'; $speakerList.Height = Get-Px 110
-    $speakerList.MinimumSize = New-Object System.Drawing.Size(0, (Get-Px 110))
-    Add-UiRow $addGrid $speakerList
-    $sizeLabel = New-UiLabel ''
-    Add-UiRow $addGrid $sizeLabel
-    $warnLabel = New-UiLabel ''
-    $warnLabel.ForeColor = $red; $warnLabel.Tag = 'warn'
-    Add-UiRow $addGrid $warnLabel
-    $usBox = New-Object System.Windows.Forms.CheckBox
-    $usBox.Text = 'Also list British voices as US English (only if a program does not show them)'
-    $usBox.AutoSize = $true; $usBox.Checked = $UsTags
-    Add-UiRow $addGrid $usBox
-    Add-UiRow $addGrid (New-UiLabel ("Speakers of one voice share its model, so extra speakers take no extra space. Two qualities of the same voice " +
-        "(medium and high) are separate models: each takes its full size. Some programs (World of Warcraft, for one) take longer to " +
-        "start the more voices Windows has: keep the list to the ones you use.") -Grey)
-
-    $timer = New-Object System.Windows.Forms.Timer
-    $timer.Interval = 350
-    $timer.add_Tick({ $script:Ui.SaveTimer.Stop(); Save-UiSettings })
-    $globalTimer = New-Object System.Windows.Forms.Timer
-    $globalTimer.Interval = 350
-    $globalTimer.add_Tick({ $script:Ui.GlobalTimer.Stop(); Save-UiGlobalSettings })
-
-    $script:Ui = @{ Form = $form; Pages = $pages; TabButtons = $tabButtons; TabStrip = $tabStrip; PageHost = $pageHost; PageIndex = 0; ThemeButton = $themeButton; List = $list; SpeakerLabel = $speakerLabel; SpeakerList = $speakerList; UsBox = $usBox
-        Speakers = $chosenSpeakers; Current = $null; Player = $null; Filling = $false; InstalledKeys = @($speakersOf.Keys)
-        InstalledList = $installedList; SoundLabel = $soundLabel; Sliders = $sliders; PreviewBox = $previewBox
-        PreviewButton = $previewButton; ResetButton = $resetButton; CurrentInstalled = $null; SaveTimer = $timer
-        PreviewProcess = $null; SizeLabel = $sizeLabel; WarnLabel = $warnLabel; Catalogue = $Catalogue; ByKey = $ByKey
-        DefaultLabel = $defaultLabel; DefaultButton = $defaultButton; Progress = $progress; Status = $status; Apply = $apply
-        Close = $close; Busy = $false; UsTags = $UsTags; Installed = @($Installed); Bold = $bold; Plain = $form.Font; Changed = $false
-        OwnBox = $ownBox; GlobalBars = $globalBars; GlobalTimer = $globalTimer; SpeedBar = $speedBar; SpeedValue = $speedValue
-        RateWarn = $rateWarn; RateReset = $rateReset; PreviewVoiceBox = $previewVoiceBox
-        GlobalPreview = $globalPreview; GapGrid = $gapGrid; AddGrid = $addGrid; AddTab = $tabAdd
-        WordList = $wordList; WordFrom = $wordFrom; WordTo = $wordTo; WordWhole = $wordWhole; WordCase = $wordCase
-        WordSave = $wordSave; WordRemove = $wordRemove
-        NickBox = $nickBox; NickButton = $nickButton; NameClick = $false }
-    Add-StartupTime '  window: Add or remove tab (list filled)'
-    $list.add_SelectedIndexChanged({ Update-UiSelection })
-    $list.add_ItemChecked({ if (-not $script:Ui.Filling) { Update-UiSummary } })
-    # A click on a speaker's name only selects it (to play its sample); its box is what ticks it.
-    $speakerList.add_MouseDown({
-        param($sender, $e)
-        $index = $sender.IndexFromPoint($e.Location)
-        $script:Ui.NameClick = ($index -ge 0) -and (($e.X - $sender.GetItemRectangle($index).Left) -gt (Get-Px 18))
-    })
-    $speakerList.add_MouseUp({ $script:Ui.NameClick = $false })
-    $speakerList.add_ItemCheck({
-        param($sender, $e)
-        if ($script:Ui.NameClick) { $e.NewValue = $e.CurrentValue; return }
-        if (-not $script:Ui.Filling -and $e.NewValue -eq [System.Windows.Forms.CheckState]::Checked -and
-            $script:Ui.List.SelectedItems.Count -gt 0) { $script:Ui.List.SelectedItems[0].Checked = $true }
-    })
-    $play.add_Click({ Invoke-UiSample })
-    # Selecting a speaker plays its sample (Play sample plays it again, or a voice with one speaker).
-    $speakerList.add_SelectedIndexChanged({ if (-not $script:Ui.Filling -and $script:Ui.SpeakerList.SelectedIndex -ge 0) { Invoke-UiSample } })
-    $installedList.add_SelectedIndexChanged({ Update-UiInstalled })
-    $previewButton.add_Click({ Invoke-UiPreview })
-    $globalPreview.add_Click({ Invoke-UiGlobalPreview })
-    $stopButton.add_Click({ Stop-UiPreview })
-    $globalStop.add_Click({ Stop-UiPreview })
-    $nickButton.add_Click({ Set-UiNickname })
-    $tabAdd.add_Resize({ Update-UiAddLayout })
-    $tabAdd.add_ClientSizeChanged({ Update-UiAddLayout })
-    $defaultButton.add_Click({ Set-UiDefaultVoice })
-    $sapiButton.add_Click({ Start-Process "$env:SystemRoot\System32\Speech\SpeechUX\sapi.cpl" })
-    $wordList.add_SelectedIndexChanged({ Update-UiWordFields })
-    # (A tick that differs from its rule: one the person made. Windows also reports every ticked row as the
-    # list is first drawn, which changes nothing and saves nothing.)
-    $wordList.add_ItemChecked({
-        param($sender, $e)
-        if (-not $script:Ui.Filling -and $null -ne $e.Item.Tag -and ([bool]$e.Item.Tag.On -ne $e.Item.Checked)) { Save-UiWords }
-    })
-    $wordSave.add_Click({ Save-UiWord })
-    $wordNew.add_Click({ Clear-UiWordFields })
-    $wordRemove.add_Click({ Remove-UiWord })
-    $wordHear.add_Click({ Invoke-UiWordPreview })
-    $wordStop.add_Click({ Stop-UiPreview })
-    Update-UiWordList
-    Add-StartupTime '  window: events wired, word list filled'
-    $apply.add_Click({ Invoke-UiApply })
-    $resetButton.add_Click({ Reset-UiSettings })
-    $ownBox.add_CheckedChanged({ Update-UiOwnPauses })
-    $pausesReset.add_Click({ Reset-UiGlobalPauses })
-    $rateReset.add_Click({ Set-WindowsRate 0; Update-UiWindowsRate })
-    # Windows' speed can be changed in its Speech settings while the window is open: checked on return.
-    $form.add_Activated({ Update-UiWindowsRate })
-    $form.add_FormClosing({
-        param($sender, $e)
-        if ($script:Ui.Busy) { $e.Cancel = $true; return }   # not while changes are being applied
-        Save-UiSpeakers
-        if ($script:Ui.SaveTimer.Enabled) { $script:Ui.SaveTimer.Stop(); Save-UiSettings }
-        if ($script:Ui.GlobalTimer.Enabled) { $script:Ui.GlobalTimer.Stop(); Save-UiGlobalSettings }
-        if ($script:Ui.Player) { $script:Ui.Player.Stop() }
-        Stop-UiPreview
-    })
-    Set-UiGlobalBars (Get-Pauses $SettingsFile) (Get-GlobalSpeed $SettingsFile)
-    Add-StartupTime '  window: Set-UiGlobalBars'
-    Update-UiWindowsRate
-    Add-StartupTime '  window: Update-UiWindowsRate'
-    Update-UiAddLayout
-    Add-StartupTime '  window: Update-UiAddLayout'
-    Update-UiInstalledList
-    Add-StartupTime '  window: Update-UiInstalledList'
-    Update-UiSummary
-    Add-StartupTime '  window: Update-UiSummary'
-    Update-UiApply
-    Add-StartupTime '  window: Update-UiApply'
-    $applyTimer = New-Object System.Windows.Forms.Timer
-    $applyTimer.Interval = 300
-    $applyTimer.add_Tick({ Update-UiApply })
-    $script:Ui.ApplyTimer = $applyTimer
-    $form.add_Shown({ $script:Ui.ApplyTimer.Start() })
-    $form.add_FormClosed({ $script:Ui.ApplyTimer.Stop() })
-    # Dark or light: as chosen, or as Windows is (looked at again whenever the window comes to the front).
-    $script:UiDark = $null
-    foreach ($view in $installedList, $list, $wordList) {
-        Enable-UiDarkHeader $view
-        # The last column takes the width left over (so that no strip of plain heading shows beside it).
-        $view.Columns[$view.Columns.Count - 1].Width = -2
-        $view.add_Resize({
-            param($sender, $e)
-            $resized = if ($sender -is [System.Windows.Forms.ListView]) { $sender } else { $this }
-            $last = if ($resized -is [System.Windows.Forms.ListView] -and $resized.Columns.Count) { $resized.Columns[$resized.Columns.Count - 1] } else { $null }
-            if ($last) { $last.Width = -2 }
-        })
-    }
-    Add-StartupTime '  window: dark list headings'
-    Set-UiTheme
-    Add-StartupTime '  window: theme (dark or light)'
-    $form.add_Activated({ Set-UiTheme })
-    Show-UiPage $(if ($installedList.Items.Count -eq 0) { 3 } else { 0 })
-    return $script:Ui
-}
-
-function Update-UiSliderLabels {
-    $s = $script:Ui.Sliders
-    $volume = $s.Volume.Bar.Value
-    $s.Volume.Value.Text = if ($volume -eq 0) { 'off (as Piper made it)' } else { "$volume%" }
-    $boost = $s.Boost.Bar.Value / 10.0
-    $s.Boost.Value.Text = if ($boost -le 1.0) { 'none' } else { $boost.ToString('0.0', [Globalization.CultureInfo]::InvariantCulture) + 'x' }
-    $s.Speed.Value.Text = "$($s.Speed.Bar.Value)%"
-    $speed = $script:Ui.SpeedBar.Value / 100.0
-    $script:Ui.SpeedValue.Text = "$($script:Ui.SpeedBar.Value)%"
-    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') {
-        $ms = Get-RoundedMs $s[$k].Bar.Value
-        $s[$k].Value.Text = Format-Gap $ms $k
-        $g = $script:Ui.GlobalBars[$k]
-        $gms = Get-RoundedMs $g.Bar.Value
-        $g.Value.Text = Format-Gap $gms $k
-        $g.Example.Text = if ($gms -gt 0) { "at $($script:Ui.SpeedBar.Value)%: $([math]::Round($gms / $speed)) ms at rate 0, " +
-            "$([math]::Round($gms / $speed / [math]::Pow(3, 0.2))) ms at rate +2, $([math]::Round($gms / $speed * [math]::Pow(3, 0.2))) ms at rate -2" } else { '' }
-    }
-}
-
-function Get-RoundedMs([double]$Value) { return [int]([math]::Round($Value / 10) * 10) }
-function Format-Gap([int]$Ms, [string]$Kind) {
-    if ($Ms -le 0) { return $(if ($Kind -eq 'Comma gap') { 'none (as said)' } else { 'none added' }) }
-    return "+$Ms ms"
-}
-
-# The Speed and pauses tab's sliders, from the settings file's values.
-function Set-UiGlobalBars($Pauses, [double]$Speed) {
-    $ui = $script:Ui
-    $ui.Filling = $true
-    try {
-        $ui.SpeedBar.Value = [int][math]::Max(25, [math]::Min(200, $Speed))
-        $ui.GlobalBars['Sentence gap'].Bar.Value = [int][math]::Min($PauseLimits.Sentence, $Pauses.Sentence)
-        $ui.GlobalBars['Comma gap'].Bar.Value = [int][math]::Min($PauseLimits.Comma, $Pauses.Comma)
-        $ui.GlobalBars['Paragraph gap'].Bar.Value = [int][math]::Min($PauseLimits.Paragraph, $Pauses.Paragraph)
-        Update-UiSliderLabels
-    } finally {
-        $ui.Filling = $false
-    }
-}
-
-function Save-UiGlobalSettings {
-    $g = $script:Ui.GlobalBars
-    try {
-        Set-GlobalSpeed $SettingsFile $script:Ui.SpeedBar.Value
-        Set-GlobalPauses $SettingsFile (Get-RoundedMs $g['Sentence gap'].Bar.Value) (Get-RoundedMs $g['Comma gap'].Bar.Value) (Get-RoundedMs $g['Paragraph gap'].Bar.Value)
-    } catch {
-        [void][System.Windows.Forms.MessageBox]::Show("Could not save the speed and pauses: $($_.Exception.Message)", $AppName)
-    }
-}
-
-function Reset-UiGlobalPauses {
-    $g = $script:Ui.GlobalBars
-    $script:Ui.SpeedBar.Value = $SpeedDefault
-    $g['Sentence gap'].Bar.Value = $PauseDefaults.Sentence
-    $g['Comma gap'].Bar.Value = $PauseDefaults.Comma
-    $g['Paragraph gap'].Bar.Value = $PauseDefaults.Paragraph
-}
-
-# Windows' own default speech speed (its Speech settings, sapi.cpl: -10 to 10, per user). Programs
-# that leave the speed to Windows add it on top of the speed set here.
-function Get-WindowsRate {
-    $p = Get-ItemProperty 'HKCU:\Software\Microsoft\Speech\Voices' -Name DefaultTTSRate -ErrorAction SilentlyContinue
-    if ($null -eq $p) { return 0 }
-    return [int]$p.DefaultTTSRate
-}
-function Set-WindowsRate([int]$Rate) {
-    $key = 'HKCU:\Software\Microsoft\Speech\Voices'
-    if (-not (Test-Path $key)) { New-Item $key -Force | Out-Null }
-    Set-ItemProperty $key -Name DefaultTTSRate -Value $Rate -Type DWord
-}
-
-function Update-UiWindowsRate {
-    $ui = $script:Ui
-    $rate = Get-WindowsRate
-    if ($rate -eq 0) {
-        $ui.RateWarn.Text = ''; $ui.RateReset.Visible = $false
-    } else {
-        $sign = if ($rate -gt 0) { '+' } else { '' }
-        $ui.RateWarn.Text = ("Windows' speech speed (its Speech settings) is $sign$rate. Programs that leave the speed to Windows " +
-            "add it on top of this one, so these voices are " + $(if ($rate -gt 0) { 'faster' } else { 'slower' }) + " still.")
-        $ui.RateReset.Visible = $true
-    }
-}
-
-# The selected voice's pauses: its own (ticked: its three sliders show), else those for every voice.
-function Update-UiOwnPauses {
-    $ui = $script:Ui
-    $own = $ui.OwnBox.Checked
-    $s = $ui.Sliders
-    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $s[$k].Bar.Enabled = ($ui.CurrentInstalled -ne $null) -and $own }
-    $ui.GapGrid.Visible = $own
-    if (-not $ui.Filling -and $ui.CurrentInstalled) { $ui.SaveTimer.Stop(); $ui.SaveTimer.Start() }
-}
-
-# The Voice manager's list, from what is installed now (one row per model), the default voice marked.
-function Update-UiInstalledList {
-    $ui = $script:Ui
-    $speakersOf = [ordered]@{}
-    foreach ($id in $ui.Installed) {
-        $idParts = Split-VoiceId $id
-        if (-not $speakersOf.Contains($idParts[0])) { $speakersOf[$idParts[0]] = @() }
-        if ($null -ne $idParts[1]) { $speakersOf[$idParts[0]] += $idParts[1] }
-    }
-    $ui.InstalledKeys = @($speakersOf.Keys)
-    $default = Get-DefaultVoiceToken
-    $defaultName = ''
-    $allVoices = @()
-    $ui.InstalledList.BeginUpdate()
-    $ui.InstalledList.Items.Clear()
-    foreach ($key in $speakersOf.Keys) {
-        $entry = if ($ui.ByKey.ContainsKey($key)) { $ui.ByKey[$key] } else { $null }
-        $title = if ($entry) { "$($entry.Display) ($($entry.Accent))" } else { $key }
-        $names = @($speakersOf[$key])
-        $first = if ($names.Count) { $names[0] } else { $null }
-        $voiceName = if ($entry) { Get-DisplayName $entry $first } else { $key }
-        $tokens = @(if ($names.Count) { $names | ForEach-Object { Get-TokenName "$key#$_" } } else { Get-TokenName $key })
-        $isDefault = @($tokens | Where-Object { $_ -eq $default }).Count -gt 0
-        if ($isDefault) {
-            $which = @($names | Where-Object { (Get-TokenName "$key#$_") -eq $default })
-            $defaultName = if ($entry) { Get-DisplayName $entry $(if ($which.Count) { $which[0] } else { $null }) } else { $key }
-        }
-        $dir = Join-Path $VoiceRoot $key
-        # A row for each installed speaker (one row for a voice with one); the voice named on its first.
-        $rows = @(if ($names.Count) { $names } else { '' })
-        for ($r = 0; $r -lt $rows.Count; $r++) {
-            $speaker = $rows[$r]
-            $id = if ($speaker) { "$key#$speaker" } else { $key }
-            $nick = Get-Nickname $id
-            $item = New-Object System.Windows.Forms.ListViewItem($(if ($r -eq 0) { $title } else { '' }))
-            [void]$item.SubItems.Add($(if ($speaker) { $speaker } else { 'n/a' }))
-            [void]$item.SubItems.Add($(if ($nick) { "($nick)" } else { '' }))
-            [void]$item.SubItems.Add($(if ($r -eq 0) { "$(Get-FolderMb $dir) MB" } else { '' }))
-            [void]$item.SubItems.Add($(if ((Get-TokenName $id) -eq $default) { 'yes' } else { '' }))
-            [void]$item.SubItems.Add($(if ($r -eq 0) { $key } else { '' }))
-            $item.Tag = @{ Key = $key; Dir = $dir; Title = $title; Shared = ($names.Count -gt 1); Speaker = $speaker; Entry = $entry }
-            [void]$ui.InstalledList.Items.Add($item)
-            $allVoices += $(if ($entry) { Get-DisplayName $entry $speaker } else { $key })
-        }
-    }
-    $ui.InstalledList.EndUpdate()
-    # The Speed and pauses tab's Preview: any installed voice (Windows' default first, if it is one).
-    $ui.PreviewVoiceBox.Items.Clear()
-    foreach ($n in $allVoices) { [void]$ui.PreviewVoiceBox.Items.Add($n) }
-    if ($allVoices.Count) { $ui.PreviewVoiceBox.SelectedIndex = [math]::Max(0, [array]::IndexOf($allVoices, $defaultName)) }
-    $ui.GlobalPreview.Enabled = $allVoices.Count -gt 0
-    $ui.DefaultLabel.Text = if ($defaultName) { "Windows default voice: $defaultName" }
-        elseif ($default) { "Windows default voice: $default (not one of these)" } else { 'Windows default voice: not set' }
-    if ($ui.InstalledList.Items.Count -gt 0) { $ui.InstalledList.Items[0].Selected = $true; Update-UiInstalled }
-    else {
-        $ui.SoundLabel.Text = 'No voices installed yet: add some on the Add or remove voices tab.'
-        Update-UiInstalled
-    }
-}
-
-# Makes the selected voice SAPI's default: what programs that don't choose a voice speak with (the
-# setting in sapi.cpl, Windows' Speech control panel).
-function Set-UiDefaultVoice {
-    $voice = Get-UiCurrentVoice
-    if (-not $voice) { return }
-    Set-DefaultVoiceToken $voice.Token
-    $selected = $script:Ui.InstalledList.SelectedIndices
-    $index = if ($selected.Count) { $selected[0] } else { 0 }
-    Update-UiInstalledList
-    if ($script:Ui.InstalledList.Items.Count -gt $index) { $script:Ui.InstalledList.Items[$index].Selected = $true; Update-UiInstalled }
-}
-
-# Apply changes is greyed out while there is nothing to apply: the voices (and speakers) ticked are the
-# ones installed, and the US English option is as it was. (Looked at a few times a second, by a timer:
-# ticks change in several places.)
-function Update-UiApply {
-    $ui = $script:Ui
-    if (-not $ui -or $ui.Busy -or $ui.Filling -or -not $ui.Apply) { return }
-    Save-UiSpeakers
-    $wanted = @(Get-PickedIds $ui)
-    $same = ((@($wanted | Sort-Object) -join '|') -eq (@($ui.Installed | Sort-Object) -join '|')) -and ([bool]$ui.UsBox.Checked -eq [bool]$ui.UsTags)
-    if ($ui.Apply.Enabled -eq $same) { $ui.Apply.Enabled = -not $same }
-}
-
-# Applies the Add or remove tab's ticks in the window: downloads, removals, registration and tests, with
-# progress below; then the window shows the new state.
-function Invoke-UiApply {
-    $ui = $script:Ui
-    Save-UiSpeakers
-    $wanted = @(Get-PickedIds $ui)
-    $usTags = [bool]$ui.UsBox.Checked
-    $same = ((@($wanted | Sort-Object) -join '|') -eq (@($ui.Installed | Sort-Object) -join '|')) -and ($usTags -eq $ui.UsTags)
-    if ($same) { $ui.Status.Text = 'Nothing to change.'; return }
-    $ui.Busy = $true
-    $ui.PageHost.Enabled = $false; $ui.TabStrip.Enabled = $false; $ui.Apply.Enabled = $false; $ui.Close.Enabled = $false
-    $ui.Progress.Value = 0; $ui.Progress.Visible = $true
-    $ui.Form.Cursor = 'WaitCursor'
-    $ok = $false
-    try {
-        $ok = Set-InstalledVoices $wanted $usTags $ui.ByKey
-        $ui.Installed = @(Get-InstalledIds)
-        $ui.UsTags = $usTags
-        $ui.Changed = $true
-    } catch {
-        $ui.Status.Text = "Stopped: $($_.Exception.Message)"
-        [void][System.Windows.Forms.MessageBox]::Show("Stopped: $($_.Exception.Message)", $AppName)
-        $ui.Installed = @(Get-InstalledIds)
-    } finally {
-        $ui.Busy = $false
-        $ui.Progress.Visible = $false
-        $ui.PageHost.Enabled = $true; $ui.TabStrip.Enabled = $true; $ui.Apply.Enabled = $true; $ui.Close.Enabled = $true
-        $ui.Form.Cursor = 'Default'
-    }
-    # The new state: ticks and bold for what is installed, the manager's list.
-    $ui.Filling = $true
-    foreach ($item in $ui.List.Items) {
-        $isIn = @($ui.Installed | Where-Object { (Split-VoiceId $_)[0] -eq $item.Tag.Key }).Count -gt 0
-        $item.Checked = $isIn
-        $item.Font = if ($isIn) { $ui.Bold } else { $ui.Plain }
-    }
-    $ui.Filling = $false
-    Update-UiInstalledList
-    Update-UiSummary
-    Update-UiApply
-    if ($ok) {
-        $ui.Status.Text = 'Done: every voice passed its test. Restart programs that were open to see new voices.'
-        if ($ui.InstalledList.Items.Count -gt 0) { Show-UiPage 0 }
-    } elseif ($ui.Status.Text -notlike 'Stopped*') {
-        $ui.Status.Text = "A voice failed its test. The engine's log says why: $env:LOCALAPPDATA\ModernVoices\engine.log"
-    }
-}
-
-# The voice (speaker) of the row selected in the Voice manager: its token and the name programs see.
-function Get-UiCurrentVoice {
-    $ui = $script:Ui
-    $tag = $ui.CurrentInstalled
-    if (-not $tag) { return $null }
-    $name = if ($tag.Speaker) { [string]$tag.Speaker } else { $null }
-    $id = if ($name) { "$($tag.Key)#$name" } else { $tag.Key }
-    $voice = if ($tag.Entry) { Get-DisplayName $tag.Entry $name } else { $tag.Key }
-    return @{ Token = (Get-TokenName $id); Voice = $voice; Id = $id; Speaker = $name }
-}
-
-# The nickname box: the selected row's nickname.
-function Update-UiNickBox {
-    $ui = $script:Ui
-    $voice = Get-UiCurrentVoice
-    $on = ($null -ne $voice) -and ($null -ne $ui.CurrentInstalled.Entry)
-    $ui.NickBox.Enabled = $on; $ui.NickButton.Enabled = $on
-    $ui.NickBox.Text = if ($on) { Get-Nickname $voice.Id } else { '' }
-}
-
-# Gives the selected row's voice the nickname in the box (empty: none), renaming the voice in Windows.
-function Set-UiNickname {
-    $ui = $script:Ui
-    $voice = Get-UiCurrentVoice
-    $tag = $ui.CurrentInstalled
-    if (-not $voice -or -not $tag.Entry) { return }
-    $nick = ($ui.NickBox.Text -replace '[()\r\n]', ' ' -replace '\s+', ' ').Trim()
-    $wanted = Format-DisplayName $tag.Entry $voice.Speaker $nick
-    if ($wanted -ne $voice.Voice -and @(Get-OurVoiceNames) -contains $wanted) {
-        $ui.Status.Text = "Another voice is already named $wanted."
-        return
-    }
-    try {
-        $display = Set-VoiceNickname $tag.Entry $voice.Speaker $nick
-    } catch {
-        [void][System.Windows.Forms.MessageBox]::Show("Could not rename the voice: $($_.Exception.Message)", $AppName)
-        return
-    }
-    $selected = $ui.InstalledList.SelectedIndices
-    $index = if ($selected.Count) { $selected[0] } else { 0 }
-    Update-UiInstalledList
-    if ($ui.InstalledList.Items.Count -gt $index) { $ui.InstalledList.Items[$index].Selected = $true; Update-UiInstalled }
-    $ui.Status.Text = "Now named $display. Restart programs that were open to see the new name."
-}
-
-function Update-UiInstalled {
-    $ui = $script:Ui
-    if ($ui.SaveTimer.Enabled) { $ui.SaveTimer.Stop(); Save-UiSettings }
-    $ui.CurrentInstalled = $null
-    $ui.NickBox.Text = ''; $ui.NickBox.Enabled = $false; $ui.NickButton.Enabled = $false
-    $on = $ui.InstalledList.SelectedItems.Count -gt 0
-    foreach ($k in 'Volume', 'Boost', 'Speed') { $ui.Sliders[$k].Bar.Enabled = $on }
-    $ui.OwnBox.Enabled = $on
-    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $ui.Sliders[$k].Bar.Enabled = $false }
-    $ui.PreviewButton.Enabled = $on; $ui.ResetButton.Enabled = $on; $ui.DefaultButton.Enabled = $on
-    if (-not $on) { return }
-    $tag = $ui.InstalledList.SelectedItems[0].Tag
-    $settings = Get-VoiceSettings $tag.Dir
-    $peak = $DefaultPeak; $boost = $DefaultBoost; $lengthScale = 1.0
-    if ($settings) {
-        if ($null -ne $settings.Peak) { $peak = $settings.Peak }
-        if ($null -ne $settings.Boost) { $boost = $settings.Boost }
-        if ($null -ne $settings.LengthScale) { $lengthScale = $settings.LengthScale }
-    }
-    $voicePauses = Get-Pauses (Join-Path $tag.Dir 'voice.json')
-    $shown = if ($voicePauses.Own -or $voicePauses.Stored) { $voicePauses } else { Get-Pauses $SettingsFile }
-    $ui.Filling = $true
-    try {
-        $ui.OwnBox.Checked = $voicePauses.Own
-        $ui.GapGrid.Visible = $voicePauses.Own
-        $ui.Sliders['Sentence gap'].Bar.Value = [int][math]::Min($PauseLimits.Sentence, $shown.Sentence)
-        $ui.Sliders['Comma gap'].Bar.Value = [int][math]::Min($PauseLimits.Comma, $shown.Comma)
-        $ui.Sliders['Paragraph gap'].Bar.Value = [int][math]::Min($PauseLimits.Paragraph, $shown.Paragraph)
-        $ui.Sliders.Volume.Bar.Value = [int][math]::Max(0, [math]::Min(100, [math]::Round($peak * 10, [MidpointRounding]::AwayFromZero) * 10))
-        $ui.Sliders.Boost.Bar.Value = [int][math]::Max(10, [math]::Min(40, [math]::Round($boost * 10)))
-        $ui.Sliders.Speed.Bar.Value = [int][math]::Max(25, [math]::Min(200, [math]::Round(100 / $lengthScale)))
-        Update-UiSliderLabels
-    } finally {
-        $ui.Filling = $false
-    }
-    $ui.CurrentInstalled = $tag
-    foreach ($k in 'Sentence gap', 'Comma gap', 'Paragraph gap') { $ui.Sliders[$k].Bar.Enabled = $ui.OwnBox.Checked }
-    Update-UiNickBox
-    $ui.SoundLabel.Text = "How $($tag.Title) sounds" + $(if ($tag.Shared) { ' (all its speakers)' } else { '' })
-}
-
-function Save-UiSettings {
-    $ui = $script:Ui
-    $tag = $ui.CurrentInstalled
-    if (-not $tag -or -not (Test-Path (Join-Path $tag.Dir 'voice.json'))) { return }
-    $peak = $ui.Sliders.Volume.Bar.Value / 100.0
-    $boost = $ui.Sliders.Boost.Bar.Value / 10.0
-    $lengthScale = [math]::Round(100.0 / $ui.Sliders.Speed.Bar.Value, 3)
-    $s = $ui.Sliders
-    try {
-        Set-VoiceSettings $tag.Dir $peak $boost $lengthScale
-        Set-VoicePauses $tag.Dir $ui.OwnBox.Checked (Get-RoundedMs $s['Sentence gap'].Bar.Value) `
-            (Get-RoundedMs $s['Comma gap'].Bar.Value) (Get-RoundedMs $s['Paragraph gap'].Bar.Value)
-    } catch {
-        [void][System.Windows.Forms.MessageBox]::Show("Could not save the settings: $($_.Exception.Message)", $AppName)
-    }
-}
-
-function Reset-UiSettings {
-    $ui = $script:Ui
-    if (-not $ui.CurrentInstalled) { return }
-    $ui.Sliders.Volume.Bar.Value = [int]($DefaultPeak * 100)
-    $ui.Sliders.Boost.Bar.Value = [int]($DefaultBoost * 10)
-    $ui.Sliders.Speed.Bar.Value = 100
-}
-
-function Stop-UiPreview {
-    $p = $script:Ui.PreviewProcess
-    if ($p -and -not $p.HasExited) { try { $p.Kill() } catch { } }
-    $script:Ui.PreviewProcess = $null
-}
-
-# Speaks the line with a voice in a separate PowerShell, as any program would (the engine is never
-# loaded into this one, so nothing here holds its files). Settings not yet saved are saved first.
-function Start-UiPreview([string]$VoiceName, [string]$Say) {
-    $ui = $script:Ui
-    if ($ui.SaveTimer.Enabled) { $ui.SaveTimer.Stop(); Save-UiSettings }
-    if ($ui.GlobalTimer.Enabled) { $ui.GlobalTimer.Stop(); Save-UiGlobalSettings }
-    Stop-UiPreview
-    $text = if ($Say) { $Say } elseif ($ui.PreviewBox.Text.Trim()) { $ui.PreviewBox.Text } else { $PreviewText }
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($text))
-    $ui.PreviewProcess = Start-Process $PS64 -WindowStyle Hidden -PassThru -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass',
-        '-File', "`"$(Join-Path $Here 'Speak.ps1')`"", '-Voice', "`"$VoiceName`"", '-TextBase64', $encoded)
-}
-
-# ---- the Pronunciation tab. Each row of its list is a rule (its Tag); changes are saved at once.
-function Format-UiWordMatch($Rule) {
-    $what = if ($Rule.Whole) { 'whole words' } else { 'parts of words too' }
-    if ($Rule.Case) { $what += ', with these capitals' }
-    return $what
-}
-function Add-UiWordRow($Rule) {
-    $item = New-Object System.Windows.Forms.ListViewItem([string]$Rule.From)
-    [void]$item.SubItems.Add([string]$Rule.To)
-    [void]$item.SubItems.Add((Format-UiWordMatch $Rule))
-    # (A table of its own: what the row holds must not depend on how PowerShell wraps the rule it came from.)
-    $item.Tag = @{ On = [bool]$Rule.On; Whole = [bool]$Rule.Whole; Case = [bool]$Rule.Case; From = [string]$Rule.From; To = [string]$Rule.To }
-    $item.Checked = [bool]$Rule.On
-    [void]$script:Ui.WordList.Items.Add($item)
-    return $item
-}
-function Update-UiWordList {
-    $ui = $script:Ui
-    $ui.Filling = $true
-    try {
-        $ui.WordList.BeginUpdate()
-        $ui.WordList.Items.Clear()
-        foreach ($rule in (Get-Dictionary $DictionaryFile)) { [void](Add-UiWordRow $rule) }
-        $ui.WordList.EndUpdate()
-    } finally { $ui.Filling = $false }
-    Update-UiWordFields
-}
-# Writes the list to the dictionary file (the engine picks it up at the next thing said).
-function Save-UiWords {
-    $ui = $script:Ui
-    $rules = @()
-    foreach ($item in $ui.WordList.Items) {
-        if ($null -eq $item.Tag) { return }      # (a row not yet whole: nothing is written, so nothing is lost)
-        $item.Tag.On = $item.Checked
-        $rules += $item.Tag
-    }
-    try { Set-Dictionary $DictionaryFile $rules }
-    catch { $ui.Status.Text = "Could not save the pronunciation rules: $($_.Exception.Message)" }
-}
-# The boxes under the list: the selected rule's, to change it; empty for a new one.
-function Update-UiWordFields {
-    $ui = $script:Ui
-    $selected = $ui.WordList.SelectedItems
-    if ($selected.Count) {
-        $rule = $selected[0].Tag
-        $ui.WordFrom.Text = $rule.From; $ui.WordTo.Text = $rule.To
-        $ui.WordWhole.Checked = $rule.Whole; $ui.WordCase.Checked = $rule.Case
-    }
-    $ui.WordSave.Text = if ($selected.Count) { 'Save rule' } else { 'Add rule' }
-    $ui.WordRemove.Enabled = $selected.Count -gt 0
-}
-function Clear-UiWordFields {
-    $ui = $script:Ui
-    foreach ($item in @($ui.WordList.SelectedItems)) { $item.Selected = $false }
-    $ui.WordFrom.Text = ''; $ui.WordTo.Text = ''; $ui.WordWhole.Checked = $true; $ui.WordCase.Checked = $false
-    Update-UiWordFields
-    [void]$ui.WordFrom.Focus()
-}
-# Adds the rule in the boxes, or changes the selected one (or the one already there for that word).
-function Save-UiWord {
-    $ui = $script:Ui
-    $from = ($ui.WordFrom.Text -replace '\s+', ' ').Trim()
-    $to = ($ui.WordTo.Text -replace '\s+', ' ').Trim()
-    if (-not $from) { $ui.Status.Text = 'Type the word or phrase first.'; return }
-    $rule = @{ On = $true; Whole = [bool]$ui.WordWhole.Checked; Case = [bool]$ui.WordCase.Checked; From = $from; To = $to }
-    $target = if ($ui.WordList.SelectedItems.Count) { $ui.WordList.SelectedItems[0] } else { $null }
-    if (-not $target) {
-        foreach ($item in $ui.WordList.Items) {
-            $same = if ($rule.Case -or $item.Tag.Case) { $item.Tag.From -ceq $from } else { $item.Tag.From -eq $from }
-            if ($same -and $item.Tag.Case -eq $rule.Case) { $target = $item; break }
-        }
-    }
-    $ui.Filling = $true
-    try {
-        if ($target) {
-            $rule.On = $target.Checked
-            $target.Tag = $rule
-            $target.Text = $from; $target.SubItems[1].Text = $to; $target.SubItems[2].Text = Format-UiWordMatch $rule
-        } else { $target = Add-UiWordRow $rule }
-    } finally { $ui.Filling = $false }
-    Save-UiWords
-    $target.Selected = $true
-    $target.EnsureVisible()
-    Update-UiWordFields
-    $ui.Status.Text = "Saved: `"$from`" is said as `"$to`" from the next thing a program says."
-}
-function Remove-UiWord {
-    $ui = $script:Ui
-    if (-not $ui.WordList.SelectedItems.Count) { return }
-    $ui.WordList.Items.Remove($ui.WordList.SelectedItems[0])
-    Save-UiWords
-    Clear-UiWordFields
-}
-# Says the "Say it as" text (the word itself if that is empty) with the Voice manager's selected voice,
-# else the one chosen on Speed and pauses: to try a spelling before saving it.
-function Invoke-UiWordPreview {
-    $ui = $script:Ui
-    $say = if ($ui.WordTo.Text.Trim()) { $ui.WordTo.Text.Trim() } else { $ui.WordFrom.Text.Trim() }
-    if (-not $say) { $ui.Status.Text = 'Type something to hear first.'; return }
-    $voice = Get-UiCurrentVoice
-    $name = if ($voice) { $voice.Voice } else { [string]$ui.PreviewVoiceBox.SelectedItem }
-    if (-not $name) { $ui.Status.Text = 'Install a voice first (Add or remove voices).'; return }
-    Start-UiPreview $name $say
-}
-
-# The Voice manager's Preview: the selected voice (its chosen speaker).
-function Invoke-UiPreview {
-    $voice = Get-UiCurrentVoice
-    if ($voice) { Start-UiPreview $voice.Voice }
-}
-
-# The Speed and pauses tab's Preview: the voice chosen there.
-function Invoke-UiGlobalPreview {
-    $name = [string]$script:Ui.PreviewVoiceBox.SelectedItem
-    if ($name) { Start-UiPreview $name }
-}
-
-function Update-UiSummary {
-    $ui = $script:Ui
-    $ticked = @($ui.List.Items | Where-Object { $_.Checked } | ForEach-Object { $_.Tag })
-    $total = ($ticked | Measure-Object SizeMb -Sum).Sum
-    $new = @($ticked | Where-Object { $ui.InstalledKeys -notcontains $_.Key })
-    $download = ($new | Measure-Object SizeMb -Sum).Sum
-    $gone = @($ui.InstalledKeys | Where-Object { @($ticked | ForEach-Object { $_.Key }) -notcontains $_ })
-    $text = "Ticked: $($ticked.Count) voice(s), about $([int]$total) MB on disk."
-    if ($new.Count) { $text += " To download: $($new.Count), $([int]$download) MB." }
-    if ($gone.Count) { $text += " To remove: $($gone.Count)." }
-    if (-not $new.Count -and -not $gone.Count) { $text += ' No changes to apply.' }
-    $ui.SizeLabel.Text = $text
-    $warnings = @()
-    foreach ($group in ($ticked | Group-Object { "$($_.Name)|$($_.Code)" } | Where-Object { $_.Count -gt 1 })) {
-        $g = @($group.Group)
-        $warnings += "$((Get-PrettyName $g[0].Name)) ($($g[0].Accent)) is ticked in $($g.Count) qualities ($(@($g | ForEach-Object Quality) -join ' and ')): " +
-            "each is a separate model, $(@($g | ForEach-Object { "$($_.SizeMb) MB" }) -join ' + ')."
-    }
-    $ui.WarnLabel.Text = $warnings -join ' '
-}
-
-function Save-UiSpeakers {
-    $current = $script:Ui.Current
-    if ($current -and $current.Speakers.Count -gt 1) {
-        $script:Ui.Speakers[$current.Key] = (@($script:Ui.SpeakerList.CheckedItems) | ForEach-Object { [string]$_ }) -join ', '
-    }
-}
-
-function Update-UiSelection {
-    Save-UiSpeakers
-    $ui = $script:Ui
-    $ui.Current = $null
-    $ui.Filling = $true
-    $ui.SpeakerList.BeginUpdate()
-    try {
-        $ui.SpeakerList.Items.Clear()
-        $ui.SpeakerList.Enabled = $false
-        if ($ui.List.SelectedItems.Count -eq 0) { return }
-        $v = $ui.List.SelectedItems[0].Tag
-        $ui.Current = $v
-        if ($v.Speakers.Count -le 1) {
-            $ui.SpeakerLabel.Text = "$($v.Display): one speaker."
-            return
-        }
-        # Listed in name order, numbers by value (p225 before p1000; the voice's own order is kept in its files).
-        $names = @($v.Speakers.Keys | Sort-Object { [regex]::Replace([string]$_, '\d+', { param($m) $m.Value.PadLeft(10, '0') }) })
-        $firstSpeaker = @($v.Speakers.Keys)[0]
-        $ticked = @()
-        if ($ui.Speakers.ContainsKey($v.Key)) { $ticked = @(($ui.Speakers[$v.Key] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) }
-        foreach ($n in $names) { [void]$ui.SpeakerList.Items.Add($n, ($ticked -contains $n)) }
-        $ui.SpeakerList.Enabled = $true
-        $ui.SpeakerLabel.Text = "Speakers of $($v.Display) ($($names.Count)): click a name to hear it (Play sample plays it again); tick its box to " +
-            "install it, each becomes a voice (none ticked: $firstSpeaker)."
-    } finally {
-        $ui.SpeakerList.EndUpdate()
-        $ui.Filling = $false
-    }
-}
-
-function Invoke-UiSample {
-    $ui = $script:Ui
-    if ($ui.List.SelectedItems.Count -eq 0) { return }
-    Save-UiSpeakers
-    $v = $ui.List.SelectedItems[0].Tag
-    $speakerNumber = 0
-    if ($v.Speakers.Count -gt 1) {
-        # The speaker selected in the list, else the first ticked, else the first.
-        $name = [string]$ui.SpeakerList.SelectedItem
-        if (-not $name -and $ui.SpeakerList.CheckedItems.Count -gt 0) { $name = [string]$ui.SpeakerList.CheckedItems[0] }
-        if ($name -and $v.Speakers.Contains($name)) { $speakerNumber = $v.Speakers[$name] }
-    }
-    $folder = $v.Onnx.Substring(0, $v.Onnx.LastIndexOf('/'))
-    $file = Join-Path $env:TEMP ("modernvoices_sample_{0}_{1}.mp3" -f $v.Key, $speakerNumber)
-    try {
-        $ui.Form.Cursor = 'WaitCursor'
-        if (-not (Test-Path $file)) { Get-Download "$Base/$folder/samples/speaker_$speakerNumber.mp3" $file }
-        Add-Type -AssemblyName PresentationCore
-        if ($ui.Player) { $ui.Player.Stop(); $ui.Player.Close() }
-        $ui.Player = New-Object System.Windows.Media.MediaPlayer
-        $ui.Player.Open([uri]$file)
-        $ui.Player.Play()
-    } catch {
-        [void][System.Windows.Forms.MessageBox]::Show("Could not play the sample: $($_.Exception.Message)", $AppName)
-    } finally {
-        $ui.Form.Cursor = 'Default'
-    }
-}
-
-# The ids the list's ticks stand for: a key per single-speaker voice, key#name per chosen speaker.
-function Get-PickedIds($Picker) {
-    $ids = @()
-    foreach ($item in $Picker.List.Items) {
-        if (-not $item.Checked) { continue }
-        $v = $item.Tag
-        if ($v.Speakers.Count -le 1) { $ids += $v.Key; continue }
-        $wanted = if ($Picker.Speakers.ContainsKey($v.Key)) { $Picker.Speakers[$v.Key] } else { @($v.Speakers.Keys)[0] }
-        $names = @(($wanted -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-        $good = @($names | Where-Object { $v.Speakers.Contains($_) })
-        if ($good.Count -eq 0) { $good = @(@($v.Speakers.Keys)[0]) }
-        foreach ($n in $good) { $ids += "$($v.Key)#$n" }
-    }
-    $ids | Select-Object -Unique
 }
 
 # --- installing -----------------------------------------------------------------------------------
@@ -1936,6 +518,14 @@ function Close-OurPrograms {
             if (-not $reader.WaitForExit(5000)) { $reader.Kill(); [void]$reader.WaitForExit(5000) }
         } catch { }
     }
+    foreach ($config in @(Get-Process 'ModernVoicesConfig' -ErrorAction SilentlyContinue)) {
+        if ($config.MainWindowHandle -ne [IntPtr]::Zero) { Write-Host '  closing Modern Voices Config' }
+        try {
+            [void]$config.CloseMainWindow()      # (it saves what it was changing; a Preview's process has no window)
+            if (-not $config.WaitForExit(5000)) { $config.Kill(); [void]$config.WaitForExit(5000) }
+        } catch { }
+    }
+    # (Before 0.11.0, Modern Voices Config was a window of PowerShell's.)
     foreach ($shell in @(Get-Process 'powershell' -ErrorAction SilentlyContinue)) {
         if ($shell.Id -ne $PID -and $shell.MainWindowTitle -like 'Modern Voices Config*') {
             Write-Host '  closing Modern Voices Config'
@@ -1979,15 +569,17 @@ function Install-Engine {
     Copy-Item (Join-Path $Here '*.ico') $scripts -Force
     Remove-Leftovers $Here $scripts '*.ps1'
     Remove-Leftovers $Here $scripts '*.ico'
-    # Modern Voices: Reader (a program of its own, beside this one).
-    $readerFrom = Join-Path $Root 'reader'
-    if (Test-Path $readerFrom) {
-        $readerInto = Join-Path $App 'reader'
-        New-Item $readerInto -ItemType Directory -Force | Out-Null
-        try { Copy-Item (Join-Path $readerFrom '*') $readerInto -Force }
-        catch { throw "The Reader is open: close it, then run this again. ($($_.Exception.Message))" }
-        Remove-Leftovers $readerFrom $readerInto '*.exe'
-        Remove-Leftovers $readerFrom $readerInto '*.dll'
+    # Modern Voices Config and Modern Voices: Reader (programs of their own, beside this one).
+    foreach ($program in @(@('config', 'Modern Voices Config'), @('reader', 'The Reader'))) {
+        $programFrom = Join-Path $Root $program[0]
+        if (Test-Path $programFrom) {
+            $programInto = Join-Path $App $program[0]
+            New-Item $programInto -ItemType Directory -Force | Out-Null
+            try { Copy-Item (Join-Path $programFrom '*') $programInto -Force }
+            catch { throw "$($program[1]) is open: close it, then run this again. ($($_.Exception.Message))" }
+            Remove-Leftovers $programFrom $programInto '*.exe'
+            Remove-Leftovers $programFrom $programInto '*.dll'
+        }
     }
 }
 
@@ -2072,13 +664,13 @@ function New-Shortcut([string]$Path, [string]$Arguments, [string]$Description, [
 
 function Write-Launcher([string]$Destination, [string]$Script, [string]$Extra, [switch]$LeaveFolder) {
     $run = "`"$PS64`" -NoProfile -ExecutionPolicy Bypass -File `"%~dp0installer\$Script`" $Extra".TrimEnd()
-    $loading = if ($Script -eq 'Install.ps1') { "echo Loading program...`r`nset MV_LOADING_SAID=1`r`n" } else { '' }
-    $text = if ($LeaveFolder) { "@cd /d `"%TEMP%`" & $run & exit /b`r`n" } else { "@echo off`r`n$loading$run`r`n" }
+    $text = if ($LeaveFolder) { "@cd /d `"%TEMP%`" & $run & exit /b`r`n" } else { "@echo off`r`n$run`r`n" }
     [System.IO.File]::WriteAllText($Destination, $text, (New-Object System.Text.ASCIIEncoding))
 }
 
 function Register-Program {
-    Write-Launcher (Join-Path $App 'Modern Voices Config.cmd') 'Install.ps1' ''
+    $configExe = Join-Path $App 'config\ModernVoicesConfig.exe'
+    [System.IO.File]::WriteAllText((Join-Path $App 'Modern Voices Config.cmd'), "@start `"`" `"%~dp0config\ModernVoicesConfig.exe`"`r`n", (New-Object System.Text.ASCIIEncoding))
     Write-Launcher (Join-Path $App 'Modern Voices Repair.cmd') 'Install.ps1' '-Repair'
     Write-Launcher (Join-Path $App 'Modern Voices Test.cmd') 'Test.ps1' ''
     # (As they were named before 0.9.7.)
@@ -2094,33 +686,36 @@ function Register-Program {
     Set-ItemProperty $OurKey -Name 'InstallLocation' -Value $App
     Set-ItemProperty $OurKey -Name 'DisplayIcon' -Value (Get-AppIcon)
     Set-ItemProperty $OurKey -Name 'UninstallString' -Value "`"$PS64`" -NoProfile -ExecutionPolicy Bypass -File `"$App\installer\Uninstall.ps1`""
-    Set-ItemProperty $OurKey -Name 'ModifyPath' -Value "`"$PS64`" -NoProfile -ExecutionPolicy Bypass -File `"$App\installer\Install.ps1`""
+    Set-ItemProperty $OurKey -Name 'ModifyPath' -Value "`"$configExe`""
     Set-ItemProperty $OurKey -Name 'NoRepair' -Value 1 -Type DWord
     Set-ItemProperty $OurKey -Name 'EstimatedSize' -Value $sizeKb -Type DWord
     New-Item $StartMenu -ItemType Directory -Force | Out-Null
     $common = "-NoProfile -ExecutionPolicy Bypass -File `"$App\installer\"
-    New-Shortcut (Join-Path $StartMenu 'Modern Voices Config.lnk') ($common + 'Install.ps1"') 'Voices installed, how they sound, add or remove voices' "$App\installer\manager.ico,0"
+    # Modern Voices Config and the Reader are programs: their entries start them (their icons are their own).
     $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
-    if (Test-Path $readerExe) {
-        $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $StartMenu 'Modern Voices Reader.lnk'))
-        $link.TargetPath = $readerExe
-        $link.WorkingDirectory = Split-Path $readerExe -Parent
-        $link.Description = 'Reads text aloud with the Modern Voices: pasted or copied text, files, and text on the screen'
-        $link.Save()      # (its icon is the program's own)
+    foreach ($program in @(@($configExe, 'Modern Voices Config.lnk', 'Voices installed, how they sound, add or remove voices'),
+                           @($readerExe, 'Modern Voices Reader.lnk', 'Reads text aloud with the Modern Voices: pasted or copied text, files, and text on the screen'))) {
+        if (-not (Test-Path $program[0])) { continue }
+        $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $StartMenu $program[1]))
+        $link.TargetPath = $program[0]
+        $link.Arguments = ''
+        $link.WorkingDirectory = Split-Path $program[0] -Parent
+        $link.Description = $program[2]
+        $link.IconLocation = "$($program[0]),0"
+        $link.Save()
     }
     New-Shortcut (Join-Path $StartMenu 'Modern Voices Repair.lnk') ($common + 'Install.ps1" -Repair') 'Register the voices again (if one went missing from programs)' "$App\installer\repair.ico,0"
     New-Shortcut (Join-Path $StartMenu 'Modern Voices Test.lnk') ($common + 'Test.ps1"') 'Hear each Modern Voice, with each word shown as the engine reports it' "$App\installer\repair.ico,0"
     New-Shortcut (Join-Path $StartMenu 'Uninstall.lnk') ($common + 'Uninstall.ps1"') "Uninstall $AppName" "$App\installer\repair.ico,0"
 }
 
-# Runs a program with no window and returns what it printed; the manager window keeps responding meanwhile.
+# Runs a program with no window and returns what it printed.
 function Invoke-Hidden([string]$Exe, [string[]]$Arguments) {
     $out = [System.IO.Path]::GetTempFileName()
     $err = [System.IO.Path]::GetTempFileName()
     try {
         $p = Start-Process $Exe -ArgumentList $Arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
         while (-not $p.HasExited) {
-            if ($script:Ui -and $script:Ui.Busy) { [System.Windows.Forms.Application]::DoEvents() }
             Start-Sleep -Milliseconds 100
         }
         return @(Get-Content $out) + @(Get-Content $err)
@@ -2223,35 +818,15 @@ function Set-InstalledVoices([string[]]$Wanted, [bool]$UsTags, $ByKey) {
     return $allGood
 }
 
-# Hides or shows this PowerShell's console window.
-function Set-ConsoleShown([bool]$Shown) {
-    try {
-        Use-ConsoleApi
-        $window = [ModernVoices.Console]::GetConsoleWindow()
-        if ($window -ne [System.IntPtr]::Zero) { [void][ModernVoices.Console]::ShowWindow($window, $(if ($Shown) { 5 } else { 0 })) }
-    } catch { }
-}
-
 # --- the steps --------------------------------------------------------------------------------------
 
 if ($FunctionsOnly) { return }
 
 try {
     if ($PickerSelfTest) {
-        # The window built (not shown) and driven as clicks would: the build's test of it.
-        # An error in one of the window's handlers is reported and ends the test (Windows would otherwise
-        # show a box and wait for a click that never comes).
-        Add-Type -AssemblyName System.Windows.Forms
-        [System.Windows.Forms.Application]::add_ThreadException({
-            param($sender, $e)
-            [Console]::Out.WriteLine("ERROR in the window: $($e.Exception)")
-            [Console]::Out.Flush()
-            [Environment]::Exit(3)
-        })
-        $existing = Get-InstalledFolder
-        if ($existing) { Set-AppPaths $existing }
+        # The "where to install" screen, built (not shown): the build's test of it. (Modern Voices Config has
+        # its own: config\ModernVoicesConfig.exe --selftest.)
         $bad = @()
-        # The first screen: where to install.
         $where = New-LocationForm $DefaultApp
         $first = $where.Path.Text
         $where.Path.Text = 'D:\Tools'
@@ -2260,181 +835,13 @@ try {
         Write-Output "location: default $first; D:\Tools -> $(Resolve-AppFolder 'D:\Tools')"
         if ($first -ne $DefaultApp -or (Resolve-AppFolder 'D:\Tools') -ne "D:\Tools\$AppName" -or $note -notmatch 'Outside Program Files' -or
             (Resolve-AppFolder "D:\Tools\$AppName") -ne "D:\Tools\$AppName") { $bad += 'location screen' }
-        $catalogue = Get-Catalogue
-        $byKey = @{}; foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
-        $real = @(Get-InstalledIds)
-        $ids = if ($real.Count) { $real } else { @('en_GB-alba-medium', 'en_GB-vctk-medium#p239') }
-        Add-StartupTime 'before building the window'
-        $ui = New-ManagerForm $catalogue $ids $false $byKey
-        Add-StartupTime 'window built'
-        foreach ($line in $script:StartupTimes) { Write-Output "timing: $line" }
-        $null = $ui.Form.Handle; $null = $ui.List.Handle; $null = $ui.InstalledList.Handle
-        Write-Output ("window: {0} voices in the catalogue, {1} installed shown; {2}" -f $ui.List.Items.Count, $ui.InstalledList.Items.Count, $ui.SizeLabel.Text)
-        # As the window opens, nothing is waiting to be applied: Apply changes is greyed out.
-        Write-Output "apply button as the window opens: greyed out: $(-not $ui.Apply.Enabled)"
-        if ($ui.Apply.Enabled) { $bad += 'apply button lit as the window opens' }
-        # Speakers: select VCTK, tick a second speaker.
-        $vctk = @($ui.List.Items | Where-Object { $_.Tag.Key -eq 'en_GB-vctk-medium' })[0]
-        $vctk.Selected = $true
-        Update-UiSelection
-        $count = $ui.SpeakerList.Items.Count
-        $before = @($ui.SpeakerList.CheckedItems | ForEach-Object { [string]$_ })
-        $index = 0; while ($before -contains [string]$ui.SpeakerList.Items[$index]) { $index++ }
-        $other = [string]$ui.SpeakerList.Items[$index]
-        $ui.SpeakerList.SetItemChecked($index, $true)
-        Save-UiSpeakers
-        $picked = @(Get-PickedIds $ui)
-        Write-Output ("speakers: {0} listed for VCTK, ticked {1}; after ticking {2}: {3}" -f $count, ($before -join ','), $other, ($picked -join ' '))
-        if ($count -ne $vctk.Tag.Speakers.Count -or $picked -notcontains "en_GB-vctk-medium#$other") { $bad += 'speaker list' }
-        foreach ($b in $before) { if ($picked -notcontains "en_GB-vctk-medium#$b") { $bad += "speaker $b dropped" } }
-        # Two qualities of one voice: the warning.
-        foreach ($item in $ui.List.Items) { if ($item.Tag.Name -eq 'lessac') { $item.Checked = $true } }
-        Update-UiSummary
-        Write-Output "warning: $($ui.WarnLabel.Text)"
-        if ($ui.WarnLabel.Text -notmatch 'Lessac') { $bad += 'duplicate warning' }
-        # Sliders, on a real installed voice: saved to its voice.json.
-        if ($real.Count -and $ui.InstalledList.Items.Count) {
-            $ui.InstalledList.Items[0].Selected = $true
-            Update-UiInstalled
-            $dir = $ui.CurrentInstalled.Dir
-            $was = Get-VoiceSettings $dir
-            $ui.Sliders.Volume.Bar.Value = 57; $ui.Sliders.Boost.Bar.Value = 20; $ui.Sliders.Speed.Bar.Value = 80
-            Write-Output ("volume 57 snaps to {0}" -f $ui.Sliders.Volume.Bar.Value)
-            if ($ui.Sliders.Volume.Bar.Value -ne 60) { $bad += 'volume in tens' }
-            Save-UiSettings
-            $now = Get-VoiceSettings $dir
-            Write-Output ("sliders: {0} -> peak {1}, boost {2}, length_scale {3}" -f $ui.CurrentInstalled.Title, $now.Peak, $now.Boost, $now.LengthScale)
-            if ($now.Peak -ne 0.6 -or $now.Boost -ne 2 -or $now.LengthScale -ne 1.25) { $bad += 'sliders' }
-            Set-VoiceSettings $dir $was.Peak $was.Boost $was.LengthScale
-            # The Speed and pauses tab: saved to settings.json.
-            $before = Get-Pauses $SettingsFile
-            $speedBefore = Get-GlobalSpeed $SettingsFile
-            $ui.GlobalBars['Sentence gap'].Bar.Value = 750
-            $ui.SpeedBar.Value = 150
-            Save-UiGlobalSettings
-            $now = Get-Pauses $SettingsFile
-            $speedNow = Get-GlobalSpeed $SettingsFile
-            Write-Output ("speed and pauses tab: speed {0} -> {1}%, sentence {2} -> {3} ms; example: {4}" -f $speedBefore, $speedNow,
-                $before.Sentence, $now.Sentence, $ui.GlobalBars['Sentence gap'].Example.Text)
-            if ($now.Sentence -ne 750 -or $speedNow -ne 150 -or $speedBefore -ne 100 -or $now.Paragraph -ne $before.Paragraph) { $bad += 'speed and pauses tab' }
-            Set-GlobalSpeed $SettingsFile $speedBefore
-            Set-GlobalPauses $SettingsFile $before.Sentence $before.Comma $before.Paragraph
-            Set-UiGlobalBars (Get-Pauses $SettingsFile) (Get-GlobalSpeed $SettingsFile)
-            # Windows' own speed: the warning shows when it isn't 0, and the button sets it back.
-            $rateWas = Get-ItemProperty 'HKCU:\Software\Microsoft\Speech\Voices' -Name DefaultTTSRate -ErrorAction SilentlyContinue
-            Set-WindowsRate 2
-            Update-UiWindowsRate
-            $warned = $ui.RateWarn.Text -like '*+2*'
-            Set-WindowsRate 0; Update-UiWindowsRate      # what the button does
-            $cleared = (Get-WindowsRate) -eq 0 -and $ui.RateWarn.Text -eq ''
-            Write-Output ("Windows' speed +2: warning shown {0}; button sets it to 0 {1}" -f $warned, $cleared)
-            if (-not ($warned -and $cleared)) { $bad += "Windows' speed warning" }
-            if ($null -eq $rateWas) { Remove-ItemProperty 'HKCU:\Software\Microsoft\Speech\Voices' -Name DefaultTTSRate -ErrorAction SilentlyContinue }
-            else { Set-WindowsRate $rateWas.DefaultTTSRate }
-            # A voice's own pauses: off to begin with (its sliders hidden); ticked, its sentence gap moved
-            # and saved to its voice.json; unticked again.
-            $offFirst = -not $ui.OwnBox.Checked -and -not $ui.GapGrid.Visible
-            $ui.OwnBox.Checked = $true
-            Update-UiOwnPauses
-            $enabled = $ui.Sliders['Sentence gap'].Bar.Enabled
-            $ui.Sliders['Sentence gap'].Bar.Value = 300
-            Save-UiSettings
-            $own = Get-Pauses (Join-Path $dir 'voice.json')
-            Update-UiApply
-            if ($ScreenshotDir) { Save-UiPictures $ScreenshotDir }
-            $ui.OwnBox.Checked = $false
-            Update-UiOwnPauses
-            Save-UiSettings
-            $back = Get-Pauses (Join-Path $dir 'voice.json')
-            Write-Output ("own pauses: off at first {0}; ticked: sliders on {1}, own {2}, sentence {3} ms; unticked: own {4}" -f $offFirst, $enabled,
-                $own.Own, $own.Sentence, $back.Own)
-            if (-not $offFirst -or -not $enabled -or -not $own.Own -or $own.Sentence -ne 300 -or $back.Own) { $bad += 'own pauses' }
-            # A nickname: the voice renamed where Windows lists it, and back.
-            $plain = (Get-UiCurrentVoice).Voice
-            $ui.NickBox.Text = 'Test (Name)'
-            Set-UiNickname
-            $named = (Get-UiCurrentVoice).Voice
-            $listed = @(Get-OurVoiceNames) -contains $named
-            $shown = $ui.NickBox.Text
-            $ui.NickBox.Text = ''
-            Set-UiNickname
-            $restored = (Get-UiCurrentVoice).Voice
-            Write-Output ("nickname: {0} -> {1} (Windows lists it: {2}; box shows '{3}') -> {4}" -f $plain, $named, $listed, $shown, $restored)
-            if ($named -notlike '*(Test Name)' -or -not $listed -or $shown -ne 'Test Name' -or $restored -ne $plain -or
-                @(Get-OurVoiceNames) -notcontains $plain) { $bad += 'nickname' }
-            # A pronunciation rule: added, changed, switched off and removed, each saved to the dictionary file.
-            [void]$ui.WordList.Handle      # (the list made, as opening its tab would: selecting a row needs it)
-            $rulesBefore = @(Get-Dictionary $DictionaryFile).Count
-            $ui.WordFrom.Text = ' Niamh '; $ui.WordTo.Text = 'Neev'
-            Save-UiWord
-            $added = @(Get-Dictionary $DictionaryFile | Where-Object { $_.From -eq 'Niamh' })
-            $ui.WordTo.Text = 'Neeve'; $ui.WordCase.Checked = $true
-            Save-UiWord
-            $changed = @(Get-Dictionary $DictionaryFile | Where-Object { $_.From -eq 'Niamh' })
-            $ui.WordList.SelectedItems[0].Checked = $false
-            Save-UiWords      # (what unticking does, once the list is on screen)
-            $off = @(Get-Dictionary $DictionaryFile | Where-Object { $_.From -eq 'Niamh' })
-            Remove-UiWord
-            $rulesAfter = @(Get-Dictionary $DictionaryFile).Count
-            Write-Output ("pronunciation: added '{0}' as '{1}' (on {2}, whole {3}); changed to '{4}' (capitals {5}, {6} rule); unticked: on {7}; removed: {8} -> {9} rules" -f
-                $added[0].From, $added[0].To, $added[0].On, $added[0].Whole, $changed[0].To, $changed[0].Case, $changed.Count, $off[0].On, $rulesBefore, $rulesAfter)
-            if ($added.Count -ne 1 -or $added[0].To -ne 'Neev' -or -not $added[0].On -or -not $added[0].Whole -or $changed.Count -ne 1 -or $changed[0].To -ne 'Neeve' -or
-                -not $changed[0].Case -or $off[0].On -or $rulesAfter -ne $rulesBefore) { $bad += 'pronunciation rules' }
-            # Preview: the selected voice by the name programs see; the Speed and pauses tab lists every voice.
-            $voice = Get-UiCurrentVoice
-            $known = @(Get-OurVoiceNames)
-            Write-Output ("preview: Voice manager would say it with '{0}'; Speed and pauses offers {1} voice(s), '{2}' chosen" -f $voice.Voice,
-                $ui.PreviewVoiceBox.Items.Count, $ui.PreviewVoiceBox.SelectedItem)
-            if ($known -notcontains $voice.Voice -or $ui.PreviewVoiceBox.Items.Count -ne $known.Count -or
-                @($ui.PreviewVoiceBox.Items | Where-Object { $known -notcontains $_ }).Count) { $bad += 'preview voices' }
-        }
-        # Apply with nothing changed: says so, changes nothing.
-        foreach ($item in $ui.List.Items) { if ($item.Tag.Name -eq 'lessac') { $item.Checked = $false } }
-        $ui.Speakers = @{}; foreach ($id in $ids) { $idParts = Split-VoiceId $id; if ($null -ne $idParts[1]) { $ui.Speakers[$idParts[0]] = $idParts[1] } }
-        $ui.Current = $null
-        Invoke-UiApply
-        Write-Output "apply, nothing changed: $($ui.Status.Text)"
-        if ($ui.Status.Text -ne 'Nothing to change.') { $bad += 'apply with no changes' }
-        # Apply changes is greyed out with nothing to apply, and not once a tick differs.
-        Update-UiApply
-        $greyed = -not $ui.Apply.Enabled
-        $first = $ui.List.Items | Where-Object { -not $_.Checked } | Select-Object -First 1
-        if ($first) { $first.Checked = $true }
-        Update-UiApply
-        $lit = $ui.Apply.Enabled
-        if ($first) { $first.Checked = $false }
-        Update-UiApply
-        Write-Output "apply button: nothing to apply, greyed out: $greyed; a voice ticked, lit: $lit; unticked again, greyed out: $(-not $ui.Apply.Enabled)"
-        if (-not $greyed -or -not $lit -or $ui.Apply.Enabled) { $bad += 'apply button greyed out' }
-        # Windows' default voice, set from the Voice manager (put back afterwards).
-        if ($real.Count -and $ui.InstalledList.Items.Count) {
-            $before = (Get-ItemProperty $DefaultVoiceKey -ErrorAction SilentlyContinue).DefaultTokenId
-            $ui.InstalledList.Items[0].Selected = $true
-            Update-UiInstalled
-            $token = (Get-UiCurrentVoice).Token
-            Set-UiDefaultVoice
-            $now = (Get-ItemProperty $DefaultVoiceKey).DefaultTokenId
-            $marked = $ui.InstalledList.Items[0].SubItems[4].Text
-            Write-Output "default voice: $now (marked '$marked'); $($ui.DefaultLabel.Text)"
-            if ($now -ne "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\$token" -or $marked -ne 'yes') { $bad += 'default voice' }
-            if ($before) { Set-ItemProperty $DefaultVoiceKey -Name 'DefaultTokenId' -Value $before } else { Remove-ItemProperty $DefaultVoiceKey -Name 'DefaultTokenId' }
-        }
-        # A download in the background with progress, as when applying changes.
-        $ui.Busy = $true
-        $sample = Join-Path $env:TEMP 'modernvoices_selftest.mp3'
-        Remove-Item $sample -ErrorAction SilentlyContinue
-        Get-Download "$Base/en/en_GB/alba/medium/samples/speaker_0.mp3" $sample
-        $ui.Busy = $false
-        Write-Output ("background download: {0} bytes, progress bar at {1}" -f (Get-Item $sample).Length, $ui.Progress.Value)
-        if ((Get-Item $sample).Length -lt 1000) { $bad += 'background download' }
-        $ui.Form.Dispose()
-        if ($bad.Count) { Write-Output "window: FAILED ($($bad -join ', '))"; exit 3 }
-        Write-Output 'window: ok'
+        if ($bad.Count) { Write-Output "location screen: FAILED ($($bad -join ', '))"; exit 3 }
+        Write-Output 'location screen: ok'
         exit 0
     }
 
     Write-Host "$AppName $Version" -ForegroundColor Cyan
-    $interactive = -not ($Repair -or $Voices.Count -gt 0 -or $Unattended)
+    $interactive = -not ($Repair -or $Voices.Count -gt 0 -or $Unattended -or $ExactVoices)
     # Where: the installed folder (running from it, or a kit over it), else the one given or chosen.
     $existing = Get-InstalledFolder
     $updating = $false
@@ -2466,16 +873,13 @@ try {
         Set-GlobalPauses $SettingsFile $PauseDefaults.Sentence $PauseDefaults.Comma $PauseDefaults.Paragraph
     }
     $usTags = [bool]$UsEnglishTags
-    if (-not $UsEnglishTags -and (Test-Path $Settings)) { $usTags = ((Get-ItemProperty $Settings).UsEnglishTags -eq 1) }
+    # (Modern Voices Config says exactly what is wanted; otherwise the option stays as it was unless asked for.)
+    if (-not $UsEnglishTags -and -not $ExactVoices -and (Test-Path $Settings)) { $usTags = ((Get-ItemProperty $Settings).UsEnglishTags -eq 1) }
 
-    Add-StartupTime 'script loaded, folder found'
     Write-Host "`nEngine"
     Install-AndRegisterEngine
-    Add-StartupTime 'engine copied and registered'
     Register-Program
-    Add-StartupTime 'Installed apps entry and Start menu'
     Add-DefaultRules
-    Add-StartupTime 'default pronunciation rules'
     Write-Host ("  {0}{1}" -f $Dll64, $(if (Test-Path $Dll32) { ' and 32-bit' } else { ' (no 32-bit engine in this build)' }))
 
     Write-Host "`nVoice list"
@@ -2483,7 +887,6 @@ try {
     Write-Host "  $($catalogue.Count) English voices"
     $byKey = @{}
     foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
-    Add-StartupTime 'voice list read'
 
     $allGood = $true
     if ($interactive -and $updating) {
@@ -2493,28 +896,21 @@ try {
             Write-Host "`nVoices"
             try { [void](Set-InstalledVoices $have $usTags $byKey) }
             catch { Write-Host "  The voices were left as they were ($($_.Exception.Message)). Modern Voices Repair (Start menu) registers them again." -ForegroundColor Yellow }
-            Add-StartupTime 'installed voices registered again (updating)'
         }
     }
     if ($interactive) {
-        # The window is the program: the console behind it is hidden while it is open.
-        $ui = New-ManagerForm $catalogue @(Get-InstalledIds) $usTags $byKey
-        Add-StartupTime 'window built'
-        $ui.Form.add_Shown({
-            Add-StartupTime 'window shown'
-            Save-StartupTimes
-            foreach ($line in $script:StartupTimes) { Write-Host $line }
-        })
-        Write-Host "`nThe Modern Voices window is open (if you can't see it, it's on the taskbar)."
-        Set-ConsoleShown $false
-        try { [void]$ui.Form.ShowDialog() } finally { Set-ConsoleShown $true }
-        $ui.Form.Dispose()
+        # Modern Voices Config opens (the installed one): the voices to add or remove, and how they sound.
+        # This console has done its work and closes.
+        $configExe = Join-Path $App 'config\ModernVoicesConfig.exe'
+        if (-not (Test-Path $configExe)) { throw "Modern Voices Config is missing ($configExe)." }
+        Write-Host "`nOpening Modern Voices Config (if you can't see it, it's on the taskbar)."
+        Start-Process $configExe -WorkingDirectory (Split-Path $configExe -Parent)
         exit 0
     }
     $installed = @(Get-InstalledIds)
     if ($Repair) {
         $wanted = $installed
-    } elseif ($Voices.Count -gt 0) {
+    } elseif ($ExactVoices -or $Voices.Count -gt 0) {
         $wanted = $Voices
     } else {
         $wanted = if ($installed.Count -gt 0) { $installed } else { @('en_GB-alba-medium', 'en_GB-northern_english_male-medium') }

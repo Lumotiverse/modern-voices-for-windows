@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.10.11.0")]
+[assembly: System.Reflection.AssemblyVersion("0.11.0.0")]
 
 namespace ModernVoicesReader
 {
@@ -1385,11 +1385,11 @@ namespace ModernVoicesReader
             try
             {
                 // Already open: that window comes to the front.
-                foreach (System.Diagnostics.Process running in System.Diagnostics.Process.GetProcessesByName("powershell"))
+                foreach (System.Diagnostics.Process running in System.Diagnostics.Process.GetProcessesByName("ModernVoicesConfig"))
                 {
                     try
                     {
-                        if (running.MainWindowHandle != IntPtr.Zero && running.MainWindowTitle.StartsWith("Modern Voices Config", StringComparison.Ordinal))
+                        if (running.MainWindowHandle != IntPtr.Zero)
                         {
                             if (IsIconic(running.MainWindowHandle)) { ShowWindowAsync(running.MainWindowHandle, 9); }
                             SetForegroundWindow(running.MainWindowHandle);
@@ -1400,15 +1400,10 @@ namespace ModernVoicesReader
                     finally { running.Dispose(); }
                 }
                 string app = Path.GetDirectoryName(Path.GetDirectoryName(Application.ExecutablePath));
-                string script = Path.Combine(app, "installer", "Install.ps1");
-                if (!File.Exists(script)) { Status("Modern Voices Config was not found (" + script + ")."); return; }
-                string windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-                bool narrow = Environment.Is64BitOperatingSystem && !Environment.Is64BitProcess;      // (Config needs the 64-bit PowerShell)
-                string shell = Path.Combine(windows, narrow ? "Sysnative" : "System32", @"WindowsPowerShell\v1.0\powershell.exe");
-                System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(shell,
-                    "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\"");
-                start.WorkingDirectory = app; start.UseShellExecute = true;
-                start.WindowStyle = System.Diagnostics.ProcessWindowStyle.Minimized;      // (its console, which it hides itself)
+                string config = Path.Combine(app, "config", "ModernVoicesConfig.exe");
+                if (!File.Exists(config)) { Status("Modern Voices Config was not found (" + config + ")."); return; }
+                System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(config);
+                start.WorkingDirectory = Path.GetDirectoryName(config); start.UseShellExecute = true;      // (Windows asks for permission)
                 System.Diagnostics.Process.Start(start);
                 Status("Opening Modern Voices Config...");
             }

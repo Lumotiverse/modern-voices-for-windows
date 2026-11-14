@@ -1,5 +1,5 @@
 <#
-Signs the built engines and the Reader, and packages the kit: out\ModernVoicesForWindows<version>\ and its .zip.
+Signs the built engines, Modern Voices Config and the Reader, and packages the kit: out\ModernVoicesForWindows<version>\ and its .zip.
 
 Signing: a certificate made here for code signing only signs the DLLs, then its private key is deleted,
 so it can never sign anything else (the Spoken Players voicepack's method). Its public part goes in
@@ -10,6 +10,7 @@ param(
     [Parameter(Mandatory)][string]$X64,
     [string]$X86,
     [string]$Reader,
+    [string]$Config,
     [string]$Out = 'out'
 )
 
@@ -41,6 +42,13 @@ if ($Reader -and (Test-Path $Reader)) {
     $dlls += "$kit\reader\ModernVoicesReader.exe"
 } else {
     throw 'The Reader (reader\ModernVoicesReader.exe) was not built.'
+}
+if ($Config -and (Test-Path $Config)) {
+    New-Item "$kit\config" -ItemType Directory -Force | Out-Null
+    Copy-Item $Config "$kit\config\ModernVoicesConfig.exe"
+    $dlls += "$kit\config\ModernVoicesConfig.exe"
+} else {
+    throw 'Modern Voices Config (config\ModernVoicesConfig.exe) was not built.'
 }
 Copy-Item (Join-Path $repo 'engine\espeak-ng-data') "$kit\engine\espeak-ng-data" -Recurse
 Copy-Item (Join-Path $repo 'installer\*.ps1') "$kit\installer"

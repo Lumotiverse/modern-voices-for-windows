@@ -74,9 +74,36 @@ jobs:
           name: reader
           path: built/reader/ModernVoicesReader.exe
 
+  config:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the scripts (they parse; no variable names that differ only by case)
+        shell: powershell
+        run: |
+          $bad = 0
+          foreach ($script in Get-ChildItem installer, tools, config, reader -Filter *.ps1 -Recurse) {
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$errors)
+            foreach ($e in $errors) { Write-Host "$($script.Name):$($e.Extent.StartLineNumber): $($e.Message)" -ForegroundColor Red; $bad++ }
+          }
+          $clashes = ./tools/dev/scopescan.ps1 (Get-ChildItem installer -Filter *.ps1).FullName
+          $clashes | Out-Host
+          if ($clashes -match ' / ') { Write-Host '::warning::variable names that differ only by case (see the list above)' }
+          if ($bad) { throw "$bad problem(s) in the scripts." }
+      - name: Build Modern Voices Config (C#, with the compiler that is part of Windows)
+        shell: powershell
+        run: |
+          $version = [regex]::Match((Get-Content engine/Cargo.toml -Raw), '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          ./config/Build.ps1 -Out built/config -Version $version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: config
+          path: built/config/ModernVoicesConfig.exe
+
   package:
-    needs: [engine-x64, engine-x86, reader]
-    if: ${{ always() && needs.engine-x64.result == 'success' && needs.reader.result == 'success' }}
+    needs: [engine-x64, engine-x86, reader, config]
+    if: ${{ always() && needs.engine-x64.result == 'success' && needs.reader.result == 'success' && needs.config.result == 'success' }}
     runs-on: windows-latest
     permissions:
       contents: write
@@ -95,10 +122,14 @@ jobs:
         with:
           name: reader
           path: built/reader
+      - uses: actions/download-artifact@v4
+        with:
+          name: config
+          path: built/config
       - name: Sign and package
         id: kit
         shell: powershell
-        run: ./tools/Package.ps1 -X64 built/x64/modern_voices.dll -X86 built/x86/modern_voices.dll -Reader built/reader/ModernVoicesReader.exe -Out out
+        run: ./tools/Package.ps1 -X64 built/x64/modern_voices.dll -X86 built/x86/modern_voices.dll -Reader built/reader/ModernVoicesReader.exe -Config built/config/ModernVoicesConfig.exe -Out out
       - name: Install, test, repair, uninstall (Windows PowerShell, as users run it)
         shell: powershell
         run: ./tools/Test-Kit.ps1 -Kit "out/${{ steps.kit.outputs.name }}"
