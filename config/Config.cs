@@ -788,6 +788,7 @@ namespace ModernVoicesConfig
         string applyStopped;
         int applyEnds;
         public List<string> ApplyLines = new List<string>();
+        public int ProgressSeen;                            // (the furthest the bar has been: the build's test)
         bool applyUsTags;
         readonly HashSet<Control> scrollHooked = new HashSet<Control>();
         readonly HashSet<ListView> listsReady = new HashSet<ListView>();
@@ -1872,13 +1873,16 @@ namespace ModernVoicesConfig
             StopPreview();
             string text = !string.IsNullOrEmpty(say) ? say : PreviewBox.Text.Trim().Length > 0 ? PreviewBox.Text : App.PreviewText;
             if (text.Length > 6000) { text = text.Substring(0, 6000); }
-            try
-            {
-                ProcessStartInfo start = new ProcessStartInfo(Application.ExecutablePath, "--speak " + Encoded(voiceName) + " " + Encoded(text));
-                start.UseShellExecute = false; start.CreateNoWindow = true;
-                previewProcess = Process.Start(start);
-            }
+            try { previewProcess = StartSpeaker("--speak", voiceName, text); }
             catch (Exception e) { StatusLabel.Text = "Preview did not start: " + e.Message; }
+        }
+        // This program started again to speak (--speak), or to speak to nowhere and say whether sound came
+        // out (--speak-check: the build's test, on a PC with no sound device).
+        public static Process StartSpeaker(string how, string voiceName, string text)
+        {
+            ProcessStartInfo start = new ProcessStartInfo(Application.ExecutablePath, how + " " + Encoded(voiceName) + " " + Encoded(text));
+            start.UseShellExecute = false; start.CreateNoWindow = true;
+            return Process.Start(start);
         }
 
         // ---- the Pronunciation tab. Each row of its list is a rule (its Tag); changes are saved at once.
@@ -2262,7 +2266,11 @@ namespace ModernVoicesConfig
             if (line.StartsWith("##progress ", StringComparison.Ordinal))
             {
                 int percent;
-                if (int.TryParse(line.Substring(11), out percent)) { Progress.Value = Math.Max(0, Math.Min(100, percent)); }
+                if (int.TryParse(line.Substring(11), out percent))
+                {
+                    Progress.Value = Math.Max(0, Math.Min(100, percent));
+                    ProgressSeen = Math.Max(ProgressSeen, Progress.Value);
+                }
                 return;
             }
             StatusLabel.Text = line;
@@ -2384,7 +2392,8 @@ namespace ModernVoicesConfig
         public static int Main(string[] args)
         {
             // Preview: this program started again by its own window, to say one thing and end.
-            if (args.Length >= 3 && args[0] == "--speak") { return Speak(args[1], args[2]); }
+            if (args.Length >= 3 && args[0] == "--speak") { return Speak(args[1], args[2], false); }
+            if (args.Length >= 3 && args[0] == "--speak-check") { return Speak(args[1], args[2], true); }
             try { Native.SetProcessDPIAware(); } catch (Exception) { }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -2425,22 +2434,26 @@ namespace ModernVoicesConfig
             }
         }
 
-        static int Speak(string voice64, string text64)
+        // 0: spoken; 1: it could not be; 2 (checking only): spoken, but no sound came out.
+        static int Speak(string voice64, string text64, bool check)
         {
             try
             {
-                SpeakNow(Encoding.UTF8.GetString(Convert.FromBase64String(voice64)), Encoding.UTF8.GetString(Convert.FromBase64String(text64)));
-                return 0;
+                long made = SpeakNow(Encoding.UTF8.GetString(Convert.FromBase64String(voice64)), Encoding.UTF8.GetString(Convert.FromBase64String(text64)), check);
+                return !check || made > 20000 ? 0 : 2;
             }
             catch (Exception) { return 1; }
         }
-        static void SpeakNow(string voice, string text)
+        static long SpeakNow(string voice, string text, bool toNowhere)
         {
             using (System.Speech.Synthesis.SpeechSynthesizer synth = new System.Speech.Synthesis.SpeechSynthesizer())
+            using (MemoryStream sound = new MemoryStream())
             {
                 synth.SelectVoice(voice);
-                synth.SetOutputToDefaultAudioDevice();
+                if (toNowhere) { synth.SetOutputToWaveStream(sound); } else { synth.SetOutputToDefaultAudioDevice(); }
                 synth.Speak(text);
+                synth.SetOutputToNull();
+                return sound.Length;
             }
         }
     }
@@ -2694,6 +2707,12 @@ namespace ModernVoicesConfig
                 foreach (object offered in ui.PreviewVoiceBox.Items) { if (!known.Contains(Convert.ToString(offered))) { allKnown = false; } }
                 Check(known.Contains(voice.Voice) && allKnown, "preview: the Voice manager would say it with '" + voice.Voice + "'; Speed and pauses offers " +
                     ui.PreviewVoiceBox.Items.Count + " voice(s), '" + ui.PreviewVoiceBox.SelectedItem + "' chosen");
+                using (Process checking = ConfigForm.StartSpeaker("--speak-check", voice.Voice, "Testing the preview of this voice."))
+                {
+                    bool said = checking.WaitForExit(120000);
+                    if (!said) { try { checking.Kill(); } catch (Exception) { } }
+                    Check(said && checking.ExitCode == 0, "the second copy of the program speaks with that voice (to nowhere, for this test: " + (said ? "code " + checking.ExitCode : "it did not finish") + ")");
+                }
                 ui.StartPreview(voice.Voice, "Testing the preview.");
                 Process speaking = ui.PreviewProcess;
                 Check(speaking != null, "Preview starts a second copy of the program to speak");
@@ -2750,9 +2769,14 @@ namespace ModernVoicesConfig
             try { File.Delete(sample); } catch (Exception) { }
             Catalogue.Download(App.BaseUrl + "/en/en_GB/alba/medium/samples/speaker_0.mp3", sample);
             Check(new FileInfo(sample).Length > 1000, "a voice's sample downloads (" + new FileInfo(sample).Length + " bytes)");
+            bool played = false;
+            string notPlayed = "";
+            try { Sample.Play(sample); Settle(300); Sample.Stop(); played = true; } catch (Exception e) { notPlayed = e.Message; }
+            Check(played, "the sample is given to Windows' player without an error (not heard: this test can't listen) " + notPlayed);
 
-            // Apply changes for real: a second VCTK speaker added (no download: the model is shared), then
-            // removed again. The installer does the work; the window shows what it says and the new state.
+            // Apply changes for real, as a person would: a second VCTK speaker ticked (no download: the model
+            // is shared) and a voice not yet installed (downloaded, with the bar moving); then both unticked
+            // again. The installer does the work; the window shows what it says and the new state.
             if (apply && real.Count > 0)
             {
                 List<string> had = new List<string>(ui.Installed);
@@ -2765,25 +2789,37 @@ namespace ModernVoicesConfig
                 while (extraIndex < ui.SpeakerList.Items.Count - 1 && tickedNow.Contains(Convert.ToString(ui.SpeakerList.Items[extraIndex]))) { extraIndex++; }
                 string extra = "en_GB-vctk-medium#" + Convert.ToString(ui.SpeakerList.Items[extraIndex]);
                 ui.SpeakerList.SetItemChecked(extraIndex, true);
+                ListViewItem alan = Find(ui, "en_GB-alan-medium");
+                bool download = alan != null && !alan.Checked;
+                if (download) { alan.Checked = true; }
+                string alanFolder = Path.Combine(App.VoiceRoot, "en_GB-alan-medium");
+                int more = download ? 2 : 1;
                 ui.UpdateApply();
-                Check(ui.ApplyButton.Enabled, "a second speaker ticked: Apply changes is lit");
+                Check(ui.ApplyButton.Enabled, "a second speaker and another voice ticked: Apply changes is lit (" + ui.SizeLabel.Text + ")");
                 ui.Apply();
                 Check(ui.Busy && ui.Progress.Visible && !ui.CloseButton.Enabled, "Apply changes: the installer is started, the window waits (progress shown, Close greyed out)");
-                bool finished = WaitWhile(delegate { return ui.Busy; }, 900);
+                bool finished = WaitWhile(delegate { return ui.Busy; }, 1200);
                 List<string> after = Voices.InstalledIds();
-                Note("apply (add " + extra + "): " + ui.ApplyLines.Count + " lines from the installer; status: " + ui.StatusLabel.Text);
-                foreach (string line in ui.ApplyLines) { Note("    | " + line); }
-                Check(finished && after.Count == had.Count + 1 && after.Contains(extra) && ui.StatusLabel.Text.StartsWith("Done", StringComparison.Ordinal),
-                    "Apply changes adds the voice: " + after.Count + " voices installed, every one tested");
-                Check(ui.InstalledList.Items.Count == after.Count && ui.PageIndex == 0 && !ui.ApplyButton.Enabled && ui.CloseButton.Enabled,
+                Note("apply (add " + extra + (download ? " and en_GB-alan-medium" : "") + "): " + ui.ApplyLines.Count + " lines from the installer; status: " + ui.StatusLabel.Text);
+                foreach (string line in ui.ApplyLines) { if (!line.StartsWith("##progress", StringComparison.Ordinal)) { Note("    | " + line); } }
+                Check(finished && after.Count == had.Count + more && after.Contains(extra) && ui.StatusLabel.Text.StartsWith("Done", StringComparison.Ordinal),
+                    "Apply changes adds them: " + after.Count + " voices installed, every one tested");
+                if (download)
+                {
+                    Check(after.Contains("en_GB-alan-medium") && File.Exists(Path.Combine(alanFolder, "model.onnx")) && ui.ProgressSeen >= 90,
+                        "the new voice was downloaded, with the bar moving (it reached " + ui.ProgressSeen + "%)");
+                }
+                Check(ui.InstalledList.Items.Count == after.Count && ui.PageIndex == 0 && !ui.ApplyButton.Enabled && ui.CloseButton.Enabled && !ui.Progress.Visible,
                     "afterwards the Voice manager shows them (" + ui.InstalledList.Items.Count + " rows), with nothing left to apply");
                 ui.SpeakerList.SetItemChecked(extraIndex, false);
+                if (download) { alan.Checked = false; }
                 ui.Apply();
-                finished = WaitWhile(delegate { return ui.Busy; }, 900);
+                finished = WaitWhile(delegate { return ui.Busy; }, 1200);
                 after = Voices.InstalledIds();
-                Note("apply (remove it again): " + ui.ApplyLines.Count + " lines from the installer; status: " + ui.StatusLabel.Text);
-                Check(finished && after.Count == had.Count && !after.Contains(extra) && ui.StatusLabel.Text.StartsWith("Done", StringComparison.Ordinal),
-                    "Apply changes removes it again: " + after.Count + " voices installed");
+                Note("apply (remove them again): " + ui.ApplyLines.Count + " lines from the installer; status: " + ui.StatusLabel.Text);
+                Check(finished && after.Count == had.Count && !after.Contains(extra) && !after.Contains("en_GB-alan-medium") && ui.StatusLabel.Text.StartsWith("Done", StringComparison.Ordinal),
+                    "Apply changes removes them again: " + after.Count + " voices installed");
+                if (download) { Check(!Directory.Exists(alanFolder), "the removed voice's files are gone"); }
             }
             ui.StopTimers();
             ui.Close();
