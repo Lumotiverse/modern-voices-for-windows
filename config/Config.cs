@@ -836,6 +836,7 @@ namespace ModernVoicesConfig
         public static string SpeakHow = "--speak";          // (the build's test has it speak to nowhere)
         readonly object applyLock = new object();
         List<string> applyHad = new List<string>();         // the voices installed when Apply changes was pressed
+        string applyDefault = "";                           // and Windows' default voice (its token) then
         public List<string> ApplyLines = new List<string>();
         public int ProgressSeen;                            // (the furthest the bar has been: the build's test)
         bool applyUsTags;
@@ -2401,6 +2402,7 @@ namespace ModernVoicesConfig
             lock (applyLock) { ApplyLines.Clear(); }
             applyUsTags = us;
             applyHad = new List<string>(Installed);
+            applyDefault = Voices.DefaultToken;
             ProgressSeen = 0;
             Busy = true;
             pageHost.Enabled = false; tabStrip.Enabled = false; ApplyButton.Enabled = false; CloseButton.Enabled = false;
@@ -2448,6 +2450,8 @@ namespace ModernVoicesConfig
         // one of Windows' own, such as Hazel, or one of these that has just been removed) and voices were
         // added (or the default was the one removed), the first voice of the list becomes the default. A
         // Modern Voice that is the default stays so; with none installed nothing is done.
+        // (Once a default voice is gone, Windows names one of its own as soon as anything speaks, as the
+        // installer's test of the voices does: so what the default was is taken from before the changes.)
         void SetDefaultAfterApply()
         {
             if (Installed.Count == 0) { return; }
@@ -2459,8 +2463,12 @@ namespace ModernVoicesConfig
                 if (!applyHad.Contains(id)) { added = true; }
             }
             if (ours) { return; }
-            bool wasOurs = token.StartsWith("ModernVoices_", StringComparison.OrdinalIgnoreCase);
-            if (!added && !wasOurs) { return; }
+            bool removed = applyDefault.StartsWith("ModernVoices_", StringComparison.OrdinalIgnoreCase);
+            foreach (string id in Installed)
+            {
+                if (string.Equals(Voices.TokenName(id), applyDefault, StringComparison.OrdinalIgnoreCase)) { removed = false; }
+            }
+            if (!added && !removed) { return; }
             try { Voices.DefaultToken = Voices.TokenName(Installed[0]); } catch (Exception) { }
         }
 
@@ -3305,7 +3313,20 @@ namespace ModernVoicesConfig
                 Check(finished && after.Count == had.Count && !after.Contains(extra) && !after.Contains("en_GB-alan-medium") && ui.StatusLabel.Text.StartsWith("Done", StringComparison.Ordinal),
                     "Apply changes removes them again: " + after.Count + " voices installed");
                 if (download) { Check(!Directory.Exists(alanFolder), "the removed voice's files are gone"); }
-                Check(Voices.DefaultToken == Voices.TokenName(after[0]), "a Modern Voice that is Windows' default stays the default");
+                Check(Voices.DefaultToken == Voices.TokenName(after[0]), "the default voice was one of those removed: the first voice left is the default now (" + ui.DefaultLabel.Text + ")");
+                // A Modern Voice that is the default stays so when voices are added.
+                Voices.DefaultTokenId = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\" + Voices.TokenName(after[after.Count - 1]);
+                ui.ShowPage(3);
+                Settle(50);
+                ui.SpeakerList.SetItemChecked(extraIndex, true);
+                ui.Apply();
+                finished = WaitWhile(delegate { return ui.Busy; }, 1200);
+                Check(finished && Voices.InstalledIds().Count == had.Count + 1 && Voices.DefaultToken == Voices.TokenName(after[after.Count - 1]),
+                    "a Modern Voice that is Windows' default stays the default when a voice is added (" + ui.DefaultLabel.Text + ")");
+                ui.SpeakerList.SetItemChecked(extraIndex, false);
+                ui.Apply();
+                finished = WaitWhile(delegate { return ui.Busy; }, 1200);
+                Check(finished && Voices.InstalledIds().Count == had.Count, "and the voices are as they were again");
                 Check(Elevated.Ready, "the administrator's part was started once and is still there (nothing asks twice)");
                 Voices.DefaultTokenId = defaultBefore;
             }
