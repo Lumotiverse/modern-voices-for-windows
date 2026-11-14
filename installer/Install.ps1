@@ -62,40 +62,13 @@ if (-not $isAdmin -and -not $PickerSelfTest -and -not $FunctionsOnly) {
 }
 if (-not [Environment]::Is64BitProcess -and -not $FunctionsOnly) { throw 'Run this from 64-bit PowerShell (use Install.cmd).' }
 
-# Where the Modern Voices Config window opens, and its size: centred on the main screen, 900 x 1000 at 100%
-# scaling (scaled up with the display), never larger than the screen (ConfigForm.WindowBounds in
-# config\Config.cs: keep the two in step). When installing or updating, this console is put there first, at
-# that size, so the window seems to take its place when it opens.
-function Get-UiWindowBounds {
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    $screenGraphics = [System.Drawing.Graphics]::FromHwnd([IntPtr]::Zero)
-    $scale = [math]::Max(1.0, $screenGraphics.DpiX / 96.0)
-    $screenGraphics.Dispose()
-    $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-    $w = [math]::Min([int][math]::Round(900 * $scale), $area.Width)
-    $h = [math]::Min([int][math]::Round(1000 * $scale), $area.Height)
-    return New-Object System.Drawing.Rectangle(($area.X + [int](($area.Width - $w) / 2)), ($area.Y + [int](($area.Height - $h) / 2)), $w, $h)
-}
-
-# This PowerShell's console window, moved; and the program's own identity on the taskbar.
+# The program's own identity on the taskbar.
 function Use-ConsoleApi {
     if (-not ('ModernVoices.Console' -as [type])) {
         Add-Type -Namespace ModernVoices -Name Console -MemberDefinition @'
-[DllImport("kernel32.dll")] public static extern System.IntPtr GetConsoleWindow();
-[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr window, int show);
-[DllImport("user32.dll")] public static extern bool MoveWindow(System.IntPtr window, int x, int y, int width, int height, bool repaint);
 [DllImport("shell32.dll", CharSet = CharSet.Unicode)] public static extern int SetCurrentProcessExplicitAppUserModelID(string id);
 '@
     }
-}
-function Move-ConsoleToUiWindow {
-    try {
-        $b = Get-UiWindowBounds
-        Use-ConsoleApi
-        $window = [ModernVoices.Console]::GetConsoleWindow()
-        if ($window -ne [System.IntPtr]::Zero) { [void][ModernVoices.Console]::MoveWindow($window, $b.X, $b.Y, $b.Width, $b.Height, $true) }
-    } catch { }
 }
 # The installer's own identity on the taskbar: else Windows counts its "where to install" window as
 # PowerShell's and shows PowerShell's logo there; with its own, the taskbar shows the window's icon (the cog
@@ -103,13 +76,13 @@ function Move-ConsoleToUiWindow {
 function Set-UiTaskbarIdentity {
     try { Use-ConsoleApi; [void][ModernVoices.Console]::SetCurrentProcessExplicitAppUserModelID('ModernVoicesForWindows.Config') } catch { }
 }
-if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices -or $Unattended -or $ExactVoices)) { Set-UiTaskbarIdentity; Move-ConsoleToUiWindow }
+if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices -or $Unattended -or $ExactVoices)) { Set-UiTaskbarIdentity }
 # -File passes "a,b" as one string: split it.
 $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.11.0'
+$Version = '0.12.0'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -123,9 +96,12 @@ function Set-AppPaths([string]$Path) {
     $script:Cer = Join-Path $script:Engine 'modern_voices.cer'
     $script:Data = Join-Path $script:Engine 'espeak-ng-data'
     $script:VoiceRoot = Join-Path $script:App 'voices'
-    $script:SettingsFile = Join-Path $script:App 'settings.json'
-    $script:DictionaryFile = Join-Path $script:App 'dictionary.txt'
 }
+# The settings people change (speed, pauses, output volume, pronunciation, each voice's own) are kept apart
+# from the program, where changing them needs no administrator: see $UserData in VoiceConvert.ps1.
+$SettingsFolder = Join-Path $env:ProgramData $AppName
+$SettingsFile = Join-Path $SettingsFolder 'settings.json'
+$DictionaryFile = Join-Path $SettingsFolder 'dictionary.txt'
 
 # The folder the installer puts the program in, for the folder chosen: a folder named
 # Modern Voices for Windows inside it (unless that is the one chosen), so that uninstalling only ever
@@ -417,6 +393,27 @@ function Protect-AppFolder {
     & "$env:SystemRoot\System32\icacls.exe" $App /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' `
         '*S-1-5-32-545:(OI)(CI)RX' '*S-1-5-11:(OI)(CI)RX' '*S-1-15-2-1:(OI)(CI)RX' '*S-1-15-2-2:(OI)(CI)RX' | Out-Null
     if ($LASTEXITCODE) { throw "Could not set who may change $App (icacls: $LASTEXITCODE)." }
+}
+
+# The settings folder: made, every user of the PC allowed to change what is in it (Modern Voices Config runs
+# without administrator rights), and the settings of a version before 0.12.0 (kept in the program's folder)
+# brought over. A voice's own settings from then are still in its voice.json, which is read where its own
+# file says nothing.
+function Initialize-SettingsFolder {
+    New-Item (Join-Path $SettingsFolder 'voices') -ItemType Directory -Force | Out-Null
+    & "$env:SystemRoot\System32\icacls.exe" $SettingsFolder /grant '*S-1-5-32-545:(OI)(CI)M' | Out-Null
+    if ($LASTEXITCODE) { throw "Could not set who may change $SettingsFolder (icacls: $LASTEXITCODE)." }
+    foreach ($name in @('settings.json', 'dictionary.txt')) {
+        $old = Join-Path $App $name
+        if (-not (Test-Path $old)) { continue }
+        $new = Join-Path $SettingsFolder $name
+        if (-not (Test-Path $new)) { Copy-Item $old $new }      # (a copy: it takes the new folder's permissions)
+        Remove-Item $old -Force
+    }
+    if (-not (Test-Path $SettingsFile)) {
+        Set-GlobalSpeed $SettingsFile $SpeedDefault
+        Set-GlobalPauses $SettingsFile $PauseDefaults.Sentence $PauseDefaults.Comma $PauseDefaults.Paragraph
+    }
 }
 
 # --- names --------------------------------------------------------------------------------------------
@@ -775,6 +772,7 @@ function Set-InstalledVoices([string[]]$Wanted, [bool]$UsTags, $ByKey) {
         if ($keys -notcontains $folder.Name) {
             try {
                 Remove-Item $folder.FullName -Recurse -Force
+                Remove-Item (Get-VoiceFile $folder.FullName) -Force -ErrorAction SilentlyContinue      # (its own settings with it)
                 Write-Status "    removed $($folder.Name)"
             } catch {
                 Write-Status "    could not remove $($folder.Name) (a program is using it): it goes next time" 'Yellow'
@@ -868,10 +866,7 @@ try {
     $fresh = -not (Test-Path $App)
     New-Item $App -ItemType Directory -Force | Out-Null
     if ($fresh) { Protect-AppFolder }
-    if (-not (Test-Path $SettingsFile)) {
-        Set-GlobalSpeed $SettingsFile $SpeedDefault
-        Set-GlobalPauses $SettingsFile $PauseDefaults.Sentence $PauseDefaults.Comma $PauseDefaults.Paragraph
-    }
+    Initialize-SettingsFolder
     $usTags = [bool]$UsEnglishTags
     # (Modern Voices Config says exactly what is wanted; otherwise the option stays as it was unless asked for.)
     if (-not $UsEnglishTags -and -not $ExactVoices -and (Test-Path $Settings)) { $usTags = ((Get-ItemProperty $Settings).UsEnglishTags -eq 1) }
@@ -904,7 +899,8 @@ try {
         $configExe = Join-Path $App 'config\ModernVoicesConfig.exe'
         if (-not (Test-Path $configExe)) { throw "Modern Voices Config is missing ($configExe)." }
         Write-Host "`nOpening Modern Voices Config (if you can't see it, it's on the taskbar)."
-        Start-Process $configExe -WorkingDirectory (Split-Path $configExe -Parent)
+        # (Through Explorer, so that it runs as the person at the PC and not as this administrator's window.)
+        Start-Process (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList "`"$configExe`""
         exit 0
     }
     $installed = @(Get-InstalledIds)

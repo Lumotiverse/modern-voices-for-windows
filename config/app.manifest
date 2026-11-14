@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity version="1.0.0.0" name="ModernVoicesConfig" type="win32"/>
-  <!-- Modern Voices Config changes files in the program's folder and the voices in Windows' own list
-       (both the administrator's to change), so Windows asks for permission as it opens. -->
+  <!-- Modern Voices Config runs as the person who starts it. The two things that are the administrator's
+       (a voice's nickname, installing and removing voices) are done by a second copy it starts as
+       administrator when first needed: see Elevated and Helper in Config.cs. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
       </requestedPrivileges>
     </security>
   </trustInfo>

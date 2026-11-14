@@ -5,18 +5,25 @@
 // Written for the C# compiler that is part of Windows' .NET Framework 4 (C# 5), so that it builds with
 // nothing installed. Keep the source pure ASCII (symbols as \uXXXX).
 //
-// What it changes itself: the voices' settings files (voice.json), settings.json and dictionary.txt in
-// the program's folder, nicknames, Windows' default voice. Installing and removing voices is the
-// installer's work: Apply changes runs installer\Install.ps1 with the voices ticked and shows its progress.
+// It runs without administrator rights. What it changes itself: the settings folder's files (settings.json,
+// dictionary.txt, each voice's own settings: see Store) and Windows' default voice. Two things are the
+// administrator's: a voice's nickname (its name in Windows' list) and installing or removing voices (the
+// installer's work: installer\Install.ps1 with the voices ticked). For those it starts a second copy of
+// itself as administrator (--helper: Windows asks for permission, once), which stays until the window
+// closes and does only those two things, as asked over a pipe (see Elevated and Helper).
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
+using System.ComponentModel;
 using System.IO;
+using System.IO.Pipes;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Web.Script.Serialization;
@@ -26,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.11.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.0.0")]
 
 namespace ModernVoicesConfig
 {
@@ -46,6 +53,10 @@ namespace ModernVoicesConfig
         public static extern bool IsIconic(IntPtr hwnd);
         [DllImport("user32.dll")]
         public static extern bool ShowWindowAsync(IntPtr hwnd, int show);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool GetNamedPipeClientProcessId(IntPtr pipe, out uint processId);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool GetNamedPipeServerProcessId(IntPtr pipe, out uint processId);
     }
 
     // ---------------------------------------------------------------- where the program is
@@ -60,7 +71,7 @@ namespace ModernVoicesConfig
             "Change the dictation speed, and 'Comma pause' values, to adjust the sound to your liking.\r\n" +
             "Change the 'Paragraph gap', to adjust the wait before a new paragraph.";
 
-        public static string Folder, VoiceRoot, SettingsFile, DictionaryFile, Installer;
+        public static string Folder, VoiceRoot, SettingsFolder, SettingsFile, DictionaryFile, Installer;
 
         public static string VersionText
         {
@@ -88,9 +99,18 @@ namespace ModernVoicesConfig
             if (folder == null) { folder = Path.GetDirectoryName(Path.GetDirectoryName(Application.ExecutablePath)); }
             Folder = folder;
             VoiceRoot = Path.Combine(folder, "voices");
-            SettingsFile = Path.Combine(folder, "settings.json");
-            DictionaryFile = Path.Combine(folder, "dictionary.txt");
             Installer = Path.Combine(folder, "installer");
+            // The settings people change are kept apart from the program, in a folder of the PC's own that
+            // every user of it may write to (the installer makes it so): changing them needs no administrator.
+            SettingsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), Name);
+            SettingsFile = Path.Combine(SettingsFolder, "settings.json");
+            DictionaryFile = Path.Combine(SettingsFolder, "dictionary.txt");
+        }
+
+        // A voice's own settings file, for its folder: voices\<the folder's name>.json in the settings folder.
+        public static string VoiceFile(string dir)
+        {
+            return Path.Combine(Path.Combine(SettingsFolder, "voices"), Path.GetFileName(dir.TrimEnd('\\')) + ".json");
         }
     }
 
@@ -178,13 +198,16 @@ namespace ModernVoicesConfig
                 }
                 catch (Exception) { }
             }
+            places.Reverse();      // (the program's folder is the administrator's to write to: tried last)
             foreach (string place in places)
             {
                 try
                 {
                     Directory.CreateDirectory(Path.GetDirectoryName(place));
                     Download(App.BaseUrl + "/voices.json", place);
-                    return Parse(File.ReadAllText(place, new UTF8Encoding(false)));
+                    List<Entry> fetched = Parse(File.ReadAllText(place, new UTF8Encoding(false)));
+                    problem = null;
+                    return fetched;
                 }
                 catch (Exception e) { problem = "Could not download the voice list from Hugging Face: " + e.Message; }
             }
@@ -377,26 +400,26 @@ namespace ModernVoicesConfig
         }
 
         // Sets (or, empty, removes) a voice's nickname and renames it where Windows lists it, for 64- and
-        // 32-bit programs. Returns its name now.
-        public static string SetNickname(Entry entry, string speaker, string nick)
+        // 32-bit programs, to the name given. The administrator's to do: the helper's part (see Helper).
+        public static void SetNickname(string id, string nick, string display)
         {
-            string id = IdOf(entry.Key, speaker);
-            using (RegistryKey key = Registry.LocalMachine.CreateSubKey(OurSettings + @"\Nicknames"))
-            {
-                if (!string.IsNullOrEmpty(nick)) { key.SetValue(id, nick); }
-                else { key.DeleteValue(id, false); }
-            }
-            string display = DisplayName(entry, speaker);
+            bool found = false;
             foreach (string root in new string[] { Tokens64, Tokens32 })
             {
                 using (RegistryKey token = Registry.LocalMachine.OpenSubKey(root + "\\" + TokenName(id), true))
                 {
                     if (token == null) { continue; }
+                    found = true;
                     token.SetValue("", display);
                     using (RegistryKey attributes = token.CreateSubKey("Attributes")) { attributes.SetValue("Name", display); }
                 }
             }
-            return display;
+            if (!found) { throw new InvalidOperationException("That voice is not installed."); }
+            using (RegistryKey key = Registry.LocalMachine.CreateSubKey(OurSettings + @"\Nicknames"))
+            {
+                if (!string.IsNullOrEmpty(nick)) { key.SetValue(id, nick); }
+                else { key.DeleteValue(id, false); }
+            }
         }
 
         // SAPI's default voice (what sapi.cpl sets): a token's name, kept for the Windows user.
@@ -477,11 +500,13 @@ namespace ModernVoicesConfig
     public class Pauses { public bool Own, Stored; public double Sentence, Comma, Paragraph; }
     public class Rule { public bool On, Whole, Case; public string From, To; }
 
-    // The files the engine reads while speaking (a change takes effect from the next thing said): each
-    // voice's voice.json (loudness, speed, its own pauses), the program's settings.json (speed and pauses
-    // for every voice) and dictionary.txt (pronunciation). Each is written to a new file that then replaces
-    // the old, so the engine never reads half a file. The installer's VoiceConvert.ps1 reads and writes
-    // them the same way: keep the two in step.
+    // The files the engine reads while speaking (a change takes effect from the next thing said), all in
+    // the settings folder: settings.json (speed, pauses and output volume for every voice), dictionary.txt
+    // (pronunciation) and voices\<voice folder's name>.json, a voice's own settings (loudness, speed, its
+    // own pauses). A voice's voice.json, in its folder (the installer's), has them as the voice was
+    // installed, and from before 0.12.0 as they were set then: what its own file sets comes first. Each
+    // file is written to a new one that then replaces the old, so the engine never reads half a file. The
+    // installer's VoiceConvert.ps1 and the engine read them the same way: keep the three in step.
     public static class Store
     {
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false);
@@ -489,6 +514,7 @@ namespace ModernVoicesConfig
         public const int SentenceLimit = 2000, CommaLimit = 1000, ParagraphLimit = 3000;
         public const int SentenceDefault = 500, CommaDefault = 0, ParagraphDefault = 1200;
         public const int SpeedDefault = 100;
+        public const double MaxPeak = 2;
 
         static string Format(double number) { return number.ToString("0.###", CultureInfo.InvariantCulture); }
 
@@ -508,6 +534,21 @@ namespace ModernVoicesConfig
             }
         }
 
+        static string ReadAll(string path) { return File.Exists(path) ? File.ReadAllText(path, Utf8) : ""; }
+        // A settings file's text, to change (an empty one when there is none yet, its folder made).
+        static string ToChange(string path)
+        {
+            if (File.Exists(path)) { return File.ReadAllText(path, Utf8).Replace("\r\n", "\n"); }
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            return "{\n}\n";
+        }
+        // Text with a block added before its last brace.
+        static string WithBlock(string text, string block)
+        {
+            string body = text.Substring(0, text.LastIndexOf('}')).TrimEnd();
+            return body + (body.EndsWith("{", StringComparison.Ordinal) ? "\n  " : ",\n  ") + block + "\n}\n";
+        }
+
         static double? Read(string text, string key)
         {
             Match m = Regex.Match(text, "\"" + key + "\"\\s*:\\s*" + Number);
@@ -515,54 +556,47 @@ namespace ModernVoicesConfig
             return double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
         }
 
-        // What a voice folder's voice.json sets (null where it says nothing); null when there is no voice.json.
+        // A voice's settings as text: its own file's, then its voice.json's (a search finds the first).
+        static string VoiceText(string dir)
+        {
+            return ReadAll(App.VoiceFile(dir)) + "\n" + ReadAll(Path.Combine(dir, "voice.json"));
+        }
+
+        // What is set for a voice, by its folder (null where nothing says); null when it has no voice.json.
         public static VoiceSettings GetVoice(string dir)
         {
-            string path = Path.Combine(dir, "voice.json");
-            if (!File.Exists(path)) { return null; }
-            string text = File.ReadAllText(path, Utf8);
+            if (!File.Exists(Path.Combine(dir, "voice.json"))) { return null; }
+            string text = VoiceText(dir);
             VoiceSettings s = new VoiceSettings();
             s.Peak = Read(text, "peak"); s.Boost = Read(text, "boost"); s.LengthScale = Read(text, "length_scale");
             return s;
         }
 
+        // Records a voice's loudness and speed in its own settings file.
         public static void SetVoice(string dir, double peak, double boost, double lengthScale)
         {
-            if (peak < 0 || peak > 1) { throw new ArgumentException("peak must be from 0 to 1 (it is " + Format(peak) + ")."); }
+            if (peak < 0 || peak > MaxPeak) { throw new ArgumentException("peak must be from 0 to " + Format(MaxPeak) + " (it is " + Format(peak) + ")."); }
             if (boost < 1 || boost > 5) { throw new ArgumentException("boost must be from 1 to 5 (it is " + Format(boost) + ")."); }
             if (lengthScale < 0.3 || lengthScale > 4) { throw new ArgumentException("length_scale must be from 0.3 to 4 (it is " + Format(lengthScale) + ")."); }
-            string path = Path.Combine(dir, "voice.json");
-            string text = File.ReadAllText(path, Utf8).Replace("\r\n", "\n");
+            string path = App.VoiceFile(dir);
+            string text = ToChange(path);
             string block = "\"loudness\": {\n    \"peak\": " + Format(peak) + ",\n    \"boost\": " + Format(boost) + "\n  }";
             Match existing = Regex.Match(text, "\"loudness\"\\s*:\\s*\\{[^}]*\\}");
-            if (existing.Success)
-            {
-                text = text.Substring(0, existing.Index) + block + text.Substring(existing.Index + existing.Length);
-            }
-            else
-            {
-                int end = text.LastIndexOf('}');
-                text = text.Substring(0, end).TrimEnd() + ",\n  " + block + "\n}\n";
-            }
+            text = existing.Success ? text.Substring(0, existing.Index) + block + text.Substring(existing.Index + existing.Length) : WithBlock(text, block);
             Match speed = Regex.Match(text, "\"length_scale\"\\s*:\\s*" + Number);
             if (speed.Success)
             {
                 Group g = speed.Groups[1];
                 text = text.Substring(0, g.Index) + Format(lengthScale) + text.Substring(g.Index + g.Length);
             }
-            else
-            {
-                int end = text.LastIndexOf('}');
-                text = text.Substring(0, end).TrimEnd() + ",\n  \"inference\": {\n    \"length_scale\": " + Format(lengthScale) + "\n  }\n}\n";
-            }
+            else { text = WithBlock(text, "\"inference\": {\n    \"length_scale\": " + Format(lengthScale) + "\n  }"); }
             Replace(path, text);
         }
 
-        // The pauses a settings.json or voice.json sets: Own (its own_pauses), Stored (it has any), and the
-        // three in milliseconds (the defaults where it says nothing).
-        public static Pauses GetPauses(string path)
+        // The pauses a settings text sets: Own (its own_pauses), Stored (it has any), and the three in
+        // milliseconds (the defaults where it says nothing).
+        static Pauses PausesOf(string text)
         {
-            string text = File.Exists(path) ? File.ReadAllText(path, Utf8) : "";
             Pauses p = new Pauses();
             p.Own = (Read(text, "own_pauses") ?? 0) >= 1;
             p.Stored = Regex.IsMatch(text, "\"pauses\"\\s*:");
@@ -571,6 +605,8 @@ namespace ModernVoicesConfig
             p.Paragraph = Read(text, "paragraph_ms") ?? ParagraphDefault;
             return p;
         }
+        public static Pauses GetPauses(string path) { return PausesOf(ReadAll(path)); }
+        public static Pauses GetVoicePauses(string dir) { return PausesOf(VoiceText(dir)); }
 
         static void CheckPauses(double sentence, double comma, double paragraph)
         {
@@ -579,21 +615,12 @@ namespace ModernVoicesConfig
             if (paragraph < 0 || paragraph > ParagraphLimit) { throw new ArgumentException("The paragraph gap must be from 0 to " + ParagraphLimit + " ms (it is " + Format(paragraph) + ")."); }
         }
 
-        // Puts a "pauses" block in a JSON file (made if missing), in place of the one there.
+        // Puts a "pauses" block in a settings file (made if missing), in place of the one there.
         static void SetPausesBlock(string path, string block)
         {
-            string text = File.Exists(path) ? File.ReadAllText(path, Utf8).Replace("\r\n", "\n") : "{\n}\n";
+            string text = ToChange(path);
             Match existing = Regex.Match(text, "\"pauses\"\\s*:\\s*\\{[^}]*\\}");
-            if (existing.Success)
-            {
-                text = text.Substring(0, existing.Index) + block + text.Substring(existing.Index + existing.Length);
-            }
-            else
-            {
-                int end = text.LastIndexOf('}');
-                string body = text.Substring(0, end).TrimEnd();
-                text = body + (body.EndsWith("{", StringComparison.Ordinal) ? "\n  " : ",\n  ") + block + "\n}\n";
-            }
+            text = existing.Success ? text.Substring(0, existing.Index) + block + text.Substring(existing.Index + existing.Length) : WithBlock(text, block);
             Replace(path, text);
         }
 
@@ -604,7 +631,7 @@ namespace ModernVoicesConfig
                 ",\n    \"paragraph_ms\": " + Format(paragraph) + "\n  }";
         }
 
-        // The pauses for every voice without its own: the program's settings.json.
+        // The pauses for every voice without its own: settings.json.
         public static void SetGlobalPauses(string path, double sentence, double comma, double paragraph)
         {
             CheckPauses(sentence, comma, paragraph);
@@ -615,23 +642,15 @@ namespace ModernVoicesConfig
         public static void SetVoicePauses(string dir, bool own, double sentence, double comma, double paragraph)
         {
             CheckPauses(sentence, comma, paragraph);
-            SetPausesBlock(Path.Combine(dir, "voice.json"), PausesBlock(sentence, comma, paragraph, own));
+            SetPausesBlock(App.VoiceFile(dir), PausesBlock(sentence, comma, paragraph, own));
         }
 
-        // The speed every voice speaks at before a program's rate, in % (settings.json's speed_percent).
-        public static double GetGlobalSpeed(string path)
+        // A number of settings.json's own, by its key: set, or added first.
+        static void SetGlobalNumber(string path, string key, double number)
         {
-            string text = File.Exists(path) ? File.ReadAllText(path, Utf8) : "";
-            double? found = Read(text, "speed_percent");
-            if (!found.HasValue) { return SpeedDefault; }
-            return Math.Max(25, Math.Min(200, found.Value));
-        }
-        public static void SetGlobalSpeed(string path, double percent)
-        {
-            if (percent < 25 || percent > 200) { throw new ArgumentException("speed must be 25 to 200% (got " + Format(percent) + ")"); }
-            string text = File.Exists(path) ? File.ReadAllText(path, Utf8).Replace("\r\n", "\n") : "{\n}\n";
-            string line = "\"speed_percent\": " + Format(percent);
-            Match existing = Regex.Match(text, "\"speed_percent\"\\s*:\\s*" + Number);
+            string text = ToChange(path);
+            string line = "\"" + key + "\": " + Format(number);
+            Match existing = Regex.Match(text, "\"" + key + "\"\\s*:\\s*" + Number);
             if (existing.Success)
             {
                 text = text.Substring(0, existing.Index) + line + text.Substring(existing.Index + existing.Length);
@@ -643,6 +662,34 @@ namespace ModernVoicesConfig
                 text = text.Substring(0, start) + "\n  " + line + (rest.StartsWith("}", StringComparison.Ordinal) ? "\n" : ",\n  ") + rest;
             }
             Replace(path, text);
+        }
+
+        // The speed every voice speaks at before a program's rate, in % (settings.json's speed_percent).
+        public static double GetGlobalSpeed(string path)
+        {
+            double? found = Read(ReadAll(path), "speed_percent");
+            if (!found.HasValue) { return SpeedDefault; }
+            return Math.Max(25, Math.Min(200, found.Value));
+        }
+        public static void SetGlobalSpeed(string path, double percent)
+        {
+            if (percent < 25 || percent > 200) { throw new ArgumentException("speed must be 25 to 200% (got " + Format(percent) + ")"); }
+            SetGlobalNumber(path, "speed_percent", percent);
+        }
+
+        // The output volume: how loud every voice comes out, of what its own settings make, in %
+        // (settings.json's output_percent: 100 unless turned down, 0 for silence). The engine looks at it
+        // as speech goes out, so it is heard while a voice is speaking.
+        public static double GetOutput(string path)
+        {
+            double? found = Read(ReadAll(path), "output_percent");
+            if (!found.HasValue) { return 100; }
+            return Math.Max(0, Math.Min(100, found.Value));
+        }
+        public static void SetOutput(string path, double percent)
+        {
+            if (percent < 0 || percent > 100) { throw new ArgumentException("the output volume must be 0 to 100% (got " + Format(percent) + ")"); }
+            SetGlobalNumber(path, "output_percent", percent);
         }
 
         // The pronunciation dictionary for every voice: a rule a line, tab-separated: on (1 or 0), whole
@@ -673,6 +720,7 @@ namespace ModernVoicesConfig
                 if (from.Length == 0) { continue; }
                 lines.Add((rule.On ? "1" : "0") + "\t" + (rule.Whole ? "w" : "p") + "\t" + (rule.Case ? "c" : "i") + "\t" + from + "\t" + to);
             }
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
             string temp = path + ".writing";
             File.WriteAllLines(temp, lines.ToArray(), Utf8);
             Swap(temp, path);
@@ -783,10 +831,11 @@ namespace ModernVoicesConfig
         Palette palette;
         bool? shownDark;
         public int PageIndex;
-        Process previewProcess, applyProcess;
+        Process previewProcess;
+        string talking;                                     // what a Preview is saying now: the voice's name ("hear:" + it for Hear it)
+        public static string SpeakHow = "--speak";          // (the build's test has it speak to nowhere)
         readonly object applyLock = new object();
-        string applyStopped;
-        int applyEnds;
+        List<string> applyHad = new List<string>();         // the voices installed when Apply changes was pressed
         public List<string> ApplyLines = new List<string>();
         public int ProgressSeen;                            // (the furthest the bar has been: the build's test)
         bool applyUsTags;
@@ -810,7 +859,10 @@ namespace ModernVoicesConfig
         public TrackBar SpeedBar;
         public Dictionary<string, Slider> Sliders = new Dictionary<string, Slider>();
         public Dictionary<string, Slider> GlobalBars = new Dictionary<string, Slider>();
-        Timer saveTimer, globalTimer, applyTimer;
+        Timer saveTimer, globalTimer, applyTimer, outputTimer;
+        public TrackBar OutputBar;
+        public Label OutputValue;
+        public Button HearButton;
         ToolTip tips = new ToolTip();
         static readonly string[] GapKeys = { "Sentence gap", "Comma gap", "Paragraph gap" };
 
@@ -857,6 +909,12 @@ namespace ModernVoicesConfig
             b.Padding = new Padding(Px(8), Px(2), Px(8), Px(2));
             b.Anchor = AnchorStyles.Left;
             return b;
+        }
+
+        // A button whose words change (Preview to Stop and back) keeps the width it has now, so nothing beside it moves.
+        static void KeepWidth(Button b)
+        {
+            b.MinimumSize = new Size(b.PreferredSize.Width, 0);
         }
 
         // A tab's rows, each the tab's width, top to bottom; the tab scrolls when they don't fit.
@@ -1069,6 +1127,11 @@ namespace ModernVoicesConfig
             applyTimer.Interval = 300;
             applyTimer.Tick += delegate { UpdateApply(); };
 
+            // The output volume is saved almost as it moves: it is heard while a voice is speaking.
+            outputTimer = new Timer();
+            outputTimer.Interval = 60;
+            outputTimer.Tick += delegate { outputTimer.Stop(); SaveOutput(); };
+
             // Sliders save as they move (a moment after the last movement).
             foreach (Slider s in Sliders.Values)
             {
@@ -1086,6 +1149,7 @@ namespace ModernVoicesConfig
             FormClosing += WindowClosing;
             FormClosed += delegate { applyTimer.Stop(); };
             SetGlobalBars(Store.GetPauses(App.SettingsFile), Store.GetGlobalSpeed(App.SettingsFile));
+            UpdateOutput();
             UpdateWindowsRate();
             UpdateAddLayout();
             UpdateInstalledList();
@@ -1101,7 +1165,7 @@ namespace ModernVoicesConfig
             ApplyTheme();
             // Windows' speed can be changed in its Speech settings, and the theme in the Reader, while the
             // window is open: looked at again whenever it comes to the front.
-            Activated += delegate { UpdateWindowsRate(); ApplyTheme(); };
+            Activated += delegate { UpdateWindowsRate(); UpdateOutput(); ApplyTheme(); };
             ShowPage(InstalledList.Items.Count == 0 ? 3 : 0);
         }
 
@@ -1126,30 +1190,32 @@ namespace ModernVoicesConfig
             InstalledList.Columns.Add("Folder", Px(170));
             Row(page, InstalledList);
 
-            // The selected voice (a row for each installed speaker): hear it, name it, make it Windows' default.
-            TableLayoutPanel voiceLine = Line("fill", "auto", "auto");
+            // The selected voice (a row for each installed speaker): hear it, make it Windows' default, name it.
+            TableLayoutPanel voiceLine = Line("fill", "auto");
             FlowLayoutPanel voiceTools = Flow();
             voiceTools.WrapContents = false;
             PreviewButton = Btn("Preview");
-            Button stopButton = Btn("Stop");
+            DefaultButton = Btn("Make default voice");
             NickBox = new TextBox();
             NickBox.Width = Px(190); NickBox.MaxLength = 40; NickBox.Anchor = AnchorStyles.Left; NickBox.Enabled = false;
             NickBox.Margin = new Padding(Px(12), 3, 3, 3);
             NickButton = Btn("Set nickname");
             NickButton.Enabled = false;
-            DefaultButton = Btn("Make default voice");
             Button sapiButton = Btn("Windows speech settings");
             PreviewButton.Enabled = false; DefaultButton.Enabled = false;
-            voiceTools.Controls.Add(PreviewButton); voiceTools.Controls.Add(stopButton); voiceTools.Controls.Add(NickBox); voiceTools.Controls.Add(NickButton);
-            DefaultButton.Anchor = AnchorStyles.Right; sapiButton.Anchor = AnchorStyles.Right;
-            voiceLine.Controls.Add(voiceTools, 0, 0); voiceLine.Controls.Add(DefaultButton, 1, 0); voiceLine.Controls.Add(sapiButton, 2, 0);
+            voiceTools.Controls.Add(PreviewButton); voiceTools.Controls.Add(DefaultButton); voiceTools.Controls.Add(NickBox); voiceTools.Controls.Add(NickButton);
+            sapiButton.Anchor = AnchorStyles.Right;
+            voiceLine.Controls.Add(voiceTools, 0, 0); voiceLine.Controls.Add(sapiButton, 1, 0);
             Row(page, voiceLine);
+            KeepWidth(PreviewButton);
             string nickTip = "A name of your own for the selected voice, shown in brackets in place of its accent:\r\n" +
                 "VCTK p262 (British) becomes VCTK p262 (Irish Female).\r\n" +
                 "Type it in the box and press Set nickname; with the box empty, the accent is put back.\r\n" +
+                "Windows asks for permission the first time (a voice's name is Windows' to keep).\r\n" +
                 "Programs that were open show the new name after a restart.";
             tips.SetToolTip(NickButton, nickTip);
             tips.SetToolTip(NickBox, nickTip);
+            tips.SetToolTip(PreviewButton, "Says the text below with the selected voice.\r\nPressed while that voice is speaking, it stops it.");
 
             TableLayoutPanel previewLine = Line("auto", "fill");
             Label previewLabel = Words("Preview says");
@@ -1163,8 +1229,47 @@ namespace ModernVoicesConfig
             PreviewBox.Height = threeLines;
             previewLine.Controls.Add(previewLabel, 0, 0); previewLine.Controls.Add(PreviewBox, 1, 0);
             Row(page, previewLine);
-            DefaultLabel = Words("");
-            Row(page, DefaultLabel);
+
+            // Windows' default voice, in a box of its own; beside it the output volume, for every voice.
+            TableLayoutPanel outLine = Line("auto", "auto", "fill", "auto");
+            outLine.Margin = new Padding(0, Px(16), 0, Px(12));
+            FlowLayoutPanel defaultBox = Flow();
+            defaultBox.WrapContents = false; defaultBox.Dock = DockStyle.None; defaultBox.Anchor = AnchorStyles.Left; defaultBox.Tag = "box";
+            defaultBox.Padding = new Padding(Px(8), Px(5), Px(8), Px(5));
+            defaultBox.Margin = new Padding(3, 0, Px(18), 0);
+            defaultBox.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                if (palette == null) { return; }
+                using (Pen edge = new Pen(palette.Border)) { e.Graphics.DrawRectangle(edge, 0, 0, defaultBox.Width - 1, defaultBox.Height - 1); }
+            };
+            defaultBox.Resize += delegate { defaultBox.Invalidate(); };
+            Label defaultCaption = Beside("Windows default voice");
+            defaultCaption.ForeColor = Color.DimGray; defaultCaption.Tag = "muted";
+            DefaultLabel = Beside("");
+            DefaultLabel.Font = boldFont;
+            defaultBox.Controls.Add(defaultCaption); defaultBox.Controls.Add(DefaultLabel);
+            Label outputIcon = Beside("Output volume");
+            Font symbols = new Font("Segoe MDL2 Assets", 13f);
+            if (symbols.Name == "Segoe MDL2 Assets") { outputIcon.Font = symbols; outputIcon.Text = "\uE767"; }      // a speaker
+            OutputBar = new TrackBar();
+            OutputBar.Maximum = 100; OutputBar.Minimum = 0; OutputBar.SmallChange = 5; OutputBar.LargeChange = 10; OutputBar.TickFrequency = 10;
+            OutputBar.Value = 100;
+            OutputBar.Dock = DockStyle.Fill;
+            OutputBar.Margin = new Padding(0);
+            OutputBar.MouseWheel += SliderWheel;
+            OutputValue = Beside("100%");
+            OutputValue.MinimumSize = new Size(Px(90), 0);
+            string outputTip = "Output volume, for every voice in every program: how loud they come out, of what each voice's own Volume makes.\r\n" +
+                "It works while a voice is speaking. 0 = silent.";
+            tips.SetToolTip(outputIcon, outputTip);
+            tips.SetToolTip(OutputBar, outputTip);
+            outLine.Controls.Add(defaultBox, 0, 0); outLine.Controls.Add(outputIcon, 1, 0); outLine.Controls.Add(OutputBar, 2, 0); outLine.Controls.Add(OutputValue, 3, 0);
+            Row(page, outLine);
+            OutputBar.ValueChanged += delegate
+            {
+                OutputValue.Text = OutputBar.Value == 0 ? "0% (silent)" : OutputBar.Value + "%";
+                if (!Filling) { outputTimer.Stop(); outputTimer.Start(); }
+            };
 
             TableLayoutPanel soundLine = Line("fill", "auto");
             SoundLabel = Words("Select a voice above to set how it sounds.", false, true);
@@ -1174,7 +1279,7 @@ namespace ModernVoicesConfig
             soundLine.Controls.Add(SoundLabel, 0, 0); soundLine.Controls.Add(ResetButton, 1, 0);
             Row(page, soundLine);
             TableLayoutPanel soundGrid = Line("auto", "fill", "auto");
-            Sliders["Volume"] = AddSlider(soundGrid, "Volume", 0, 100, 10, 10, 10);
+            Sliders["Volume"] = AddSlider(soundGrid, "Volume", 0, (int)(Store.MaxPeak * 100), 10, 10, 10);
             Sliders["Boost"] = AddSlider(soundGrid, "Boost", 10, 40, 1, 5, 5);
             Sliders["Speed"] = AddSlider(soundGrid, "Dictation speed", 25, 200, 1, 5, 25);
             Row(page, soundGrid);
@@ -1188,22 +1293,22 @@ namespace ModernVoicesConfig
             Sliders["Paragraph gap"] = AddSlider(gapGrid, "Paragraph gap", 0, Store.ParagraphLimit, 50, 250, 250);
             gapGrid.Visible = false;
             Row(page, gapGrid);
-            // Volume moves in tens only (0, 10, ... 100): dragged, it snaps to the nearest.
+            // Volume moves in tens only (0, 10, ... 200): dragged, it snaps to the nearest.
             Sliders["Volume"].Bar.ValueChanged += delegate
             {
                 TrackBar volume = Sliders["Volume"].Bar;
                 int snapped = (int)(Math.Round(volume.Value / 10.0, MidpointRounding.AwayFromZero) * 10);
                 if (volume.Value != snapped) { volume.Value = snapped; }
             };
-            Row(page, Words("Volume: each sentence's loudest moment (0 = as Piper made it). Boost: lifts quiet parts more than loud ones " +
+            Row(page, Words("Volume: each sentence's loudest moment (0 = as Piper made it; 100% = as loud as sound goes; above that, everything " +
+                "but the loudest moments is turned up further, to twice as loud at 200%, and sounds more pressed). Boost: lifts quiet parts more than loud ones " +
                 "(higher sounds more compressed). Dictation speed: 100% = the speed for every voice (Speed and pauses tab). Unticked, the voice uses the pauses " +
                 "for every voice; ticked, its own.", true));
             Row(page, Words("Changes are saved as you move a slider and take effect straight away, also in programs already using the " +
                 "voice (from the next thing they say): press Preview to hear them. A voice's speakers share its settings.", true));
 
             InstalledList.SelectedIndexChanged += delegate { UpdateInstalled(); };
-            PreviewButton.Click += delegate { CurrentVoice voice = GetCurrentVoice(); if (voice != null) { StartPreview(voice.Voice, null); } };
-            stopButton.Click += delegate { StopPreview(); };
+            PreviewButton.Click += delegate { CurrentVoice voice = GetCurrentVoice(); if (voice != null) { TogglePreview(voice.Voice, voice.Voice, null); } };
             NickButton.Click += delegate { SetNickname(); };
             DefaultButton.Click += delegate { SetDefaultVoice(); };
             sapiButton.Click += delegate
@@ -1223,10 +1328,10 @@ namespace ModernVoicesConfig
             PreviewVoiceBox = new ComboBox();
             PreviewVoiceBox.DropDownStyle = ComboBoxStyle.DropDownList; PreviewVoiceBox.Width = Px(280); PreviewVoiceBox.Anchor = AnchorStyles.Left;
             GlobalPreview = Btn("Preview");
-            Button globalStop = Btn("Stop");
             GlobalPreview.Enabled = false;
-            hearLine.Controls.Add(Beside("Preview with")); hearLine.Controls.Add(PreviewVoiceBox); hearLine.Controls.Add(GlobalPreview); hearLine.Controls.Add(globalStop);
+            hearLine.Controls.Add(Beside("Preview with")); hearLine.Controls.Add(PreviewVoiceBox); hearLine.Controls.Add(GlobalPreview);
             Row(page, hearLine);
+            KeepWidth(GlobalPreview);
             TableLayoutPanel globalGrid = Line("auto", "fill", "auto");
             Slider speed = AddSlider(globalGrid, "Dictation speed", 25, 200, 5, 25, 25);
             SpeedBar = speed.Bar; SpeedValue = speed.Value;
@@ -1263,8 +1368,8 @@ namespace ModernVoicesConfig
             resetLine.Controls.Add(Words("Defaults: dictation speed 100%, sentence 500 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.", true), 1, 0);
             Row(page, resetLine);
 
-            GlobalPreview.Click += delegate { string chosen = PreviewVoiceBox.SelectedItem as string; if (!string.IsNullOrEmpty(chosen)) { StartPreview(chosen, null); } };
-            globalStop.Click += delegate { StopPreview(); };
+            GlobalPreview.Click += delegate { string chosen = PreviewVoiceBox.SelectedItem as string; if (!string.IsNullOrEmpty(chosen)) { TogglePreview(chosen, chosen, null); } };
+            PreviewVoiceBox.SelectedIndexChanged += delegate { UpdatePreviewButtons(); };
             pausesReset.Click += delegate { ResetGlobalPauses(); };
             RateReset.Click += delegate { Voices.WindowsRateStored = 0; UpdateWindowsRate(); };
         }
@@ -1296,14 +1401,14 @@ namespace ModernVoicesConfig
             WordSave = Btn("Add rule");
             Button wordNew = Btn("New rule");
             WordRemove = Btn("Remove");
-            Button wordHear = Btn("Hear it");
-            Button wordStop = Btn("Stop");
+            HearButton = Btn("Hear it");
             WordRemove.Enabled = false;
-            foreach (Control c in new Control[] { WordWhole, WordCase, WordSave, wordNew, WordRemove, wordHear, wordStop }) { wordTools.Controls.Add(c); }
+            foreach (Control c in new Control[] { WordWhole, WordCase, WordSave, wordNew, WordRemove, HearButton }) { wordTools.Controls.Add(c); }
             Row(page, wordTools);
+            KeepWidth(HearButton);
             Row(page, Words("To add a rule: type the word or phrase and how to say it (spell it as it sounds: Niamh as Neev), then Add rule. " +
                 "To change one: select it, edit, then Save rule. Untick a rule to switch it off without removing it. Hear it says the " +
-                "\"Say it as\" text with the voice selected on the Voice manager, to try a spelling before saving.", true));
+                "\"Say it as\" text with the voice selected on the Voice manager, to try a spelling before saving (pressed again while it speaks, it stops).", true));
             Row(page, Words("Rules apply from the next thing a program says. Whole words only: \"cat\" changes \"the cat's\" but not " +
                 "\"catalogue\". Match capitals: \"US\" but not \"us\". Where two rules fit, the longer one is used, and a rule never changes " +
                 "another rule's result. Programs still show and highlight the original words.", true));
@@ -1313,8 +1418,7 @@ namespace ModernVoicesConfig
             WordSave.Click += delegate { SaveWord(); };
             wordNew.Click += delegate { ClearWordFields(); };
             WordRemove.Click += delegate { RemoveWord(); };
-            wordHear.Click += delegate { HearWord(); };
-            wordStop.Click += delegate { StopPreview(); };
+            HearButton.Click += delegate { HearWord(); };
         }
 
         void BuildAddOrRemove(Panel tab)
@@ -1481,7 +1585,8 @@ namespace ModernVoicesConfig
             else if (c is ProgressBar) { }
             else
             {
-                c.BackColor = p.Back; c.ForeColor = p.Text;
+                c.BackColor = (c.Tag as string) == "box" ? p.Input : p.Back;
+                c.ForeColor = p.Text;
                 if ((c.Tag as string) == "page") { ScrollTheme(c); }      // a page's own scroll bar
             }
             foreach (Control child in c.Controls) { ThemeOn(child, p); }
@@ -1718,8 +1823,7 @@ namespace ModernVoicesConfig
             foreach (string n in allVoices) { PreviewVoiceBox.Items.Add(n); }
             if (allVoices.Count > 0) { PreviewVoiceBox.SelectedIndex = Math.Max(0, allVoices.IndexOf(defaultName)); }
             GlobalPreview.Enabled = allVoices.Count > 0;
-            DefaultLabel.Text = defaultName.Length > 0 ? "Windows default voice: " + defaultName
-                : defaultToken.Length > 0 ? "Windows default voice: " + defaultToken + " (not one of these)" : "Windows default voice: not set";
+            DefaultLabel.Text = defaultName.Length > 0 ? defaultName : defaultToken.Length > 0 ? defaultToken + " (not one of these)" : "not set";
             if (InstalledList.Items.Count > 0) { InstalledList.Items[0].Selected = true; }
             else { SoundLabel.Text = "No voices installed yet: add some on the Add or remove voices tab."; }
             UpdateInstalled();
@@ -1758,7 +1862,7 @@ namespace ModernVoicesConfig
                 if (settings.Boost.HasValue) { boost = settings.Boost.Value; }
                 if (settings.LengthScale.HasValue && settings.LengthScale.Value > 0) { lengthScale = settings.LengthScale.Value; }
             }
-            Pauses voicePauses = Store.GetPauses(Path.Combine(row.Dir, "voice.json"));
+            Pauses voicePauses = Store.GetVoicePauses(row.Dir);
             Pauses shown = voicePauses.Own || voicePauses.Stored ? voicePauses : Store.GetPauses(App.SettingsFile);
             Filling = true;
             try
@@ -1768,7 +1872,7 @@ namespace ModernVoicesConfig
                 Sliders["Sentence gap"].Bar.Value = Clamp(shown.Sentence, 0, Store.SentenceLimit);
                 Sliders["Comma gap"].Bar.Value = Clamp(shown.Comma, 0, Store.CommaLimit);
                 Sliders["Paragraph gap"].Bar.Value = Clamp(shown.Paragraph, 0, Store.ParagraphLimit);
-                Sliders["Volume"].Bar.Value = Clamp(Math.Round(peak * 10, MidpointRounding.AwayFromZero) * 10, 0, 100);
+                Sliders["Volume"].Bar.Value = Clamp(Math.Round(peak * 10, MidpointRounding.AwayFromZero) * 10, 0, (int)(Store.MaxPeak * 100));
                 Sliders["Boost"].Bar.Value = Clamp(Math.Round(boost * 10), 10, 40);
                 Sliders["Speed"].Bar.Value = Clamp(Math.Round(100 / lengthScale), 25, 200);
                 UpdateSliderLabels();
@@ -1781,6 +1885,22 @@ namespace ModernVoicesConfig
             NickBox.Enabled = named; NickButton.Enabled = named;
             NickBox.Text = named ? Voices.Nickname(Voices.IdOf(row.Key, row.Speaker)) : "";
             SoundLabel.Text = "How " + row.Title + " sounds" + (row.Shared ? " (all its speakers)" : "");
+            UpdatePreviewButtons();
+        }
+
+        // ---- the output volume (for every voice): settings.json's, saved as the slider moves.
+
+        public void UpdateOutput()
+        {
+            if (outputTimer.Enabled) { return; }      // (being moved: what it shows is newer than the file)
+            Filling = true;
+            try { OutputBar.Value = Clamp(Math.Round(Store.GetOutput(App.SettingsFile)), 0, 100); }
+            finally { Filling = false; }
+        }
+        public void SaveOutput()
+        {
+            try { Store.SetOutput(App.SettingsFile, OutputBar.Value); }
+            catch (Exception e) { StatusLabel.Text = "Could not save the output volume: " + e.Message; }
         }
 
         public void SaveSettings()
@@ -1829,7 +1949,27 @@ namespace ModernVoicesConfig
             SelectInstalledRow(index);
         }
 
-        // Gives the selected row's voice the nickname in the box (empty: none), renaming the voice in Windows.
+        // The administrator's part, started if it is not there (Windows asks for permission, once; it then
+        // stays until the window closes). False, with the status line saying why, when it is not to be had.
+        public bool Elevate()
+        {
+            try
+            {
+                Cursor = Cursors.WaitCursor;
+                Elevated.Start();
+                return true;
+            }
+            catch (OperationCanceledException e) { StatusLabel.Text = e.Message; return false; }
+            catch (Exception e)
+            {
+                StatusLabel.Text = "Windows' permission could not be had: " + e.Message;
+                return false;
+            }
+            finally { Cursor = Cursors.Default; }
+        }
+
+        // Gives the selected row's voice the nickname in the box (empty: none), renaming the voice in Windows
+        // (the administrator's to do: see Elevate).
         public void SetNickname()
         {
             CurrentVoice voice = GetCurrentVoice();
@@ -1837,50 +1977,107 @@ namespace ModernVoicesConfig
             if (voice == null || row.Entry == null) { return; }
             string nick = Regex.Replace(Regex.Replace(NickBox.Text, @"[()\r\n]", " "), @"\s+", " ").Trim();
             string wanted = Voices.FormatName(row.Entry, voice.Speaker, nick);
-            if (wanted != voice.Voice && Voices.OurNames().Contains(wanted))
+            if (wanted == voice.Voice) { NickBox.Text = nick; StatusLabel.Text = "It is named " + wanted + " already."; return; }
+            if (Voices.OurNames().Contains(wanted))
             {
                 StatusLabel.Text = "Another voice is already named " + wanted + ".";
                 return;
             }
-            string display;
-            try { display = Voices.SetNickname(row.Entry, voice.Speaker, nick); }
+            if (!Elevate()) { return; }
+            try
+            {
+                Answer answer = Elevated.Ask("nick " + B64.To(voice.Id) + " " + B64.To(nick) + " " + B64.To(wanted), null);
+                if (answer.Code != 0) { throw new InvalidOperationException(answer.Message ?? "it was refused."); }
+            }
             catch (Exception e) { MessageBox.Show(this, "Could not rename the voice: " + e.Message, App.Name); return; }
             int index = SelectedInstalledIndex();
             UpdateInstalledList();
             SelectInstalledRow(index);
-            StatusLabel.Text = "Now named " + display + ". Restart programs that were open to see the new name.";
+            StatusLabel.Text = "Now named " + wanted + ". Restart programs that were open to see the new name.";
         }
 
         // ---- Preview: the line is spoken by a second copy of this program, as any program would speak it
         // (the engine is never loaded into this one, so nothing here holds its files).
 
+        public bool PreviewTalking
+        {
+            get
+            {
+                try { return previewProcess != null && !previewProcess.HasExited; }
+                catch (Exception) { return false; }
+            }
+        }
+
         public void StopPreview()
         {
             Process p = previewProcess;
             previewProcess = null;
-            if (p == null) { return; }
-            try { if (!p.HasExited) { p.Kill(); } } catch (Exception) { }
-            try { p.Dispose(); } catch (Exception) { }
+            talking = null;
+            if (p != null)
+            {
+                try { if (!p.HasExited) { p.Kill(); } } catch (Exception) { }
+                try { p.Dispose(); } catch (Exception) { }
+            }
+            UpdatePreviewButtons();
         }
 
-        static string Encoded(string text) { return Convert.ToBase64String(Encoding.UTF8.GetBytes(text)); }
+        // A Preview button pressed: it says the thing with that voice. Pressed while that voice is saying
+        // it, it stops it; while another is speaking, that one stops and this one starts at once.
+        // 'what' names what is said: the voice's name (or "hear:" and it, for Hear it).
+        public void TogglePreview(string what, string voiceName, string say)
+        {
+            bool same = PreviewTalking && talking == what;
+            StopPreview();
+            if (same) { return; }
+            StartPreview(voiceName, say);
+            if (previewProcess != null) { talking = what; }
+            UpdatePreviewButtons();
+        }
+
+        // Each Preview button reads Stop while what it would say is being said.
+        void UpdatePreviewButtons()
+        {
+            if (IsDisposed || PreviewButton == null || GlobalPreview == null || HearButton == null) { return; }
+            bool on = PreviewTalking;
+            CurrentVoice voice = GetCurrentVoice();
+            PreviewButton.Text = on && voice != null && talking == voice.Voice ? "Stop" : "Preview";
+            string chosen = PreviewVoiceBox.SelectedItem as string;
+            GlobalPreview.Text = on && chosen != null && talking == chosen ? "Stop" : "Preview";
+            HearButton.Text = on && talking != null && talking.StartsWith("hear:", StringComparison.Ordinal) ? "Stop" : "Hear it";
+        }
 
         // Speaks with a voice (by the name programs see). Settings not yet saved are saved first.
         public void StartPreview(string voiceName, string say)
         {
             if (saveTimer.Enabled) { saveTimer.Stop(); SaveSettings(); }
             if (globalTimer.Enabled) { globalTimer.Stop(); SaveGlobalSettings(); }
+            if (outputTimer.Enabled) { outputTimer.Stop(); SaveOutput(); }
             StopPreview();
             string text = !string.IsNullOrEmpty(say) ? say : PreviewBox.Text.Trim().Length > 0 ? PreviewBox.Text : App.PreviewText;
             if (text.Length > 6000) { text = text.Substring(0, 6000); }
-            try { previewProcess = StartSpeaker("--speak", voiceName, text); }
+            try
+            {
+                Process started = StartSpeaker(SpeakHow, voiceName, text);
+                previewProcess = started;
+                // When it has finished speaking, its button reads Preview again.
+                started.EnableRaisingEvents = true;
+                started.Exited += delegate { try { BeginInvoke(new Action<Process>(PreviewEnded), started); } catch (Exception) { } };
+            }
             catch (Exception e) { StatusLabel.Text = "Preview did not start: " + e.Message; }
+        }
+        void PreviewEnded(Process ended)
+        {
+            if (previewProcess != ended) { return; }
+            previewProcess = null;
+            talking = null;
+            try { ended.Dispose(); } catch (Exception) { }
+            UpdatePreviewButtons();
         }
         // This program started again to speak (--speak), or to speak to nowhere and say whether sound came
         // out (--speak-check: the build's test, on a PC with no sound device).
         public static Process StartSpeaker(string how, string voiceName, string text)
         {
-            ProcessStartInfo start = new ProcessStartInfo(Application.ExecutablePath, how + " " + Encoded(voiceName) + " " + Encoded(text));
+            ProcessStartInfo start = new ProcessStartInfo(Application.ExecutablePath, how + " " + B64.To(voiceName) + " " + B64.To(text));
             start.UseShellExecute = false; start.CreateNoWindow = true;
             return Process.Start(start);
         }
@@ -2013,7 +2210,7 @@ namespace ModernVoicesConfig
             CurrentVoice voice = GetCurrentVoice();
             string name = voice != null ? voice.Voice : PreviewVoiceBox.SelectedItem as string;
             if (string.IsNullOrEmpty(name)) { StatusLabel.Text = "Install a voice first (Add or remove voices)."; return; }
-            StartPreview(name, say);
+            TogglePreview("hear:" + name, name, say);
         }
 
         // ---- Add or remove voices
@@ -2190,8 +2387,8 @@ namespace ModernVoicesConfig
         }
 
         // Applies the Add or remove tab's ticks: the installer (installer\Install.ps1) downloads, removes,
-        // registers and tests, with no window of its own; what it says shows at the bottom of this one. Then
-        // the window shows the new state.
+        // registers and tests, with no window of its own; what it says shows at the bottom of this one. It
+        // is the administrator's work: run by the helper (see Elevate). Then the window shows the new state.
         public void Apply()
         {
             if (Busy) { return; }
@@ -2199,65 +2396,36 @@ namespace ModernVoicesConfig
             List<string> wanted = PickedIds();
             bool us = UsBox.Checked;
             if (NothingToApply(wanted, us)) { StatusLabel.Text = "Nothing to change."; return; }
-            string script = Path.Combine(App.Installer, "Install.ps1");
-            if (!File.Exists(script)) { StatusLabel.Text = "The installer was not found (" + script + ")."; return; }
-            string arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\" -ExactVoices -Unattended -NoPause -Progress";
-            if (wanted.Count > 0) { arguments += " -Voices \"" + string.Join(",", wanted.ToArray()) + "\""; }
-            if (us) { arguments += " -UsEnglishTags"; }
-            Process run = new Process();
-            run.StartInfo = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe"), arguments);
-            run.StartInfo.UseShellExecute = false; run.StartInfo.CreateNoWindow = true;
-            run.StartInfo.RedirectStandardOutput = true; run.StartInfo.RedirectStandardError = true;
-            run.StartInfo.WorkingDirectory = App.Folder;
-            run.EnableRaisingEvents = true;
-            run.OutputDataReceived += ApplySaid;
-            run.ErrorDataReceived += ApplySaid;
-            run.Exited += ApplyExited;
-            lock (applyLock) { applyStopped = null; applyEnds = 0; ApplyLines.Clear(); }
+            if (!Elevate()) { return; }
+            string request = "apply " + (us ? "1" : "0") + " " + B64.To(string.Join(",", wanted.ToArray()));
+            lock (applyLock) { ApplyLines.Clear(); }
             applyUsTags = us;
+            applyHad = new List<string>(Installed);
+            ProgressSeen = 0;
             Busy = true;
             pageHost.Enabled = false; tabStrip.Enabled = false; ApplyButton.Enabled = false; CloseButton.Enabled = false;
             Progress.Value = 0; Progress.Visible = true;
             Cursor = Cursors.WaitCursor;
             StatusLabel.Text = "Starting...";
-            try
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                run.Start();
-                applyProcess = run;
-                run.BeginOutputReadLine();
-                run.BeginErrorReadLine();
-            }
-            catch (Exception e)
-            {
-                lock (applyLock) { applyStopped = "Stopped: the installer did not start (" + e.Message + ")"; }
-                applyProcess = null;
-                ApplyFinished(1);
-            }
-        }
-
-        // The installer has ended (on another thread): once its last lines are in (they can follow a moment
-        // later), the window takes over again.
-        void ApplyExited(object sender, EventArgs e)
-        {
-            for (int i = 0; i < 50; i++)
-            {
-                lock (applyLock) { if (applyEnds >= 2) { break; } }
-                System.Threading.Thread.Sleep(100);
-            }
-            try { BeginInvoke(new MethodInvoker(ApplyDone)); } catch (Exception) { }
+                int code = 1;
+                string stopped = null;
+                try
+                {
+                    Answer answer = Elevated.Ask(request, ApplySaid);
+                    code = answer.Code;
+                    stopped = answer.Message;
+                }
+                catch (Exception e) { stopped = "Stopped: " + e.Message; }
+                try { BeginInvoke(new Action<int, string>(ApplyFinished), code, stopped); } catch (Exception) { }
+            });
         }
 
         // A line from the installer (on another thread): kept, and shown.
-        void ApplySaid(object sender, DataReceivedEventArgs e)
+        void ApplySaid(string line)
         {
-            if (e.Data == null) { lock (applyLock) { applyEnds++; } return; }      // (the end of what it printed, or of its errors)
-            string line = e.Data.Trim();
-            if (line.Length == 0) { return; }
-            lock (applyLock)
-            {
-                ApplyLines.Add(line);
-                if (line.StartsWith("Stopped:", StringComparison.Ordinal)) { applyStopped = line; }
-            }
+            lock (applyLock) { ApplyLines.Add(line); }
             try { BeginInvoke(new Action<string>(ApplyShow), line); } catch (Exception) { }
         }
         void ApplyShow(string line)
@@ -2275,25 +2443,41 @@ namespace ModernVoicesConfig
             }
             StatusLabel.Text = line;
         }
-        void ApplyDone()
+
+        // Windows' default voice after voices were installed or removed: when it is not one of these (it is
+        // one of Windows' own, such as Hazel, or one of these that has just been removed) and voices were
+        // added (or the default was the one removed), the first voice of the list becomes the default. A
+        // Modern Voice that is the default stays so; with none installed nothing is done.
+        void SetDefaultAfterApply()
         {
-            Process run = applyProcess;
-            if (run == null) { return; }
-            applyProcess = null;
-            int code = 1;
-            try { run.WaitForExit(2000); code = run.ExitCode; } catch (Exception) { }
-            try { run.Dispose(); } catch (Exception) { }
-            ApplyFinished(code);
+            if (Installed.Count == 0) { return; }
+            string token = Voices.DefaultToken;
+            bool ours = false, added = false;
+            foreach (string id in Installed)
+            {
+                if (string.Equals(Voices.TokenName(id), token, StringComparison.OrdinalIgnoreCase)) { ours = true; }
+                if (!applyHad.Contains(id)) { added = true; }
+            }
+            if (ours) { return; }
+            bool wasOurs = token.StartsWith("ModernVoices_", StringComparison.OrdinalIgnoreCase);
+            if (!added && !wasOurs) { return; }
+            try { Voices.DefaultToken = Voices.TokenName(Installed[0]); } catch (Exception) { }
         }
-        // 0: done and every voice passed its test; 2: done, but a voice failed its test; else it stopped.
-        void ApplyFinished(int code)
+
+        // 0: done and every voice passed its test; 2: done, but a voice failed its test; else it stopped
+        // ('stopped' says why).
+        void ApplyFinished(int code, string stopped)
         {
             Busy = false;
             Progress.Visible = false;
             pageHost.Enabled = true; tabStrip.Enabled = true; ApplyButton.Enabled = true; CloseButton.Enabled = true;
             Cursor = Cursors.Default;
             Installed = Voices.InstalledIds();
-            if (code == 0 || code == 2) { UsTags = applyUsTags; }
+            if (code == 0 || code == 2)
+            {
+                UsTags = applyUsTags;
+                SetDefaultAfterApply();
+            }
             // The new state: ticks and bold for what is installed, the manager's list.
             Filling = true;
             try
@@ -2324,9 +2508,7 @@ namespace ModernVoicesConfig
             }
             else
             {
-                string why;
-                lock (applyLock) { why = applyStopped; }
-                if (string.IsNullOrEmpty(why)) { why = "Stopped: the installer ended without finishing (code " + code + ")."; }
+                string why = string.IsNullOrEmpty(stopped) ? "Stopped: the installer ended without finishing (code " + code + ")." : stopped;
                 StatusLabel.Text = why;
                 if (!SelfTest.Running) { MessageBox.Show(this, why, App.Name); }
             }
@@ -2338,12 +2520,14 @@ namespace ModernVoicesConfig
             SaveSpeakers();
             if (saveTimer.Enabled) { saveTimer.Stop(); SaveSettings(); }
             if (globalTimer.Enabled) { globalTimer.Stop(); SaveGlobalSettings(); }
+            if (outputTimer.Enabled) { outputTimer.Stop(); SaveOutput(); }
             Sample.Stop();
             StopPreview();
+            Elevated.Stop();
         }
 
         // (For the build's test: changes waiting to be saved are dropped, and the Preview's process.)
-        public void StopTimers() { saveTimer.Stop(); globalTimer.Stop(); }
+        public void StopTimers() { saveTimer.Stop(); globalTimer.Stop(); outputTimer.Stop(); }
         public Process PreviewProcess { get { return previewProcess; } }
 
         // A picture of the window (the build's test looks at them).
@@ -2384,6 +2568,244 @@ namespace ModernVoicesConfig
         }
     }
 
+    // ---------------------------------------------------------------- the administrator's part
+
+    static class B64
+    {
+        public static string To(string text) { return Convert.ToBase64String(Encoding.UTF8.GetBytes(text ?? "")); }
+        public static string From(string coded) { return Encoding.UTF8.GetString(Convert.FromBase64String(coded)); }
+    }
+
+    // What the helper answered: 0 when done (for Apply changes, the installer's own exit code), and what
+    // went wrong when something did.
+    public class Answer
+    {
+        public int Code;
+        public string Message;
+    }
+
+    // The window's side of the administrator's part: a second copy of this program started as
+    // administrator (Windows asks for permission then, once) and kept until the window closes, so that
+    // nothing asks again. The two talk over a pipe of the window's making, a line each way: "nick ..." or
+    // "apply ..." one way; "say ..." (the installer's progress) and "done <code> [what went wrong]" back.
+    // Everything after the command word is Base64, so a line is a line whatever is in it.
+    public static class Elevated
+    {
+        static NamedPipeServerStream pipe;
+        static StreamReader reader;
+        static StreamWriter writer;
+        static Process helper;
+        static readonly object asking = new object();
+
+        public static bool Ready
+        {
+            get
+            {
+                try { return pipe != null && pipe.IsConnected && helper != null && !helper.HasExited; }
+                catch (Exception) { return false; }
+            }
+        }
+
+        // Starts the helper if it is not there. Throws OperationCanceledException when Windows was not given
+        // permission, and another exception (its message says what) when the helper did not start.
+        public static void Start()
+        {
+            if (Ready) { return; }
+            Stop();
+            string name = "ModernVoicesConfig-" + Guid.NewGuid().ToString("N");
+            // The pipe is for this Windows user and for administrators (the helper is one or the other).
+            PipeSecurity security = new PipeSecurity();
+            security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User, PipeAccessRights.FullControl, AccessControlType.Allow));
+            security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), PipeAccessRights.FullControl, AccessControlType.Allow));
+            NamedPipeServerStream server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 4096, 4096, security);
+            Process started = null;
+            try
+            {
+                ProcessStartInfo start = new ProcessStartInfo(Application.ExecutablePath, "--helper " + name + " " + Process.GetCurrentProcess().Id);
+                start.UseShellExecute = true; start.Verb = "runas"; start.WindowStyle = ProcessWindowStyle.Hidden;
+                try { started = Process.Start(start); }
+                catch (Win32Exception e)
+                {
+                    if (e.NativeErrorCode == 1223) { throw new OperationCanceledException("Windows was not given permission, so nothing was changed."); }
+                    throw;
+                }
+                IAsyncResult waiting = server.BeginWaitForConnection(null, null);
+                DateTime until = DateTime.UtcNow.AddSeconds(30);
+                while (!waiting.IsCompleted && DateTime.UtcNow < until && !started.HasExited) { System.Threading.Thread.Sleep(30); }
+                if (!waiting.IsCompleted) { throw new IOException("The part of the program that runs as administrator did not start."); }
+                server.EndWaitForConnection(waiting);
+                // It is the copy just started that has connected, and nothing else.
+                uint client;
+                if (!Native.GetNamedPipeClientProcessId(server.SafePipeHandle.DangerousGetHandle(), out client) || client != (uint)started.Id)
+                {
+                    throw new IOException("Something other than this program answered as its administrator's part.");
+                }
+            }
+            catch (Exception)
+            {
+                try { server.Dispose(); } catch (Exception) { }
+                try { if (started != null && !started.HasExited) { started.Kill(); } } catch (Exception) { }
+                throw;
+            }
+            pipe = server;
+            reader = new StreamReader(server, new UTF8Encoding(false));
+            writer = new StreamWriter(server, new UTF8Encoding(false));
+            writer.AutoFlush = true;
+            helper = started;
+        }
+
+        public static void Stop()
+        {
+            try { if (pipe != null) { pipe.Dispose(); } } catch (Exception) { }      // (the helper ends when the pipe does)
+            pipe = null; reader = null; writer = null;
+            try { if (helper != null) { helper.Dispose(); } } catch (Exception) { }
+            helper = null;
+        }
+
+        // Asks the helper for one thing and waits for its answer; what the installer says meanwhile goes to
+        // 'said' (on the thread that asked).
+        public static Answer Ask(string request, Action<string> said)
+        {
+            lock (asking)
+            {
+                try
+                {
+                    writer.WriteLine(request);
+                    while (true)
+                    {
+                        string line = reader.ReadLine();
+                        if (line == null) { throw new IOException("The part of the program that runs as administrator stopped."); }
+                        if (line.StartsWith("say ", StringComparison.Ordinal))
+                        {
+                            if (said != null) { said(B64.From(line.Substring(4))); }
+                        }
+                        else if (line.StartsWith("done ", StringComparison.Ordinal))
+                        {
+                            string[] parts = line.Split(' ');
+                            Answer answer = new Answer();
+                            answer.Code = int.Parse(parts[1], CultureInfo.InvariantCulture);
+                            answer.Message = parts.Length > 2 ? B64.From(parts[2]) : null;
+                            return answer;
+                        }
+                    }
+                }
+                catch (Exception)
+                {
+                    Stop();
+                    throw;
+                }
+            }
+        }
+    }
+
+    // The helper's side (ModernVoicesConfig.exe --helper PIPE PID, as administrator): it does two things,
+    // for the window that started it and for nothing else: gives an installed voice a nickname, and runs
+    // the installer for a list of voices. It ends when the window does (the pipe closes).
+    static class Helper
+    {
+        static readonly Regex GoodId = new Regex(@"^[A-Za-z0-9_\-]{1,80}(#[A-Za-z0-9_\-]{1,80})?$");
+
+        public static int Run(string pipeName, string ownerText)
+        {
+            try
+            {
+                int owner = int.Parse(ownerText, CultureInfo.InvariantCulture);
+                using (NamedPipeClientStream pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.None))
+                {
+                    pipe.Connect(15000);
+                    // The pipe is the one made by the window that started this, and that window is this program.
+                    uint server;
+                    if (!Native.GetNamedPipeServerProcessId(pipe.SafePipeHandle.DangerousGetHandle(), out server) || server != (uint)owner) { return 3; }
+                    using (Process window = Process.GetProcessById(owner))
+                    {
+                        if (!string.Equals(window.MainModule.FileName, Application.ExecutablePath, StringComparison.OrdinalIgnoreCase)) { return 3; }
+                    }
+                    App.Find();
+                    StreamReader reader = new StreamReader(pipe, new UTF8Encoding(false));
+                    StreamWriter writer = new StreamWriter(pipe, new UTF8Encoding(false));
+                    writer.AutoFlush = true;
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        Answer answer = new Answer();
+                        try { Do(line.Split(' '), writer, answer); }
+                        catch (Exception e) { answer.Code = 1; answer.Message = e.Message; }
+                        lock (writer) { writer.WriteLine("done " + answer.Code + (string.IsNullOrEmpty(answer.Message) ? "" : " " + B64.To(answer.Message))); }
+                    }
+                }
+                return 0;
+            }
+            catch (Exception) { return 1; }
+        }
+
+        static void Do(string[] parts, StreamWriter writer, Answer answer)
+        {
+            if (parts.Length == 4 && parts[0] == "nick")
+            {
+                string id = B64.From(parts[1]), nick = B64.From(parts[2]), display = B64.From(parts[3]);
+                if (!GoodId.IsMatch(id) || nick.Length > 60 || display.Length == 0 || display.Length > 200 || Regex.IsMatch(nick + display, @"[\x00-\x1F]"))
+                {
+                    throw new ArgumentException("That is not a name a voice can have.");
+                }
+                Voices.SetNickname(id, nick, display);
+            }
+            else if (parts.Length == 3 && parts[0] == "apply")
+            {
+                List<string> ids = new List<string>();
+                foreach (string id in B64.From(parts[2]).Split(','))
+                {
+                    if (id.Length == 0) { continue; }
+                    if (!GoodId.IsMatch(id)) { throw new ArgumentException("'" + id + "' is not a voice."); }
+                    ids.Add(id);
+                }
+                RunInstaller(ids, parts[1] == "1", writer, answer);
+            }
+            else { throw new ArgumentException("That is not something this can do."); }
+        }
+
+        static void Say(StreamWriter writer, string line)
+        {
+            try { lock (writer) { writer.WriteLine("say " + B64.To(line)); } } catch (Exception) { }
+        }
+
+        // The installer, for exactly these voices (none: none installed), with no window: what it prints is
+        // passed on as it comes. The answer is its exit code (0 done, 2 a voice failed its test) and, when
+        // it stopped, the line that says why.
+        static void RunInstaller(List<string> ids, bool usTags, StreamWriter writer, Answer answer)
+        {
+            string script = Path.Combine(App.Installer, "Install.ps1");
+            if (!File.Exists(script)) { throw new FileNotFoundException("The installer was not found (" + script + ")."); }
+            string arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + script + "\" -ExactVoices -Unattended -NoPause -Progress";
+            if (ids.Count > 0) { arguments += " -Voices \"" + string.Join(",", ids.ToArray()) + "\""; }
+            if (usTags) { arguments += " -UsEnglishTags"; }
+            using (Process run = new Process())
+            {
+                run.StartInfo = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, @"WindowsPowerShell\v1.0\powershell.exe"), arguments);
+                run.StartInfo.UseShellExecute = false; run.StartInfo.CreateNoWindow = true;
+                run.StartInfo.RedirectStandardOutput = true; run.StartInfo.RedirectStandardError = true;
+                run.StartInfo.WorkingDirectory = App.Folder;
+                run.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) { if (e.Data != null && e.Data.Trim().Length > 0) { Say(writer, e.Data.Trim()); } };
+                run.Start();
+                run.BeginErrorReadLine();
+                string stopped = null, line;
+                while ((line = run.StandardOutput.ReadLine()) != null)
+                {
+                    line = line.Trim();
+                    if (line.Length == 0) { continue; }
+                    if (line.StartsWith("Stopped:", StringComparison.Ordinal)) { stopped = line; }
+                    Say(writer, line);
+                }
+                if (!run.WaitForExit(30000))
+                {
+                    try { run.Kill(); } catch (Exception) { }
+                    throw new TimeoutException("The installer did not finish.");
+                }
+                answer.Code = run.ExitCode;
+                answer.Message = stopped;
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- starting
 
     public static class Program
@@ -2394,6 +2816,8 @@ namespace ModernVoicesConfig
             // Preview: this program started again by its own window, to say one thing and end.
             if (args.Length >= 3 && args[0] == "--speak") { return Speak(args[1], args[2], false); }
             if (args.Length >= 3 && args[0] == "--speak-check") { return Speak(args[1], args[2], true); }
+            // The administrator's part: this program started again by its own window (see Helper).
+            if (args.Length >= 3 && args[0] == "--helper") { return Helper.Run(args[1], args[2]); }
             try { Native.SetProcessDPIAware(); } catch (Exception) { }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -2439,7 +2863,7 @@ namespace ModernVoicesConfig
         {
             try
             {
-                long made = SpeakNow(Encoding.UTF8.GetString(Convert.FromBase64String(voice64)), Encoding.UTF8.GetString(Convert.FromBase64String(text64)), check);
+                long made = SpeakNow(B64.From(voice64), B64.From(text64), check);
                 return !check || made > 20000 ? 0 : 2;
             }
             catch (Exception) { return 1; }
@@ -2599,7 +3023,6 @@ namespace ModernVoicesConfig
                 ui.InstalledList.Items[0].Selected = true;
                 ui.UpdateInstalled();
                 string dir = ui.CurrentInstalled.Dir;
-                string voiceFile = Path.Combine(dir, "voice.json");
                 VoiceSettings was = Store.GetVoice(dir);
                 ui.Sliders["Volume"].Bar.Value = 57; ui.Sliders["Boost"].Bar.Value = 20; ui.Sliders["Speed"].Bar.Value = 80;
                 Check(ui.Sliders["Volume"].Bar.Value == 60, "the Volume slider moves in tens: 57 snaps to " + ui.Sliders["Volume"].Bar.Value);
@@ -2608,6 +3031,15 @@ namespace ModernVoicesConfig
                 VoiceSettings now = Store.GetVoice(dir);
                 Check(now.Peak == 0.6 && now.Boost == 2 && now.LengthScale == 1.25,
                     "sliders: " + ui.CurrentInstalled.Title + " -> peak " + now.Peak + ", boost " + now.Boost + ", length_scale " + now.LengthScale);
+                // Above 100%: to 200%, kept as a peak above 1.
+                ui.Sliders["Volume"].Bar.Value = 170;
+                ui.SaveSettings();
+                ui.StopTimers();
+                now = Store.GetVoice(dir);
+                Check(now.Peak == 1.7 && ui.Sliders["Volume"].Bar.Maximum == 200 && ui.Sliders["Volume"].Value.Text == "170%",
+                    "the Volume slider goes to " + ui.Sliders["Volume"].Bar.Maximum + "%: 170% is kept as peak " + now.Peak);
+                Check(File.Exists(App.VoiceFile(dir)) && App.VoiceFile(dir).StartsWith(App.SettingsFolder, StringComparison.OrdinalIgnoreCase),
+                    "a voice's settings are kept in the settings folder (" + App.VoiceFile(dir) + "), which needs no administrator");
                 Store.SetVoice(dir, was.Peak ?? App.DefaultPeak, was.Boost ?? App.DefaultBoost, was.LengthScale ?? 1);
                 ui.UpdateInstalled();
                 Check(ui.Sliders["Volume"].Bar.Value == (int)Math.Round((was.Peak ?? App.DefaultPeak) * 100), "the sliders show the voice's settings again (volume " + ui.Sliders["Volume"].Bar.Value + "%)");
@@ -2629,6 +3061,22 @@ namespace ModernVoicesConfig
                 Store.SetGlobalPauses(App.SettingsFile, pausesBefore.Sentence, pausesBefore.Comma, pausesBefore.Paragraph);
                 ui.SetGlobalBars(Store.GetPauses(App.SettingsFile), Store.GetGlobalSpeed(App.SettingsFile));
 
+                // The output volume, for every voice: saved to settings.json as it moves.
+                double outputWas = Store.GetOutput(App.SettingsFile);
+                ui.OutputBar.Value = 40;
+                ui.SaveOutput();
+                ui.StopTimers();
+                double outputNow = Store.GetOutput(App.SettingsFile);
+                ui.OutputBar.Value = 0;
+                string silent = ui.OutputValue.Text;
+                ui.SaveOutput();
+                ui.StopTimers();
+                Check(outputWas == 100 && outputNow == 40 && Store.GetOutput(App.SettingsFile) == 0 && silent.Contains("silent") && Store.GetGlobalSpeed(App.SettingsFile) == speedBefore,
+                    "output volume: " + outputWas + "% -> " + outputNow + "% -> 0% ('" + silent + "'), the speed beside it in the file untouched");
+                Store.SetOutput(App.SettingsFile, outputWas);
+                ui.UpdateOutput();
+                Check(ui.OutputBar.Value == 100 && ui.OutputValue.Text == "100%", "the output volume slider shows the file's value again (" + ui.OutputValue.Text + ")");
+
                 // Windows' own speed: the warning shows when it isn't 0, and the button sets it back.
                 int? rateWas = Voices.WindowsRateStored;
                 Voices.WindowsRateStored = 2;
@@ -2649,14 +3097,14 @@ namespace ModernVoicesConfig
                 ui.Sliders["Sentence gap"].Bar.Value = 300;
                 ui.SaveSettings();
                 ui.StopTimers();
-                Pauses own = Store.GetPauses(voiceFile);
+                Pauses own = Store.GetVoicePauses(dir);
                 ui.UpdateApply();
                 if (pictures) { Pictures(ui, folder); }
                 ui.OwnBox.Checked = false;
                 ui.UpdateOwnPauses();
                 ui.SaveSettings();
                 ui.StopTimers();
-                Pauses back = Store.GetPauses(voiceFile);
+                Pauses back = Store.GetVoicePauses(dir);
                 Check(offFirst && shown && own.Own && own.Sentence == 300 && !back.Own,
                     "own pauses: off at first " + offFirst + "; ticked: sliders shown " + shown + ", own " + own.Own + ", sentence " + own.Sentence + " ms; unticked: own " + back.Own);
 
@@ -2713,15 +3161,48 @@ namespace ModernVoicesConfig
                     if (!said) { try { checking.Kill(); } catch (Exception) { } }
                     Check(said && checking.ExitCode == 0, "the second copy of the program speaks with that voice (to nowhere, for this test: " + (said ? "code " + checking.ExitCode : "it did not finish") + ")");
                 }
-                ui.StartPreview(voice.Voice, "Testing the preview.");
+                // The Preview button: it starts the selected voice; pressed again while that voice speaks, it
+                // stops it; pressed with another voice selected, that one stops and the new one starts. (The
+                // speaking is to nowhere here, and of a long text, so that it lasts while the test looks.)
+                ConfigForm.SpeakHow = "--speak-check";
+                string was1 = ui.PreviewBox.Text;
+                ui.PreviewBox.Text = new StringBuilder().Insert(0, "This is a long preview, said to nowhere, for the test of the button. ", 60).ToString();
+                ui.PreviewButton.PerformClick();
                 Process speaking = ui.PreviewProcess;
-                Check(speaking != null, "Preview starts a second copy of the program to speak");
-                if (speaking != null)
+                bool begun = ui.PreviewTalking && ui.PreviewButton.Text == "Stop";
+                ui.PreviewButton.PerformClick();
+                bool stopped = !ui.PreviewTalking && ui.PreviewButton.Text == "Preview" && ui.PreviewProcess == null;
+                Check(speaking != null && begun && stopped, "Preview starts the selected voice (the button reads Stop: " + begun + "), and pressed again stops it (" + stopped + ")");
+                if (ui.InstalledList.Items.Count > 1)
                 {
-                    bool ended = speaking.WaitForExit(60000);
-                    Note("preview: the speaking process " + (ended ? "ended with code " + speaking.ExitCode + " (1 where the PC has no sound device)" : "was still speaking after a minute"));
-                    ui.StopPreview();
+                    ui.PreviewButton.PerformClick();
+                    Process one = ui.PreviewProcess;
+                    ui.InstalledList.Items[1].Selected = true;
+                    ui.UpdateInstalled();
+                    bool otherShown = ui.PreviewButton.Text == "Preview" && ui.PreviewTalking;
+                    ui.PreviewButton.PerformClick();
+                    Process two = ui.PreviewProcess;
+                    bool swapped = one != null && two != null && !ReferenceEquals(one, two) && ui.PreviewTalking && ui.PreviewButton.Text == "Stop";
+                    Check(otherShown && swapped, "with another voice selected the button reads Preview (" + otherShown + "), and pressing it stops the first voice and starts that one (" + swapped + ")");
+                    ui.ShowPage(1);
+                    Settle(50);
+                    ui.GlobalPreview.PerformClick();      // (Speed and pauses: another voice is speaking, so its own starts)
+                    bool onOther = ui.PreviewTalking && ui.GlobalPreview.Text == "Stop" && ui.PreviewButton.Text == "Preview";
+                    ui.GlobalPreview.PerformClick();
+                    ui.ShowPage(0);
+                    Settle(50);
+                    Check(onOther && !ui.PreviewTalking && ui.GlobalPreview.Text == "Preview", "the Speed and pauses tab's Preview does the same with the voice chosen there");
+                    ui.InstalledList.Items[0].Selected = true;
+                    ui.UpdateInstalled();
                 }
+                // Left to finish, the button reads Preview again by itself.
+                ui.PreviewBox.Text = "Short.";
+                ui.PreviewButton.PerformClick();
+                bool ended = WaitWhile(delegate { return ui.PreviewTalking || ui.PreviewButton.Text != "Preview"; }, 120);
+                Check(ended, "when the voice has finished, the button reads Preview again");
+                ui.StopPreview();
+                ui.PreviewBox.Text = was1;
+                ConfigForm.SpeakHow = "--speak";
             }
 
             // Apply with nothing changed: says so, changes nothing.
@@ -2780,6 +3261,8 @@ namespace ModernVoicesConfig
             if (apply && real.Count > 0)
             {
                 List<string> had = new List<string>(ui.Installed);
+                string defaultBefore = Voices.DefaultTokenId;
+                Voices.DefaultTokenId = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_EN-GB_HAZEL_11.0";      // (one of Windows' own)
                 ui.ShowPage(3);
                 Settle(100);
                 vctk.Selected = true;
@@ -2809,6 +3292,8 @@ namespace ModernVoicesConfig
                     Check(after.Contains("en_GB-alan-medium") && File.Exists(Path.Combine(alanFolder, "model.onnx")) && ui.ProgressSeen >= 90,
                         "the new voice was downloaded, with the bar moving (it reached " + ui.ProgressSeen + "%)");
                 }
+                Check(Voices.DefaultToken == Voices.TokenName(after[0]) && ui.InstalledList.Items[0].SubItems[4].Text == "yes",
+                    "Windows' default was one of its own voices: the first voice of the list is now the default (" + ui.DefaultLabel.Text + ")");
                 Check(ui.InstalledList.Items.Count == after.Count && ui.PageIndex == 0 && !ui.ApplyButton.Enabled && ui.CloseButton.Enabled && !ui.Progress.Visible,
                     "afterwards the Voice manager shows them (" + ui.InstalledList.Items.Count + " rows), with nothing left to apply");
                 ui.SpeakerList.SetItemChecked(extraIndex, false);
@@ -2820,6 +3305,9 @@ namespace ModernVoicesConfig
                 Check(finished && after.Count == had.Count && !after.Contains(extra) && !after.Contains("en_GB-alan-medium") && ui.StatusLabel.Text.StartsWith("Done", StringComparison.Ordinal),
                     "Apply changes removes them again: " + after.Count + " voices installed");
                 if (download) { Check(!Directory.Exists(alanFolder), "the removed voice's files are gone"); }
+                Check(Voices.DefaultToken == Voices.TokenName(after[0]), "a Modern Voice that is Windows' default stays the default");
+                Check(Elevated.Ready, "the administrator's part was started once and is still there (nothing asks twice)");
+                Voices.DefaultTokenId = defaultBefore;
             }
             ui.StopTimers();
             ui.Close();

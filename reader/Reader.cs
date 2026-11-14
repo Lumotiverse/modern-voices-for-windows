@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.11.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.0.0")]
 
 namespace ModernVoicesReader
 {
@@ -601,6 +601,7 @@ namespace ModernVoicesReader
         public bool Tidy = true;
         public int Position;                 // in the text in the box
         public string OpenedFile = "";       // the file the box's text came from, while it is unchanged
+        public bool ScreenWarningOff;        // "Do not display this warning again" was ticked (Read screen's warning)
         public int[] Bounds = new int[0];
         public Dictionary<string, Place> Places = new Dictionary<string, Place>();
     }
@@ -1403,7 +1404,7 @@ namespace ModernVoicesReader
                 string config = Path.Combine(app, "config", "ModernVoicesConfig.exe");
                 if (!File.Exists(config)) { Status("Modern Voices Config was not found (" + config + ")."); return; }
                 System.Diagnostics.ProcessStartInfo start = new System.Diagnostics.ProcessStartInfo(config);
-                start.WorkingDirectory = Path.GetDirectoryName(config); start.UseShellExecute = true;      // (Windows asks for permission)
+                start.WorkingDirectory = Path.GetDirectoryName(config); start.UseShellExecute = true;
                 System.Diagnostics.Process.Start(start);
                 Status("Opening Modern Voices Config...");
             }
@@ -2046,6 +2047,17 @@ namespace ModernVoicesReader
         {
             if (recogniser != null) { return; }
             if (!File.Exists(Ocr.Script)) { Status("The text recognition helper is missing (" + Ocr.Script + "): install Modern Voices again."); return; }
+            // What it is for, and that it can misread: asked each time until "Do not display this warning again" is ticked.
+            if (!store.State.ScreenWarningOff)
+            {
+                CheckBox notAgain;
+                using (Form ask = Program.ScreenWarningWindow(out notAgain))
+                {
+                    ask.StartPosition = FormStartPosition.CenterParent; ask.ShowInTaskbar = false;
+                    if (ask.ShowDialog(this) != DialogResult.Yes) { return; }
+                    if (notAgain.Checked) { store.State.ScreenWarningOff = true; store.Save(); }
+                }
+            }
             Rectangle screen = SystemInformation.VirtualScreen;
             // The screen as it is without this window.
             Hide();
@@ -2456,6 +2468,23 @@ namespace ModernVoicesReader
         // The warning's window (in the theme the Reader wears): the question, Yes and Cancel.
         public static Form AlreadyRunningWindow()
         {
+            CheckBox none;
+            return AskWindow("Modern Voices is already running. Would you like to start a 2nd instance?", null, out none);
+        }
+
+        public const string ScreenWarning = "The screen reader can make mistakes, and is intended for use on images containing text. " +
+            "It is more accurate to copy and paste actual text when you can.\r\n\r\nContinue?";
+
+        // Read screen's warning: the question, a box to tick so that it is not shown again, Yes and Cancel.
+        public static Form ScreenWarningWindow(out CheckBox notAgain)
+        {
+            return AskWindow(ScreenWarning, "Do not display this warning again", out notAgain);
+        }
+
+        // A question's window (in the theme the Reader wears): the question, a box to tick under it when
+        // 'tick' names one, Yes and Cancel.
+        static Form AskWindow(string asked, string tick, out CheckBox box)
+        {
             Form ask = new Form();
             ask.Text = "Modern Voices: Reader";
             ask.FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -2467,11 +2496,18 @@ namespace ModernVoicesReader
             ask.Padding = new Padding(18, 16, 18, 14);
             try { ask.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception) { }
             TableLayoutPanel rows = new TableLayoutPanel();
-            rows.AutoSize = true; rows.AutoSizeMode = AutoSizeMode.GrowAndShrink; rows.ColumnCount = 1; rows.RowCount = 2;
+            rows.AutoSize = true; rows.AutoSizeMode = AutoSizeMode.GrowAndShrink; rows.ColumnCount = 1; rows.RowCount = 3;
             rows.Dock = DockStyle.Fill;
             Label question = new Label();
             question.AutoSize = true; question.Margin = new Padding(0, 0, 0, 16);
-            question.Text = "Modern Voices is already running. Would you like to start a 2nd instance?";
+            if (tick != null) { question.MaximumSize = new Size(ask.Font.Height * 27, 0); }      // (a long question wraps)
+            question.Text = asked;
+            box = null;
+            if (tick != null)
+            {
+                box = new CheckBox();
+                box.Text = tick; box.AutoSize = true; box.Margin = new Padding(0, 0, 0, 16);
+            }
             FlowLayoutPanel buttons = new FlowLayoutPanel();
             buttons.AutoSize = true; buttons.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             buttons.FlowDirection = FlowDirection.RightToLeft; buttons.Anchor = AnchorStyles.Right; buttons.Margin = new Padding(0);
@@ -2482,7 +2518,9 @@ namespace ModernVoicesReader
             yes.Text = "Yes"; yes.DialogResult = DialogResult.Yes; yes.AutoSize = true;
             yes.MinimumSize = new Size(88, 30); yes.Margin = new Padding(0);
             buttons.Controls.Add(cancel); buttons.Controls.Add(yes);
-            rows.Controls.Add(question, 0, 0); rows.Controls.Add(buttons, 0, 1);
+            rows.Controls.Add(question, 0, 0);
+            if (box != null) { rows.Controls.Add(box, 0, 1); }
+            rows.Controls.Add(buttons, 0, 2);
             ask.Controls.Add(rows);
             ask.AcceptButton = yes; ask.CancelButton = cancel;
             Theme.Apply(ask, Theme.IsDark());
@@ -2735,6 +2773,25 @@ namespace ModernVoicesReader
                         try { using (Bitmap shot = new Bitmap(ask.Width, ask.Height)) { ask.DrawToBitmap(shot, new Rectangle(0, 0, ask.Width, ask.Height)); shot.Save(Path.Combine(folder, "reader-already-running.png")); } } catch (Exception) { }
                         ask.Close();
                     }
+                    // Read screen's warning: its words, the box to tick, Yes and Cancel.
+                    CheckBox warnBox;
+                    using (Form warnForm = Program.ScreenWarningWindow(out warnBox))
+                    {
+                        warnForm.Show();
+                        Application.DoEvents();
+                        int warnAnswers = 0;
+                        string warnWords = "";
+                        foreach (Control warnRow in warnForm.Controls[0].Controls)
+                        {
+                            if (warnRow is Label) { warnWords = warnRow.Text; }
+                            foreach (Control warnPart in warnRow.Controls) { if (warnPart is Button && (warnPart.Text == "Yes" || warnPart.Text == "Cancel")) { warnAnswers++; } }
+                        }
+                        Check(warnWords == Program.ScreenWarning && warnBox != null && !warnBox.Checked && warnBox.Text == "Do not display this warning again" && warnAnswers == 2,
+                            "Read screen's warning: its words, a box to not show it again (unticked), Yes and Cancel");
+                        try { using (Bitmap shot = new Bitmap(warnForm.Width, warnForm.Height)) { warnForm.DrawToBitmap(shot, new Rectangle(0, 0, warnForm.Width, warnForm.Height)); shot.Save(Path.Combine(folder, "reader-screen-warning.png")); } } catch (Exception) { }
+                        warnForm.Close();
+                    }
+                    Check(!new State().ScreenWarningOff, "the warning is shown until it is turned off");
                     Check(again.BoxText == "" && again.Position == 0 && !File.Exists(Path.Combine(data, "current.txt")), "opened again: the box is empty (its text is not kept)");
                     again.Close();
                     again.Dispose();

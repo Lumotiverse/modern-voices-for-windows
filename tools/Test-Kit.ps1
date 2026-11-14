@@ -93,6 +93,10 @@ $PS64 = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $PS32 = "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
 $albaDir = Join-Path $App 'voices\en_GB-alba-medium'
 $albaName = 'Alba (British)'
+# The settings folder: what people change is kept here, where changing it needs no administrator.
+$Data = Join-Path $env:ProgramData 'Modern Voices for Windows'
+$settingsFile = Join-Path $Data 'settings.json'
+$rulesFile = Join-Path $Data 'dictionary.txt'
 
 Step 'The "where to install" screen, and Modern Voices Config (before installing)'
 $code = Invoke-Install @('-PickerSelfTest') 300
@@ -111,7 +115,11 @@ $userWrite = @($rules | Where-Object { $_.IdentityReference.Value -eq $users -an
 Write-Host ("  folder permissions: " + (($rules | ForEach-Object { "$($_.IdentityReference.Value): $($_.FileSystemRights)" }) -join '; '))
 Check ($userWrite.Count -eq 0 -and @($rules | Where-Object { $_.IdentityReference.Value -eq $users }).Count -gt 0) 'outside Program Files: ordinary users can read the files, not change them'
 $token = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium')
-Check ($token.SettingsFile -eq (Join-Path $App 'settings.json') -and (Test-Path $token.SettingsFile)) 'voices point at the settings file'
+Check ($token.SettingsFile -eq $settingsFile -and (Test-Path $token.SettingsFile)) "voices point at the settings file ($($token.SettingsFile))"
+$dataRules = @((Get-Acl $Data).Access)
+$modify = [Security.AccessControl.FileSystemRights]::Modify
+Check (@($dataRules | Where-Object { $_.IdentityReference.Value -eq $users -and ($_.FileSystemRights -band $modify) -eq $modify }).Count -gt 0 -and
+    -not (Test-Path (Join-Path $App 'settings.json'))) 'the settings folder: every user may change the settings (Modern Voices Config needs no administrator); none are kept in the program folder'
 Check ($code -eq 0) 'installer finished without errors'
 Check ((Get-OurTokens $Tokens64).Count -eq 3) "3 voices for 64-bit programs ($((Get-OurTokens $Tokens64) -join ', '))"
 if ($has32) { Check ((Get-OurTokens $Tokens32).Count -eq 3) '3 voices for 32-bit programs' }
@@ -126,7 +134,6 @@ Check ($configLink.TargetPath -eq $configExe -and -not $configLink.Arguments) "S
 Check ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows').ModifyPath -eq "`"$configExe`"") "Installed apps' Modify opens Modern Voices Config"
 Check (Test-Path (Join-Path $App 'catalogue.json')) 'the voice list is kept in the program folder (Modern Voices Config opens from it, without the internet)'
 Check (Test-Path (Join-Path $App 'installer\repair.ico')) "Repair's icon (the wrench) is installed"
-$rulesFile = Join-Path $App 'dictionary.txt'
 $rulesText = if (Test-Path $rulesFile) { Get-Content $rulesFile -Raw } else { '' }
 Check ($rulesText.Contains("1`tw`ti`t<3`tlove heart") -and $rulesText.Contains("1`tw`ti`t:D`tbig grin")) 'the pronunciation rules the program comes with (smileys) are in the list'
 Check ($rulesText.Contains("1`tw`ti`tty`tthank you") -and $rulesText.Contains("1`tw`ti`twts`twant to sell") -and $rulesText.Contains("0`tw`ti`trn`tright now") -and $rulesText.Contains("0`tw`ti`tlf`tlooking for") -and
@@ -135,7 +142,7 @@ Check (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Mode
 $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"
 Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 1,') 'voice.json: loudness set (100%, 1.5x)'
-$settingsText = Get-Content (Join-Path $App 'settings.json') -Raw
+$settingsText = Get-Content $settingsFile -Raw
 Check ($settingsText -match '"speed_percent": 100' -and $settingsText -match '"sentence_ms": 500' -and $settingsText -match '"paragraph_ms": 1200') 'settings.json: speed 100%, sentence 500 ms, paragraph 1200 ms'
 
 Step 'Speaking through System.Speech (SAPI 5), at the set loudness'
@@ -154,7 +161,23 @@ Set-VoiceSettings $albaDir 1 1.5 2
 $slow = Test-Speech $PS64 64 3
 $ratio = $slow[$albaName].seconds / $normal[$albaName].seconds
 Check ($ratio -gt 1.45) ("length_scale 2: Alba {0:N2}x as long" -f $ratio)
+Check ((Test-Path (Get-VoiceFile $albaDir)) -and (Get-VoiceFile $albaDir).StartsWith($Data)) "a voice's settings are kept in the settings folder ($(Get-VoiceFile $albaDir))"
+# Volume above 100% (to 200%): the loudest moments stay under full, everything else is turned up.
+Set-VoiceSettings $albaDir 1 1 1
+$plain = Test-Speech $PS64 64 3
+Set-VoiceSettings $albaDir 2 1 1
+$loud = Test-Speech $PS64 64 3
+$louder = $loud[$albaName].level / [math]::Max(0.0001, $plain[$albaName].level)
+Check ($louder -gt 1.4 -and $loud[$albaName].peak -le 1) ("Volume 200%: Alba {0:N2}x as loud on the whole as at 100% (level {1} -> {2}), its peak {3}" -f $louder, $plain[$albaName].level, $loud[$albaName].level, $loud[$albaName].peak)
 Set-VoiceSettings $albaDir 1 1.5 1
+# The output volume (for every voice): half, every voice comes out at half.
+Set-OutputVolume $settingsFile 50
+[void](Test-Speech $PS64 64 3 @{ $albaName = 0.5; 'Northern English Male (British)' = 0.5; 'VCTK p239 (British)' = 0.5 })
+Set-OutputVolume $settingsFile 0
+$silent = Test-Speech $PS64 64 3 @{ $albaName = 0; 'Northern English Male (British)' = 0; 'VCTK p239 (British)' = 0 }
+Check ($silent[$albaName].seconds -gt 0.5) "output volume 0: the speech is still there (its words and timing), with no sound ($($silent[$albaName].seconds) s)"
+Set-OutputVolume $settingsFile 100
+Check ((Get-OutputVolume $settingsFile) -eq 100 -and (Get-GlobalSpeed $settingsFile) -eq 100) 'the output volume is back at 100%, the speed beside it untouched'
 
 Step 'Settings take effect in a program already speaking'
 $lines = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Live $albaName -Dir $albaDir 2>&1
@@ -163,7 +186,6 @@ $liveResult = ($lines | Where-Object { ([string]$_).StartsWith('{') } | Select-O
 Check ($liveResult -and [math]::Abs($liveResult.before - 1) -lt 0.03 -and [math]::Abs($liveResult.after - 0.5) -lt 0.03) "same process: peak $($liveResult.before), then $($liveResult.after) after the change"
 
 Step 'Pauses: measured gaps'
-$settingsFile = Join-Path $App 'settings.json'
 $maleName = 'Northern English Male (British)'
 function Measure-Speech([string]$Voice, [string]$Text, [int]$Rate = 0) {
     $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Text))
@@ -211,7 +233,7 @@ $baseRate2 = Measure-Speech $albaName $two 2
 
 # The pronunciation dictionary: a rule's replacement is what is said (heard here as longer speech) by
 # the next program to speak; switched off, the speech is as it was.
-$dictFile = Join-Path $App 'dictionary.txt'
+$dictFile = $rulesFile
 $troll = [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = 'PATROL'; To = 'patrol of seven very large and extremely angry mountain trolls' }
 Set-Dictionary $dictFile @($troll)
 $longer = Measure-Speech $albaName $two
@@ -360,7 +382,14 @@ $own = @(
     [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = 'Niamh'; To = 'Neev' })
 Set-Dictionary $rulesFile $own
 Set-GlobalSpeed $settingsFile 115
-Set-VoiceSettings $albaDir 0.8 2 1
+# (As a version before 0.12.0 left things: the settings files in the program's folder, a voice's settings in
+# its voice.json, no settings folder.)
+Copy-Item $settingsFile (Join-Path $App 'settings.json')
+Copy-Item $rulesFile (Join-Path $App 'dictionary.txt')
+$albaJson = Join-Path $albaDir 'voice.json'
+$albaJsonWas = [System.IO.File]::ReadAllText($albaJson)
+[System.IO.File]::WriteAllText($albaJson, (($albaJsonWas -replace '"peak":\s*[0-9.]+', '"peak": 0.8') -replace '"boost":\s*[0-9.]+', '"boost": 2'))
+Remove-Item $Data -Recurse -Force
 $voiceFile = Get-ChildItem $albaDir -Filter '*.onnx' | Select-Object -First 1
 $voiceWritten = $voiceFile.LastWriteTimeUtc
 $code = Invoke-Install @('-Unattended', '-NoPause')
@@ -368,21 +397,25 @@ Check ($code -eq 0) 'update finished without errors'
 Check ((Get-ItemProperty $ourKey).DisplayVersion -eq $versionNow -and $versionNow -ne '0.0.1') "Installed apps shows this version again ($versionNow)"
 Check (-not (Test-Path $oldDll) -and -not (Test-Path $oldScript)) "the older version's leftover program files are gone"
 Check ((Get-GlobalSpeed $settingsFile) -eq 115) 'the speed set before the update is kept'
+Check ((Test-Path $settingsFile) -and (Test-Path $rulesFile) -and -not (Test-Path (Join-Path $App 'settings.json')) -and -not (Test-Path (Join-Path $App 'dictionary.txt'))) 'the settings of a version before 0.12.0 are moved from the program folder to the settings folder'
 $after = @(Get-Dictionary $rulesFile)
 Check (@($after | Where-Object { $_.From -eq 'Niamh' -and $_.To -eq 'Neev' }).Count -eq 1 -and @($after | Where-Object { $_.From -eq ':)' -and $_.To -eq 'smile' }).Count -eq 1 -and @($after | Where-Object { $_.From -eq ':D' -and -not $_.On }).Count -eq 1 -and @($after | Where-Object { $_.From -eq '<3' }).Count -eq 0 -and $after.Count -eq 3) "pronunciation rules: the added, changed, switched off and removed ones are as they were left ($($after.Count) rules)"
 Set-Dictionary $rulesFile @()
 Check (-not (Test-Path "$menu\Repair.lnk")) "the Start menu's old Repair entry is gone"
 Check ((Get-Item $voiceFile.FullName).LastWriteTimeUtc -eq $voiceWritten) 'the voice files were not downloaded again'
 Check ((Get-ItemProperty $ourKey).DisplayIcon -like '*ModernVoicesReader.exe,0') "Installed apps shows the program's icon (the speaker), not Config's cog"
-[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })
+[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })      # (from its voice.json, as before 0.12.0: nothing of its own says otherwise yet)
+[System.IO.File]::WriteAllText($albaJson, $albaJsonWas)
 Set-GlobalSpeed $settingsFile 100
 Set-VoiceSettings $albaDir 1 1.5 1
+Set-VoiceSettings $maleDir 1 1.5 1
 
 Step 'Change voices: Alba only'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium', '-Unattended', '-NoPause')
 Check ($code -eq 0) 'change finished without errors'
 Check ((Get-OurTokens $Tokens64).Count -eq 1) 'one voice left'
 Check (-not (Test-Path (Join-Path $App 'voices\en_GB-vctk-medium'))) 'removed voice''s files gone'
+Check (-not (Test-Path (Get-VoiceFile $maleDir)) -and (Test-Path (Get-VoiceFile $albaDir))) "a removed voice's own settings go with it; the others' stay"
 
 Step 'Remove every voice (Modern Voices Config with nothing ticked: -ExactVoices and no voices)'
 $code = Invoke-Install @('-ExactVoices', '-Unattended', '-NoPause')
@@ -394,6 +427,7 @@ Step 'Uninstall'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Uninstall.ps1') -NoPause
 Check ((Get-OurTokens $Tokens64).Count -eq 0 -and (Get-OurTokens $Tokens32).Count -eq 0) 'no voices left'
 Check (-not (Test-Path $App)) 'program folder gone'
+Check (-not (Test-Path $Data)) 'settings folder gone'
 Check (-not (Test-Path (Join-Path $env:APPDATA 'Modern Voices Reader'))) "the Reader's saved texts gone"
 Check (-not (Test-Path 'HKLM:\SOFTWARE\Classes\CLSID\{F9857585-FF01-467B-84C0-D6CA4E0572D2}')) 'engine registration gone'
 

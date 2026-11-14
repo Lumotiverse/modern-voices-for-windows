@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.11.0 (14 Nov 2026).
+Last updated at version 0.12.0 (14 Nov 2026).
 
 ## What it is
 
@@ -17,7 +17,7 @@ with Windows' voices but can't use Narrator's natural voices. It must keep worki
 | Modern Voices Config | The settings window: Voice manager, Speed and pauses, Pronunciation, Add or remove voices. A program of its own since 0.11.0 (it was a PowerShell window inside Install.ps1 before). | C# 5 + WinForms (csc.exe, .NET Framework 4) | `config/Config.cs`, `config/Build.ps1`, `config/app.manifest` |
 | Modern Voices: Reader | A small app that reads pasted or copied text, files and screen regions. It has play/pause/stop, time left, saves as WAV, and remembers its place per file. | C# 5 (built with Windows' own `csc.exe`, .NET Framework 4) | `reader/Reader.cs`, `reader/Build.ps1` |
 
-The user-facing documentation is `kit/README.txt`, and it is accurate for 0.11.0. Read it to see what
+The user-facing documentation is `kit/README.txt`, and it is accurate for 0.12.0. Read it to see what
 each feature does.
 
 ## Lumoti's standing rules
@@ -25,7 +25,7 @@ each feature does.
 - **Before any build request, say whether it needs Fable (complicated: new features, engine work,
   multi-part changes) or Opus 5.5 (simple and safe changes to working code)**, so he can switch model
   first. If he's already on the right one, say so and proceed.
-- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.11.0.zip`.
+- The version number goes in the filename of every build he downloads: `ModernVoicesForWindows0.12.0.zip`.
 - Every build must update in place (since 0.9.6): the new kit's Install.cmd run over the installed version
   keeps voices, settings, nicknames and pronunciations, with no uninstall and no re-download. If a build
   changes where or how any of those are stored, it must carry the old ones over. Test-Kit has an 'Update' step.
@@ -137,11 +137,19 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
   right tab showing.
 - Preview speaks in a second copy of the exe (`--speak <base64 voice> <base64 text>`), so the engine is
   never loaded into the window's process (Apply changes may delete a voice's files).
-- The exe's manifest asks for administrator (it writes voice.json, settings.json, dictionary.txt under
-  the program folder, and HKLM for nicknames). It is DPI-aware (the PowerShell window was not: Windows
-  stretched it, so `Px()` scaling at 125% and above is new and not yet seen by Lumoti).
-- `Store` in Config.cs and `VoiceConvert.ps1` both read and write voice.json, settings.json and
-  dictionary.txt: keep the two in step.
+- It runs unelevated (manifest `asInvoker`, since 0.12.0). The administrator's part (nickname, Apply
+  changes) is a second copy, `--helper PIPE PID`, started with the `runas` verb at first need and kept
+  until the window closes: `Elevated` (window side, owns the pipe) and `Helper` (elevated side). Lines over
+  the pipe: `nick <id64> <nick64> <display64>` or `apply <0|1 US tags> <ids64>` one way; `say <line64>` and
+  `done <code> [message64]` back. Both ends check the other's process id (GetNamedPipeClient/ServerProcessId),
+  the helper also that the window is the same exe, and it validates ids against a pattern. Keep it to
+  those two commands.
+- On CI everything is already elevated with UAC off, so `runas` starts the helper with no prompt: the
+  pipe path is tested, the UAC prompt itself never is.
+- It is DPI-aware (the PowerShell window was not: Windows stretched it, so `Px()` scaling at 125% and
+  above is new and not yet seen by Lumoti).
+- `Store` in Config.cs, `VoiceConvert.ps1` and the engine all read the settings folder's files: keep the
+  three in step.
 
 **The Reader (C#)**
 - It is compiled by Windows' csc 4.x, so only C# 5: no `$""`, `?.`, `=>` members or `nameof`.
@@ -161,7 +169,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.11.0)
+## Current state (0.12.0)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last
@@ -173,30 +181,58 @@ one batch at a time; every batch so far is done and delivered. He installs each 
 - `money` says sums aloud ("£150" as "150 pounds", "£1.50" as "1 pound 50", "$3.5m" as "3.5 million
   dollars"), applied after the pronunciation dictionary.
 
-**Config as a program (0.11.0)**
+**Settings folder (0.12.0)**
+- `%ProgramData%\Modern Voices for Windows\`: `settings.json` (speed_percent, pauses, output_percent),
+  `dictionary.txt`, `voices\<voice folder name>.json` (a voice's own loudness, length_scale, pauses). The
+  installer makes it and grants Users Modify (`Initialize-SettingsFolder`), and moves settings.json and
+  dictionary.txt there from the program folder of an older install. Uninstall deletes it.
+- A voice's own file is read IN FRONT of its voice.json (engine `Model::settings`, `Store.VoiceText`,
+  `Get-VoiceText`: the texts are joined, and the key search finds the first). voice.json keeps the
+  defaults from conversion, and the settings of an install from before 0.12.0, so nothing per-voice
+  needed migrating. Removing a voice deletes its own file.
+- The engine finds all of it from the token's `SettingsFile` (now the ProgramData path): dictionary.txt
+  beside it, `voices\` beside it (`own_file`).
+- Why ProgramData and not per-user: the engine runs in any process and user, and the installer runs
+  elevated (possibly as another account). The cost: any user of the PC can change them. They are only
+  numbers and pronunciation text, parsed in Rust and clamped; voice.json (which feeds sherpa/espeak) is
+  NOT user-writable.
+
+**Volume and output volume (0.12.0)**
+- Per-voice Volume slider 0 to 200% (`peak` 0 to 2, `MAX_PEAK`). Above 1: normalise to full, multiply,
+  then `limit` (soft knee at 0.6, tanh above) in `text::apply_loudness`. Louder on the whole (about 1.8x
+  rms at 200% on speech), more compressed.
+- Output volume: `output_percent` 0 to 100 in settings.json, for every voice. The engine applies it in
+  `Output::write`, which now sends audio in 1024-sample pieces and re-reads the setting (a file stat)
+  for each, ramping between levels: it changes mid-sentence, after whatever SAPI has buffered. Config's
+  slider (Voice manager, beside the default-voice box) saves 60 ms after the last movement. Programs
+  that take the audio to a buffer and play it later only get it per utterance.
+- SAPI's own volume (`GetVolume`, SPVES_VOLUME) is still read once per Speak call.
+
+**Config (0.12.0)**
 - `config/ModernVoicesConfig.exe`, installed to `<app>\config\`. The Start menu entry, `Modern Voices
   Config.cmd`, Installed apps' Modify and the Reader's cog all start the exe. One instance (mutex): a
-  second start brings the first to the front. Windows asks for permission at each start (manifest).
+  second start brings the first to the front. No permission prompt to open; one prompt at the first
+  nickname or Apply changes, then none until the window is closed (see the helper, under Pitfalls).
 - It opens from `<app>\catalogue.json` (the installer downloads it at install, update and Apply), so
-  opening needs no internet; without that file it downloads the list itself.
-- Apply changes runs `Install.ps1 -ExactVoices -Unattended -NoPause -Progress [-Voices a,b] [-UsEnglishTags]`
-  hidden, and shows its lines in the status line and `##progress N` in the bar. Exit 0 = done, 2 = a
-  voice failed its test, else the last `Stopped:` line is shown. `-ExactVoices` means exactly the voices
-  given, also none; the US English option is then exactly `-UsEnglishTags`.
-- Install.cmd (fresh install or update) still runs Install.ps1 in a console: "where to install" (fresh
-  only), files copied, voices registered again, then it starts the installed Config exe and the console
-  closes. The console is still moved to the window's bounds first (`Move-ConsoleToUiWindow`;
-  `Get-UiWindowBounds` must match `ConfigForm.WindowBounds`).
-- Window 900 x 1000 at 100%, centred, capped to the screen. Per-voice Volume slider moves in tens.
-- The startup timer (0.10.9 to 0.10.11) is gone. On CI the C# window builds in about 0.6 s (the
-  PowerShell one took 1 to 2.3 s after about 1.5 s of PowerShell starting and installer steps).
-- `installer/Speak.ps1` is gone (Preview is the exe itself). The update removes it from old installs.
-- NOT done, offered to Lumoti as the next step: opening Config without the administrator prompt. Needs
-  the settings files moved somewhere writable without admin (and read by the engine from there, with
-  existing settings carried over), nicknames through the elevated helper (`Nickname.ps1`, which refuses
-  an empty nickname today), and Apply started elevated (then its output can't be redirected: use a pipe
-  or a file). Config.cs keeps all privileged writes in `Store`, `Voices.SetNickname` and `Apply` to make
-  that change local.
+  opening needs no internet; without that file it downloads the list itself (to %TEMP%).
+- Apply changes: the helper runs `Install.ps1 -ExactVoices -Unattended -NoPause -Progress [-Voices a,b]
+  [-UsEnglishTags]` hidden and relays its lines (status line; `##progress N` moves the bar). Exit 0 =
+  done, 2 = a voice failed its test, else the last `Stopped:` line is shown.
+- After Apply (`SetDefaultAfterApply`, Lumoti's rule): if Windows' default voice is not an installed
+  Modern Voice, and voices were added (or the default was a Modern Voice just removed), the first voice
+  of the list becomes the default (HKCU, done by the unelevated window, so it is the right user's).
+  The unattended installer does not do this.
+- Preview buttons toggle (`TogglePreview`): pressed while their voice speaks they stop it; with another
+  speaking, that stops and theirs starts. The label reads Stop meanwhile (`UpdatePreviewButtons`; width
+  kept by `KeepWidth`). All three Stop buttons are gone (Voice manager, Speed and pauses, Hear it).
+  Lumoti asked for the Voice manager's; the other two were changed to match.
+- Voice manager row order: Preview, Make default voice, nickname box, Set nickname; Windows speech
+  settings at the right. Under "Preview says": the default voice in a bordered box (`defaultBox`, tag
+  "box", border drawn in Paint), then the speaker symbol (E767) and the output volume slider.
+- Install.cmd (fresh install or update) runs Install.ps1 in a console, then starts the installed Config
+  through explorer.exe (so that it is NOT elevated) and the console closes. The console is no longer
+  moved or resized.
+- Window 900 x 1000 at 100%, centred, capped to the screen.
 
 **Installer (`installer/Install.ps1`)**
 - Update in place: `$updating` in the main flow, `Close-OurPrograms` (closes the Reader, Config, and a
@@ -211,6 +247,10 @@ one batch at a time; every batch so far is done and delivered. He installs each 
   old TTS Enhanced addon. Game-instance abbreviations deliberately left out. A changed or extra default
   rule needs a NEW set name.
 - Apply changes is greyed out while the ticks match what is installed (`UpdateApply` in Config.cs, 300 ms timer).
+
+**Reader (0.12.0)**
+- Read screen asks first (`Program.ScreenWarningWindow`, built by `AskWindow` like the already-running
+  prompt): Yes, Cancel, "Do not display this warning again" (`State.ScreenWarningOff`, saved on Yes).
 
 **Nicknames from the Reader (`installer/Nickname.ps1`)**
 - One-shot: `-Token <ModernVoices_...> -Nick64 <base64 UTF-8>`; exit 0 done, 2 refused, 3 name taken.
@@ -257,6 +297,11 @@ one batch at a time; every batch so far is done and delivered. He installs each 
 position (by design: Play starts from the caret), so the bar and the time left jump to show what's left
 from there, even when he only clicked to type. He called it an "unintended feature". Ask whether he wants
 it kept, or the bar and time to change only while reading.
+
+**Not yet confirmed on his machine (0.12.0):** the UAC prompt appearing once (first nickname or Apply) and
+not again; Config opening unelevated after Install.cmd (the explorer.exe hand-off); the output volume
+changing mid-sentence and how long the lag is; how 150 to 200% Volume sounds; the new Voice manager layout;
+the Reader's Read screen warning; a second Windows account using the settings folder.
 
 **Not yet confirmed on his machine (0.11.0):** everything about the C# Config on a real screen: its look
 next to the old window (text is drawn by GDI now, and it is DPI-aware), Play sample and Preview (CI has no

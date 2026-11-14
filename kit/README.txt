@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.11.0
+Modern Voices for Windows 0.12.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -44,8 +44,9 @@ Afterwards, from the Start menu (Modern Voices for Windows):
   Modern Voices Config
                   the window: Voice manager (installed voices, how they sound, Windows'
                   default voice), Speed and pauses, Pronunciation, and Add or remove voices.
-                  A program of its own: Windows asks for permission as it opens (it changes the
-                  voices for every program), and it opens without the internet
+                  A program of its own. It opens without asking for permission and without
+                  the internet; Windows asks for permission once, the first time you set a
+                  nickname or press Apply changes (not again until you close the window)
   Modern Voices Reader
                   reads text aloud with the voices: pasted or copied text, files, text on the
                   screen (see "The Reader" below)
@@ -62,30 +63,44 @@ How each voice sounds
 ---------------------
 In the Modern Voices Config window, on "Voice manager", select a voice:
 
-  Volume   how loud each sentence's loudest moment is: 100% = full volume. 0 = as Piper
-           made it (quieter: the model's own level). It moves in steps of 10%.
+  Volume   how loud each sentence's loudest moment is: 100% = full volume (the default). 0 = as
+           Piper made it (quieter: the model's own level). Above 100%, up to 200%: sound can't go
+           above full, so everything but the loudest moments is turned up further (twice as loud
+           at 200%) and the loudest are eased off; the higher, the more pressed it sounds. It moves
+           in steps of 10%.
   Boost    lifts the quieter parts more than the loud ones, so the voice sounds louder overall without
            clipping. None, 1.5x (the default), up to 4x; higher sounds more compressed, like radio.
   Dictation speed  adjusts this voice from the speed for every voice (Speed and pauses): 100% = that
                    speed.
 
+Output volume (the slider with the speaker, beside Windows' default voice) is for every voice, in
+every program: how loud they come out, of what each voice's own Volume makes. 100% unless you turn it
+down; 0 = silent (the speech still runs, without sound). Unlike the other settings it works while a
+voice is speaking, within a moment. It turns down what the voices hand to a program: a program's own
+volume control still works on top. (settings.json's "output_percent", 0 to 100, in the settings folder:
+anything allowed to write that file can set it.)
+
 Changes are saved as you move a slider and take effect straight away, also in programs that are already
 using the voice (from the next thing they say): no restarting, no repair. Preview says the text in the
 "Preview says" box with the voice as it now is (Enter starts a new line, which gets the paragraph
-gap); Reset puts back 100%, 1.5x, 100%. Each installed speaker of a voice has its own row (the
+gap); pressed while that voice is speaking, it stops it, and pressed with another voice selected it
+stops the one speaking and starts that one. Reset puts back 100%, 1.5x, 100%. Each installed speaker of a voice has its own row (the
 voice named on the first): Preview, Make default voice and Nickname act on the row selected. A voice's speakers share its sliders (add or remove speakers on "Add or remove
 voices"). A program's own volume and speed still adjust from there.
 
 Set nickname gives the selected row's voice the name typed in the box beside it, shown in brackets in
 the voice's name in place of its accent: "VCTK p262 (Irish Female)" for "VCTK p262 (British)". It
 renames the voice where Windows lists it (restart programs that were open to see it); with the box
-empty, it puts the accent back.
+empty, it puts the accent back. Windows asks for permission for this (a voice's name is Windows' to
+keep).
 
 Make default voice sets the selected voice as Windows' default speech voice: the one programs speak
 with when they don't choose a voice (what Windows' Speech control panel, sapi.cpl, sets; Windows
 speech settings opens that). It is per Windows user, for 64- and 32-bit programs alike. Windows 10's
 Settings app has its own voice choice, for Microsoft's newer voice system: these voices can't appear
-there, and it doesn't affect programs that use these.
+there, and it doesn't affect programs that use these. When voices are installed and Windows'
+default is not one of these (it is one of Windows' own, such as Hazel), the first voice of the list
+becomes the default; a Modern Voice that is the default stays so.
 
 Speed and pauses
 ----------------
@@ -118,13 +133,15 @@ set its three pauses. Changes apply straight away, like volume. Preview on this 
 manager's line with the voice chosen beside it.
 
 The window opens no larger than the screen; a tab that doesn't fit in it scrolls. The mouse wheel
-scrolls the tab even over a slider (sliders move by dragging, clicking or the arrow keys). Stop,
-beside each Preview, stops the preview playing. Dictation speed goes from 25% to 200%.
+scrolls the tab even over a slider (sliders move by dragging, clicking or the arrow keys). Each
+Preview (and Hear it) stops what it is saying when pressed again. Dictation speed goes from 25% to 200%.
 
-The settings live in the install folder: settings.json (the Speed and pauses tab: "speed_percent"
-and "pauses") and voices\<voice>\voice.json
-("loudness": peak and boost; "inference": length_scale, higher = slower; "pauses": its own), if you'd
-rather edit them.
+The settings live in the settings folder, C:\ProgramData\Modern Voices for Windows (every user of the
+PC may change them, which is why Modern Voices Config needs no administrator): settings.json (the Speed
+and pauses tab's "speed_percent" and "pauses", and "output_percent") and, for each voice you have
+changed, voices\<voice>.json ("loudness": peak and boost; "inference": length_scale, higher = slower;
+"pauses": its own), if you'd rather edit them. A voice you haven't changed is as its voice.json in the
+install folder has it. (Before 0.12.0 all of these were in the install folder: updating moves them.)
 
 
 Pronunciation
@@ -146,7 +163,7 @@ these voices (the Reader, World of Warcraft, a screen reader...).
 
 Rules apply from the next thing a program says. Programs still see the original words (what they
 highlight or show is unchanged): only what is said differs. The rules are in dictionary.txt in the
-install folder (a rule a line, tab-separated), if you'd rather edit or copy them.
+settings folder (a rule a line, tab-separated), if you'd rather edit or copy them.
 
 
 The Reader
@@ -190,8 +207,9 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     and press Paste and read.)
   * Read the screen (the magnifying glass): for text that can't be selected or copied (a
     picture, a game, some PDFs).
-    The screen dims; drag a box around the text, and Windows' own text recognition reads it into the
-    box and starts reading. Recognition is not perfect, small or fancy print least of all. It works
+    It first says what it is for and that it can misread (tick "Do not display this warning again"
+    to skip that next time). Then the screen dims; drag a box around the text, and Windows' own text
+    recognition reads it into the box and starts reading. Recognition is not perfect, small or fancy print least of all. It works
     for the languages Windows has text recognition for (Settings > Time & language > Language).
   * Save as audio: the text as a WAV file, in the voice and at the speed chosen, made as fast as the
     voice can (not played). About 2.6 MB a minute.

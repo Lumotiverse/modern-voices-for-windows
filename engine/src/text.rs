@@ -157,6 +157,9 @@ pub fn number(info: &str, key: &str, default: f32) -> f32 {
 
 /// A sentence's audio made louder, as Piper's own program does and then some:
 ///   peak:  scaled so its loudest moment is this (0.95 = just under full). 0 = left as it is.
+///          Above 1 (to 2: the Volume slider's 100% to 200%) sound has nowhere louder to go, so the
+///          sentence is brought to full, turned up by that much again, and its loudest moments are
+///          eased back under full (see `limit`): everything quieter than those really is that much louder.
 ///   boost: above 1, the quieter parts lifted more than the loud ones (tanh, a soft limiter), so it
 ///          is louder overall without its peaks clipping. 1 = none.
 /// The loudest moment is taken as at least 0.01, as Piper does, so near-silence is not blown up.
@@ -164,6 +167,8 @@ pub fn apply_loudness(audio: &mut [f32], peak: f32, boost: f32) {
     if peak <= 0.0 || audio.is_empty() {
         return;
     }
+    let over = peak.min(MAX_PEAK).max(1.0);
+    let peak = peak.min(1.0);
     let loudest = audio.iter().fold(0f32, |m, s| m.max(s.abs())).max(0.01);
     if boost > 1.0001 {
         let level = peak / boost.tanh();
@@ -175,6 +180,43 @@ pub fn apply_loudness(audio: &mut [f32], peak: f32, boost: f32) {
         for s in audio.iter_mut() {
             *s *= level;
         }
+    }
+    if over > 1.0001 {
+        for s in audio.iter_mut() {
+            *s = limit(*s * over);
+        }
+    }
+}
+
+/// The most a voice's `peak` can be: the Volume slider's 200%.
+pub const MAX_PEAK: f32 = 2.0;
+
+/// A sample kept under full scale: as it is up to 0.6, and eased towards 1 above that (it never gets
+/// there), with no corner where the easing starts.
+pub fn limit(sample: f32) -> f32 {
+    const KNEE: f32 = 0.6;
+    let size = sample.abs();
+    if size <= KNEE {
+        return sample;
+    }
+    let room = 1.0 - KNEE;
+    (KNEE + room * ((size - KNEE) / room).tanh()).copysign(sample)
+}
+
+/// How loud everything comes out, of what the voices' own settings make (a settings file's
+/// `output_percent`, 0 to 100): 1 unless set, 0 for silence. Read while speaking, so it can be turned
+/// down in the middle of a sentence.
+pub fn output_level(info: &str) -> f32 {
+    number(info, "output_percent", 100.0).clamp(0.0, 100.0) / 100.0
+}
+
+/// A piece of speech on its way out, at the output level: from `from` at its first sample to `to` at
+/// its end (a change of level spread over the piece, so it makes no click).
+pub fn scale_into(piece: &[i16], from: f32, to: f32, out: &mut [i16]) {
+    let n = piece.len().max(1) as f32;
+    for (i, (s, o)) in piece.iter().zip(out.iter_mut()).enumerate() {
+        let level = from + (to - from) * (i as f32 / n);
+        *o = (*s as f32 * level) as i16;
     }
 }
 
@@ -575,6 +617,54 @@ mod tests {
         let mut silence = vec![0.001f32; 10];
         apply_loudness(&mut silence, 0.95, 1.0);
         assert!((silence[0] - 0.095).abs() < 1e-6);
+        // Above 100%: the quiet parts twice as loud, the loudest still under full, nothing out of order.
+        let mut full = quiet.clone();
+        apply_loudness(&mut full, 1.0, 1.0);
+        let mut double = quiet.clone();
+        apply_loudness(&mut double, 2.0, 1.0);
+        assert!(loudest(&double) < 1.0 && loudest(&double) > 0.99);
+        assert!(rms(&double) > rms(&full) * 1.15);
+        for (a, b) in full.iter().zip(double.iter()) {
+            if a.abs() <= 0.3 {
+                assert!((b - a * 2.0).abs() < 1e-5);
+            }
+            assert!(b.abs() >= a.abs() - 1e-3 && b.signum() == a.signum() || a.abs() < 1e-6);
+        }
+        let mut beyond = quiet.clone();
+        apply_loudness(&mut beyond, 9.0, 1.0);
+        assert_eq!(beyond, double);
+        assert_eq!(limit(0.5), 0.5);
+        assert_eq!(limit(-0.6), -0.6);
+        assert!(limit(0.61) > 0.6 && limit(0.61) < 0.61);
+        assert!(limit(50.0) <= 1.0 && limit(-50.0) >= -1.0);
+    }
+
+    #[test]
+    fn output() {
+        assert_eq!(output_level(""), 1.0);
+        assert_eq!(output_level(r#"{ "speed_percent": 100, "output_percent": 40 }"#), 0.4);
+        assert_eq!(output_level(r#"{"output_percent": 0}"#), 0.0);
+        assert_eq!(output_level(r#"{"output_percent": 250}"#), 1.0);
+        let piece = [1000i16; 4];
+        let mut out = [0i16; 4];
+        scale_into(&piece, 1.0, 0.0, &mut out);
+        assert_eq!(out, [1000, 750, 500, 250]);
+        scale_into(&piece, 0.5, 0.5, &mut out);
+        assert_eq!(out, [500; 4]);
+        scale_into(&piece, 0.0, 0.0, &mut out);
+        assert_eq!(out, [0; 4]);
+    }
+
+    #[test]
+    fn own_settings_come_first() {
+        // A voice's own settings file is read in front of its voice.json: what it sets wins, the rest
+        // is the voice.json's.
+        let own = r#"{ "loudness": { "peak": 1.5, "boost": 1 } }"#;
+        let made = r#"{ "inference": { "length_scale": 1.1 }, "loudness": { "peak": 1, "boost": 1.5 } }"#;
+        let both = format!("{own}\n{made}");
+        assert_eq!(number(&both, "peak", 0.0), 1.5);
+        assert_eq!(number(&both, "boost", 0.0), 1.0);
+        assert_eq!(number(&both, "length_scale", 1.0), 1.1);
     }
 
     #[test]

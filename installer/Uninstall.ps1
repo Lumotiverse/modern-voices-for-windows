@@ -57,6 +57,9 @@ try {
     foreach ($key in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows', 'HKLM:\SOFTWARE\Modern Voices for Windows') {
         if (Test-Path $key) { Remove-Item $key -Recurse -Force }
     }
+    # The settings: speed, pauses, output volume, pronunciation rules, each voice's own.
+    $settingsFolder = Join-Path $env:ProgramData $AppName
+    if (Test-Path $settingsFolder) { Remove-Item $settingsFolder -Recurse -Force -ErrorAction SilentlyContinue }
     # The Reader's texts and place, and the theme chosen (this Windows user's).
     $readerData = Join-Path $env:APPDATA 'Modern Voices Reader'
     if (Test-Path $readerData) { Remove-Item $readerData -Recurse -Force -ErrorAction SilentlyContinue }

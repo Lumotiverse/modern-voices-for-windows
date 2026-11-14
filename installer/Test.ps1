@@ -63,6 +63,18 @@ function Get-WavPeak([string]$Path) {
     return [math]::Round($max / 32768.0, 3)
 }
 
+# How loud a 16-bit mono WAV file is on the whole (the root of its mean square), from 0 to 1.
+function Get-WavLevel([string]$Path) {
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $count = [int](($bytes.Length - 44) / 2)
+    if ($count -le 0) { return 0 }
+    $samples = New-Object 'int16[]' $count
+    [Buffer]::BlockCopy($bytes, 44, $samples, 0, $count * 2)
+    $sum = 0.0
+    foreach ($v in $samples) { $sum += [double]$v * $v }
+    return [math]::Round([math]::Sqrt($sum / $count) / 32768.0, 4)
+}
+
 $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(22050,
     [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
 
@@ -140,7 +152,7 @@ if ($Quiet) {
     foreach ($v in $ours) {
         $info = $v.VoiceInfo
         $wav = Join-Path $env:TEMP ("modernvoices_test_{0}_{1}.wav" -f $bits, [guid]::NewGuid().ToString('N'))
-        $result = [ordered]@{ name = $info.Name; bits = $bits; seconds = 0; peak = 0; words = 0; bookmark = ''; ms = 0; error = '' }
+        $result = [ordered]@{ name = $info.Name; bits = $bits; seconds = 0; peak = 0; level = 0; words = 0; bookmark = ''; ms = 0; error = '' }
         $words = 'mvw_words'; $marks = 'mvw_marks'
         try {
             Register-ObjectEvent -InputObject $synth -EventName SpeakProgress -SourceIdentifier $words | Out-Null
@@ -157,6 +169,7 @@ if ($Quiet) {
             if ($mark.Count -gt 0) { $result.bookmark = [string]$mark[0].SourceEventArgs.Bookmark }
             $result.seconds = [math]::Round(((Get-Item $wav).Length - 44) / 44100.0, 2)
             $result.peak = Get-WavPeak $wav
+            $result.level = Get-WavLevel $wav
         } catch {
             $result.error = $_.Exception.Message
         } finally {

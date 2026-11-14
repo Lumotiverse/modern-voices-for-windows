@@ -148,13 +148,15 @@ struct Model {
     busy: Mutex<()>,
     /// The model's folder, for its voice.json.
     dir: String,
-    /// The voice's settings, and when its voice.json was last changed when they were read.
-    settings: Mutex<(Option<SystemTime>, Settings)>,
+    /// The voice's settings, and when the files they come from were last changed when they were read
+    /// (its voice.json, and its own settings file; None before the first reading).
+    settings: Mutex<(Option<(Option<SystemTime>, Option<SystemTime>)>, Settings)>,
 }
 
-/// What a voice's voice.json sets for how it sounds, read while speaking (so a change takes effect
-/// from the next thing said, in programs that are already using the voice): its loudness (see
-/// text::apply_loudness) and its speed (`length_scale`, Piper's: higher is slower).
+/// What is set for how a voice sounds, read while speaking (so a change takes effect from the next
+/// thing said, in programs that are already using the voice): its loudness (see text::apply_loudness)
+/// and its speed (`length_scale`, Piper's: higher is slower). Its voice.json has them as the voice was
+/// installed; what people change since is in the voice's own settings file (see `own_file`), read first.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Settings {
     peak: f32,
@@ -168,7 +170,7 @@ impl Settings {
     /// From voice.json's text; a voice.json without them leaves the voice as Piper made it.
     fn from(info: &str) -> Settings {
         Settings {
-            peak: number(info, "peak", 0.0).min(1.0),
+            peak: number(info, "peak", 0.0).min(MAX_PEAK),
             boost: number(info, "boost", 1.0).clamp(1.0, 5.0),
             length_scale: number(info, "length_scale", 1.0).clamp(0.3, 4.0),
             own_pauses: (number(info, "own_pauses", 0.0) >= 1.0).then(|| Pauses::read(info)),
@@ -176,18 +178,28 @@ impl Settings {
     }
 }
 
-/// What the program's settings file sets for every voice: the pauses (for a voice without its own)
-/// and the speed every voice speaks at before the program's own rate.
+/// What the program's settings file sets for every voice: the pauses (for a voice without its own),
+/// the speed every voice speaks at before the program's own rate, and how loud everything comes out
+/// (the output volume: 1 unless turned down).
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Global {
     pauses: Pauses,
     speed: f32,
+    output: f32,
 }
 
 impl Global {
     fn from(info: &str) -> Global {
-        Global { pauses: Pauses::read(info), speed: global_speed(info) }
+        Global { pauses: Pauses::read(info), speed: global_speed(info), output: output_level(info) }
     }
+}
+
+/// A voice's own settings file, for the settings file its token names and its model's folder:
+/// `voices\<the folder's name>.json` beside the settings file. (The settings people change are kept
+/// together there, where changing them needs no administrator; the model's folder is the installer's.)
+fn own_file(settings_file: &str, model_dir: &str) -> std::path::PathBuf {
+    let name = std::path::Path::new(model_dir).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    std::path::Path::new(settings_file).with_file_name("voices").join(format!("{name}.json"))
 }
 
 /// The settings file the voice token names (`SettingsFile`), read again whenever it changes. The
@@ -234,13 +246,17 @@ fn dictionary(settings_path: Option<&str>) -> Arc<Dictionary> {
 }
 
 impl Model {
-    /// The voice's settings now: read again when its voice.json has changed since last time.
-    fn settings(&self) -> Settings {
+    /// The voice's settings now: read again when its voice.json or its own settings file (beside the
+    /// settings file the token names) has changed since last time. What the own file sets comes first.
+    fn settings(&self, settings_file: Option<&str>) -> Settings {
         let path = format!("{}\\voice.json", self.dir);
-        let changed = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        let own = settings_file.map(|file| own_file(file, &self.dir));
+        let when = |path: &std::path::Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        let changed = Some((when(std::path::Path::new(&path)), own.as_deref().and_then(when)));
         let Ok(mut cached) = self.settings.lock() else { return Settings::from("") };
         if cached.0 != changed {
-            let info = std::fs::read_to_string(&path).unwrap_or_default();
+            let first = own.as_deref().and_then(|own| std::fs::read_to_string(own).ok()).unwrap_or_default();
+            let info = format!("{first}\n{}", std::fs::read_to_string(&path).unwrap_or_default());
             let settings = Settings::from(&info);
             if cached.0.is_some() || log::enabled() {
                 log::write(&format!("{}: settings {settings:?}", self.dir));
@@ -374,9 +390,8 @@ fn load_model(model_dir: &str, data_dir: &str) -> Option<Arc<Model>> {
     };
     let sample_rate = u32::try_from(tts.sample_rate()).unwrap_or(DEFAULT_RATE);
     let speakers = tts.num_speakers().max(1);
-    let changed = std::fs::metadata(format!("{model_dir}\\voice.json")).and_then(|m| m.modified()).ok();
     let model = Arc::new(Model { tts, sample_rate, busy: Mutex::new(()), dir: model_dir.to_string(),
-        settings: Mutex::new((changed, Settings::from(&info))) });
+        settings: Mutex::new((None, Settings::from(&info))) });
     *cell = Some(model.clone());
     drop(cell);
     log::write(&format!("loaded {model_dir}: {sample_rate} Hz, {speakers} speaker(s), noise {noise_scale}/{noise_w}, {:?} ({})",
@@ -538,6 +553,10 @@ struct Output<'a> {
     /// A sentence has ended and nothing since: the next one starts with the pause between them.
     /// (Written then, not after the sentence, so speech never ends on an added pause.)
     after_sentence: bool,
+    /// The settings file the voice's token names: its output volume is looked at as speech goes out.
+    settings_file: Option<String>,
+    /// The output level the last piece went out at (below 0: nothing has gone out yet).
+    level: f32,
 }
 
 fn event(id: SPEVENTENUM, kind: SPEVENTLPARAMTYPE, offset: u64, wparam: usize, lparam: isize) -> SPEVENT {
@@ -561,7 +580,30 @@ impl Output<'_> {
     /// A successful write took all of it, as in Microsoft's sample engine, which never reads the
     /// count written: not every site fills it in (System.Speech's says 0 and has taken the lot),
     /// and treating that 0 as "full" stopped speech after its first piece.
+    ///
+    /// It goes out in pieces of about 50 ms, each at the output volume as it is set at that moment (the
+    /// settings file's `output_percent`): turned down or up while a sentence is being said, it is heard
+    /// within what SAPI holds ahead (a moment), in any program.
     fn write(&mut self, samples: &[i16]) -> bool {
+        let mut scaled = [0i16; 1024];
+        for piece in samples.chunks(scaled.len()) {
+            let level = global_settings(self.settings_file.as_deref()).output;
+            let from = if self.level < 0.0 { level } else { self.level };
+            self.level = level;
+            let sent = if from >= 0.9999 && level >= 0.9999 {
+                self.send(piece)
+            } else {
+                scale_into(piece, from, level, &mut scaled);
+                self.send(&scaled[..piece.len()])
+            };
+            if !sent {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn send(&mut self, samples: &[i16]) -> bool {
         if samples.is_empty() {
             return true;
         }
@@ -626,6 +668,7 @@ impl Output<'_> {
 impl Engine_Impl {
     fn speak(&self, parts: Vec<Part>, out: &mut Output) -> Result<()> {
         let voice = self.voice.lock().map_err(|_| E_FAIL)?.clone().ok_or(E_FAIL)?;
+        out.settings_file = voice.settings_file.clone();
         let base_rate = unsafe { out.site.GetRate() }.unwrap_or(0);
         let base_volume = unsafe { out.site.GetVolume() }.unwrap_or(100) as f32 / 100.0;
         for part in parts {
@@ -668,7 +711,7 @@ impl Engine_Impl {
         let semitones = run.pitch.clamp(-6, 6) as f32;
         let shift = 2f32.powf(semitones / 12.0);
         let gain = base_volume * (run.volume.min(100) as f32 / 100.0);
-        let settings = voice.model.settings();
+        let settings = voice.model.settings(voice.settings_file.as_deref());
         let global = global_settings(voice.settings_file.as_deref());
         let pauses = settings.own_pauses.unwrap_or(global.pauses);
         let dictionary = dictionary(voice.settings_file.as_deref());
@@ -789,7 +832,7 @@ impl ISpTTSEngine_Impl for Engine_Impl {
         let _ = unsafe { site.GetEventInterest(&mut interest) };
         let result = match catch_unwind(AssertUnwindSafe(|| {
             let parts = unsafe { parts(fragments) };
-            let mut out = Output { site: &site, written: 0, interest, after_sentence: false };
+            let mut out = Output { site: &site, written: 0, interest, after_sentence: false, settings_file: None, level: -1.0 };
             self.speak(parts, &mut out)
         })) {
             Ok(result) => result,
@@ -913,6 +956,11 @@ mod tests {
         let own = r#"{ "pauses": { "own_pauses": 1, "sentence_ms": 300, "comma_ms": 0, "paragraph_ms": 900 } }"#;
         assert_eq!(Settings::from(own).own_pauses, Some(Pauses { sentence_ms: 300.0, comma_ms: 0.0, paragraph_ms: 900.0 }));
         assert_eq!(Settings::from(""), Settings { peak: 0.0, boost: 1.0, length_scale: 1.0, own_pauses: None });
+        assert_eq!(Settings::from(r#"{ "loudness": { "peak": 1.7, "boost": 1 } }"#).peak, 1.7);
+        assert_eq!(Settings::from(r#"{ "loudness": { "peak": 7 } }"#).peak, MAX_PEAK);
+        assert_eq!(own_file(r"C:\ProgramData\Modern Voices for Windows\settings.json", r"C:\Program Files\Modern Voices for Windows\voices\en_GB-alba-medium"),
+            std::path::PathBuf::from(r"C:\ProgramData\Modern Voices for Windows\voices\en_GB-alba-medium.json"));
+        assert_eq!(Global::from(r#"{ "output_percent": 25 }"#).output, 0.25);
     }
 
     #[test]

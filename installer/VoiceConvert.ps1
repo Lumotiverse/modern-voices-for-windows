@@ -133,18 +133,55 @@ $script:PevNumber = '(-?\d+(?:\.\d+)?)'
 
 function Format-Number([double]$Number) { return $Number.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) }
 
+# Where the settings people change are kept (since 0.12.0): a folder of the PC's own that every user of
+# it may write to, so that changing them needs no administrator. In it: settings.json (speed, pauses and
+# output volume for every voice), dictionary.txt (pronunciation) and voices\<voice folder's name>.json,
+# a voice's own settings (loudness, speed, its own pauses). A voice's voice.json, in its folder, has them
+# as the voice was installed (and, from before 0.12.0, as they were set then): what its own file sets
+# comes first. The engine reads them the same way (it finds the folder by the settings file the voice's
+# token names); so does Modern Voices Config (Store, in config\Config.cs): keep the three in step.
+$script:UserData = Join-Path $env:ProgramData 'Modern Voices for Windows'
+function Get-VoiceFile([string]$Dir) {
+    return (Join-Path $script:UserData ('voices\' + (Split-Path $Dir -Leaf) + '.json'))
+}
+# A voice's settings as text: its own file's, then its voice.json's (a search finds the first).
+function Get-VoiceText([string]$Dir) {
+    $own = Get-VoiceFile $Dir
+    $made = Join-Path $Dir 'voice.json'
+    $text = if (Test-Path $own) { [System.IO.File]::ReadAllText($own, $script:PevUtf8) } else { '' }
+    if (Test-Path $made) { $text += "`n" + [System.IO.File]::ReadAllText($made, $script:PevUtf8) }
+    return $text
+}
+# A settings file's text to change (LF line ends; an empty one when there is none yet, its folder made).
+function Get-SettingsText([string]$Path) {
+    if (Test-Path $Path) { return [System.IO.File]::ReadAllText($Path, $script:PevUtf8).Replace("`r`n", "`n") }
+    $folder = Split-Path $Path -Parent
+    if ($folder -and -not (Test-Path $folder)) { New-Item $folder -ItemType Directory -Force | Out-Null }
+    return "{`n}`n"
+}
+# Text with a block added before its last brace.
+function Add-SettingsBlock([string]$Text, [string]$Block) {
+    $body = $Text.Substring(0, $Text.LastIndexOf('}')).TrimEnd()
+    return $body + $(if ($body.EndsWith('{')) { "`n  " } else { ",`n  " }) + $Block + "`n}`n"
+}
+# Written to a new file that then replaces the old, so the engine never reads half a file.
+function Set-SettingsText([string]$Path, [string]$Text) {
+    $temp = "$Path.writing"
+    [System.IO.File]::WriteAllText($temp, $Text, $script:PevUtf8)
+    Move-Item $temp $Path -Force
+}
+
 function Test-VoiceSettings([double]$Peak, [double]$Boost, [double]$LengthScale) {
-    if ($Peak -lt 0 -or $Peak -gt 1) { throw "peak must be from 0 to 1 (it is $(Format-Number $Peak))." }
+    if ($Peak -lt 0 -or $Peak -gt 2) { throw "peak must be from 0 to 2 (it is $(Format-Number $Peak))." }
     if ($Boost -lt 1 -or $Boost -gt 5) { throw "boost must be from 1 to 5 (it is $(Format-Number $Boost))." }
     if ($LengthScale -lt 0.3 -or $LengthScale -gt 4) { throw "length_scale must be from 0.3 to 4 (it is $(Format-Number $LengthScale))." }
 }
 
-# What a voice folder's voice.json sets: Peak, Boost, LengthScale ($null where it says nothing). $null
-# when there is no voice.json.
+# What is set for a voice (by its folder): Peak, Boost, LengthScale ($null where nothing says). $null
+# when it has no voice.json.
 function Get-VoiceSettings([string]$Dir) {
-    $path = Join-Path $Dir 'voice.json'
-    if (-not (Test-Path $path)) { return $null }
-    $text = [System.IO.File]::ReadAllText($path, $script:PevUtf8)
+    if (-not (Test-Path (Join-Path $Dir 'voice.json'))) { return $null }
+    $text = Get-VoiceText $Dir
     $c = [Globalization.CultureInfo]::InvariantCulture
     $read = {
         param($key)
@@ -154,31 +191,26 @@ function Get-VoiceSettings([string]$Dir) {
     return [pscustomobject]@{ Peak = (& $read 'peak'); Boost = (& $read 'boost'); LengthScale = (& $read 'length_scale') }
 }
 
-# Records a voice's loudness and speed in its voice.json, for the engine. Written to a new file that
-# then replaces the old, so the engine never reads half a file.
+# Records a voice's loudness and speed in its own settings file, for the engine.
 function Set-VoiceSettings([string]$Dir, [double]$Peak, [double]$Boost, [double]$LengthScale) {
     Test-VoiceSettings $Peak $Boost $LengthScale
-    $path = Join-Path $Dir 'voice.json'
-    $text = [System.IO.File]::ReadAllText($path, $script:PevUtf8).Replace("`r`n", "`n")
+    $path = Get-VoiceFile $Dir
+    $text = Get-SettingsText $path
     $block = "`"loudness`": {`n    `"peak`": $(Format-Number $Peak),`n    `"boost`": $(Format-Number $Boost)`n  }"
     $existing = [regex]::Match($text, '"loudness"\s*:\s*\{[^}]*\}')
     if ($existing.Success) {
         $text = $text.Substring(0, $existing.Index) + $block + $text.Substring($existing.Index + $existing.Length)
     } else {
-        $end = $text.LastIndexOf('}')
-        $text = $text.Substring(0, $end).TrimEnd() + ",`n  $block`n}`n"
+        $text = Add-SettingsBlock $text $block
     }
     $speed = [regex]::Match($text, '"length_scale"\s*:\s*' + $script:PevNumber)
     if ($speed.Success) {
         $g = $speed.Groups[1]
         $text = $text.Substring(0, $g.Index) + (Format-Number $LengthScale) + $text.Substring($g.Index + $g.Length)
     } else {
-        $end = $text.LastIndexOf('}')
-        $text = $text.Substring(0, $end).TrimEnd() + ",`n  `"inference`": {`n    `"length_scale`": $(Format-Number $LengthScale)`n  }`n}`n"
+        $text = Add-SettingsBlock $text "`"inference`": {`n    `"length_scale`": $(Format-Number $LengthScale)`n  }"
     }
-    $temp = "$path.writing"
-    [System.IO.File]::WriteAllText($temp, $text, $script:PevUtf8)
-    Move-Item $temp $path -Force
+    Set-SettingsText $path $text
 }
 
 # --- pauses -------------------------------------------------------------------------------------------
@@ -193,10 +225,10 @@ function Test-Pauses([double]$Sentence, [double]$Comma, [double]$Paragraph) {
     }
 }
 
-# The pauses a settings.json or voice.json sets: Own (its own_pauses), Stored (it has any), Sentence,
-# Comma, Paragraph (ms; the defaults where it says nothing).
-function Get-Pauses([string]$Path) {
-    $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8) } else { '' }
+# The pauses a settings file sets, or (-From) a settings text: Own (its own_pauses), Stored (it has
+# any), Sentence, Comma, Paragraph (ms; the defaults where it says nothing).
+function Get-Pauses([string]$Path, [string]$From = '') {
+    $text = if ($From) { $From } elseif ($Path -and (Test-Path $Path)) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8) } else { '' }
     $c = [Globalization.CultureInfo]::InvariantCulture
     $read = {
         param($key, $default)
@@ -208,21 +240,16 @@ function Get-Pauses([string]$Path) {
         Paragraph = (& $read 'paragraph_ms' $script:PauseDefaults.Paragraph) }
 }
 
-# Puts a "pauses" block in a JSON file (made if missing), in place of the one there; written to a new
-# file that then replaces the old, so the engine never reads half a file.
+# Puts a "pauses" block in a settings file (made if missing), in place of the one there.
 function Set-PausesBlock([string]$Path, [string]$Block) {
-    $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8).Replace("`r`n", "`n") } else { "{`n}`n" }
+    $text = Get-SettingsText $Path
     $existing = [regex]::Match($text, '"pauses"\s*:\s*\{[^}]*\}')
     if ($existing.Success) {
         $text = $text.Substring(0, $existing.Index) + $Block + $text.Substring($existing.Index + $existing.Length)
     } else {
-        $end = $text.LastIndexOf('}')
-        $body = $text.Substring(0, $end).TrimEnd()
-        $text = $body + $(if ($body.EndsWith('{')) { "`n  " } else { ",`n  " }) + $Block + "`n}`n"
+        $text = Add-SettingsBlock $text $Block
     }
-    $temp = "$Path.writing"
-    [System.IO.File]::WriteAllText($temp, $text, $script:PevUtf8)
-    Move-Item $temp $Path -Force
+    Set-SettingsText $Path $text
 }
 
 function Format-PausesBlock([double]$Sentence, [double]$Comma, [double]$Paragraph, $Own) {
@@ -244,11 +271,11 @@ function Get-GlobalSpeed([string]$Path) {
     if (-not $m.Success) { return $script:SpeedDefault }
     return [math]::Max(25, [math]::Min(200, [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)))
 }
-function Set-GlobalSpeed([string]$Path, [double]$Percent) {
-    if ($Percent -lt 25 -or $Percent -gt 200) { throw "speed must be 25 to 200% (got $Percent)" }
-    $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8).Replace("`r`n", "`n") } else { "{`n}`n" }
-    $line = '"speed_percent": ' + (Format-Number $Percent)
-    $existing = [regex]::Match($text, '"speed_percent"\s*:\s*' + $script:PevNumber)
+# A number of the settings file's own, by its key (speed_percent, output_percent): set, or added first.
+function Set-GlobalNumber([string]$Path, [string]$Key, [double]$Number) {
+    $text = Get-SettingsText $Path
+    $line = '"' + $Key + '": ' + (Format-Number $Number)
+    $existing = [regex]::Match($text, '"' + $Key + '"\s*:\s*' + $script:PevNumber)
     if ($existing.Success) {
         $text = $text.Substring(0, $existing.Index) + $line + $text.Substring($existing.Index + $existing.Length)
     } else {
@@ -256,12 +283,27 @@ function Set-GlobalSpeed([string]$Path, [double]$Percent) {
         $rest = $text.Substring($start).TrimStart()
         $text = $text.Substring(0, $start) + "`n  " + $line + $(if ($rest.StartsWith('}')) { "`n" } else { ",`n  " }) + $rest
     }
-    $temp = "$Path.writing"
-    [System.IO.File]::WriteAllText($temp, $text, $script:PevUtf8)
-    Move-Item $temp $Path -Force
+    Set-SettingsText $Path $text
+}
+function Set-GlobalSpeed([string]$Path, [double]$Percent) {
+    if ($Percent -lt 25 -or $Percent -gt 200) { throw "speed must be 25 to 200% (got $Percent)" }
+    Set-GlobalNumber $Path 'speed_percent' $Percent
 }
 
-# ---- the pronunciation dictionary for every voice (dictionary.txt in the program's folder): a rule a
+# The output volume: how loud every voice comes out, of what its own settings make, in % (settings.json's
+# output_percent; 100 unless turned down, 0 for silence). The engine looks at it as speech goes out.
+function Get-OutputVolume([string]$Path) {
+    $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path, $script:PevUtf8) } else { '' }
+    $m = [regex]::Match($text, '"output_percent"\s*:\s*' + $script:PevNumber)
+    if (-not $m.Success) { return 100 }
+    return [math]::Max(0, [math]::Min(100, [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)))
+}
+function Set-OutputVolume([string]$Path, [double]$Percent) {
+    if ($Percent -lt 0 -or $Percent -gt 100) { throw "the output volume must be 0 to 100% (got $Percent)" }
+    Set-GlobalNumber $Path 'output_percent' $Percent
+}
+
+# ---- the pronunciation dictionary for every voice (dictionary.txt beside settings.json): a rule a
 # line, tab-separated: on (1 or 0), whole words only (w) or parts of words too (p), capitals matched
 # (c) or not (i), the word or phrase, what it is said as. The engine reads it again whenever it changes.
 function Get-Dictionary([string]$Path) {
@@ -283,6 +325,8 @@ function Set-Dictionary([string]$Path, $Rules) {
         if (-not $from) { continue }
         $lines += (@($(if ($rule.On) { '1' } else { '0' }), $(if ($rule.Whole) { 'w' } else { 'p' }), $(if ($rule.Case) { 'c' } else { 'i' }), $from, $to) -join "`t")
     }
+    $folder = Split-Path $Path -Parent
+    if ($folder -and -not (Test-Path $folder)) { New-Item $folder -ItemType Directory -Force | Out-Null }
     $temp = "$Path.writing"
     [System.IO.File]::WriteAllLines($temp, [string[]]$lines, $script:PevUtf8)
     Move-Item $temp $Path -Force
@@ -291,7 +335,11 @@ function Set-Dictionary([string]$Path, $Rules) {
 # A voice's own pauses ($Own true) or not (the global ones apply; its values are kept for next time).
 function Set-VoicePauses([string]$Dir, [bool]$Own, [double]$Sentence, [double]$Comma, [double]$Paragraph) {
     Test-Pauses $Sentence $Comma $Paragraph
-    Set-PausesBlock (Join-Path $Dir 'voice.json') (Format-PausesBlock $Sentence $Comma $Paragraph $Own)
+    Set-PausesBlock (Get-VoiceFile $Dir) (Format-PausesBlock $Sentence $Comma $Paragraph $Own)
+}
+# The pauses set for a voice (by its folder): as Get-Pauses.
+function Get-VoicePauses([string]$Dir) {
+    return (Get-Pauses -From (Get-VoiceText $Dir))
 }
 
 # The whole job for one voice. $Name is the voice's short id (folder name), $Label what people see.
