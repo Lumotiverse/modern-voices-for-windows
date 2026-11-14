@@ -790,6 +790,8 @@ namespace ModernVoicesConfig
         public List<string> ApplyLines = new List<string>();
         bool applyUsTags;
         readonly HashSet<Control> scrollHooked = new HashSet<Control>();
+        readonly HashSet<ListView> listsReady = new HashSet<ListView>();
+        List<Rule> wordRules = new List<Rule>();            // the pronunciation rules, in the list's order
 
         // Its controls.
         public List<Panel> Pages = new List<Panel>();
@@ -944,11 +946,20 @@ namespace ModernVoicesConfig
             tab.AutoScrollPosition = new Point(0, y);
         }
 
-        static ListView NewList(bool boxes)
+        ListView NewList(bool boxes)
         {
             ListView v = new ListView();
             v.View = View.Details; v.CheckBoxes = boxes; v.FullRowSelect = true; v.HideSelection = false;
             v.MultiSelect = false; v.Dock = DockStyle.Fill;
+            // While Windows makes a list's own window (when its tab is first shown), it reports every ticked
+            // row as if it had just been ticked, with the rows only half there: ticks count as the person's
+            // only once that is over.
+            v.HandleCreated += delegate(object made, EventArgs e)
+            {
+                ListView ready = (ListView)made;
+                try { ready.BeginInvoke(new MethodInvoker(delegate { listsReady.Add(ready); })); } catch (Exception) { }
+            };
+            v.HandleDestroyed += delegate(object gone, EventArgs e) { listsReady.Remove((ListView)gone); };
             return v;
         }
 
@@ -1297,8 +1308,6 @@ namespace ModernVoicesConfig
                 "another rule's result. Programs still show and highlight the original words.", true));
 
             WordList.SelectedIndexChanged += delegate { UpdateWordFields(); };
-            // (A tick that differs from its rule: one the person made. Windows also reports every ticked row as
-            // the list is first drawn, which changes nothing and saves nothing.)
             WordList.ItemChecked += WordTicked;
             WordSave.Click += delegate { SaveWord(); };
             wordNew.Click += delegate { ClearWordFields(); };
@@ -1369,7 +1378,7 @@ namespace ModernVoicesConfig
                 "start the more voices Windows has: keep the list to the ones you use.", true));
 
             AddList.SelectedIndexChanged += delegate { UpdateSelection(); };
-            AddList.ItemChecked += delegate { if (!Filling) { UpdateSummary(); } };
+            AddList.ItemChecked += delegate { if (!Filling && listsReady.Contains(AddList)) { UpdateSummary(); } };
             // A click on a speaker's name only selects it (to play its sample); its box is what ticks it.
             SpeakerList.MouseDown += SpeakerMouseDown;
             SpeakerList.MouseUp += delegate { nameClick = false; };
@@ -1893,31 +1902,28 @@ namespace ModernVoicesConfig
             Filling = true;
             try
             {
+                wordRules = Store.GetDictionary(App.DictionaryFile);
                 WordList.BeginUpdate();
                 WordList.Items.Clear();
-                foreach (Rule rule in Store.GetDictionary(App.DictionaryFile)) { AddWordRow(rule); }
+                foreach (Rule rule in wordRules) { AddWordRow(rule); }
                 WordList.EndUpdate();
             }
             finally { Filling = false; }
             UpdateWordFields();
         }
+        // A rule ticked or unticked by the person: switched on or off, and saved.
         void WordTicked(object sender, ItemCheckedEventArgs e)
         {
+            if (Filling || !listsReady.Contains(WordList)) { return; }
             Rule rule = e.Item.Tag as Rule;
-            if (!Filling && rule != null && rule.On != e.Item.Checked) { SaveWords(); }
+            if (rule == null || rule.On == e.Item.Checked) { return; }
+            rule.On = e.Item.Checked;
+            SaveWords();
         }
-        // Writes the list to the dictionary file (the engine picks it up at the next thing said).
+        // Writes the rules to the dictionary file (the engine picks it up at the next thing said).
         public void SaveWords()
         {
-            List<Rule> rules = new List<Rule>();
-            foreach (ListViewItem item in WordList.Items)
-            {
-                Rule rule = item.Tag as Rule;
-                if (rule == null) { return; }      // (a row not yet whole: nothing is written, so nothing is lost)
-                rule.On = item.Checked;
-                rules.Add(rule);
-            }
-            try { Store.SetDictionary(App.DictionaryFile, rules); }
+            try { Store.SetDictionary(App.DictionaryFile, wordRules); }
             catch (Exception e) { StatusLabel.Text = "Could not save the pronunciation rules: " + e.Message; }
         }
         // The boxes under the list: the selected rule's, to change it; empty for a new one.
@@ -1965,11 +1971,18 @@ namespace ModernVoicesConfig
             {
                 if (target != null)
                 {
-                    rule.On = target.Checked;
+                    Rule old = (Rule)target.Tag;
+                    rule.On = old.On;
+                    int at = wordRules.IndexOf(old);
+                    if (at >= 0) { wordRules[at] = rule; } else { wordRules.Add(rule); }
                     target.Tag = rule;
                     target.Text = from; target.SubItems[1].Text = to; target.SubItems[2].Text = WordMatch(rule);
                 }
-                else { target = AddWordRow(rule); }
+                else
+                {
+                    wordRules.Add(rule);
+                    target = AddWordRow(rule);
+                }
             }
             finally { Filling = false; }
             SaveWords();
@@ -1981,7 +1994,9 @@ namespace ModernVoicesConfig
         public void RemoveWord()
         {
             if (WordList.SelectedItems.Count == 0) { return; }
-            WordList.Items.Remove(WordList.SelectedItems[0]);
+            ListViewItem gone = WordList.SelectedItems[0];
+            wordRules.Remove((Rule)gone.Tag);
+            WordList.Items.Remove(gone);
             SaveWords();
             ClearWordFields();
         }
@@ -2649,7 +2664,11 @@ namespace ModernVoicesConfig
                 ui.ShowPage(2);
                 Settle(100);
                 int rulesBefore = Store.GetDictionary(App.DictionaryFile).Count;
-                Check(ui.WordList.Items.Count == rulesBefore, "the Pronunciation list shows the dictionary's " + rulesBefore + " rules");
+                int offBefore = 0, offShown = 0;
+                foreach (Rule rule in Store.GetDictionary(App.DictionaryFile)) { if (!rule.On) { offBefore++; } }
+                foreach (ListViewItem row in ui.WordList.Items) { if (!row.Checked) { offShown++; } }
+                Check(ui.WordList.Items.Count == rulesBefore && offShown == offBefore,
+                    "the Pronunciation list shows the dictionary's " + rulesBefore + " rules (" + offShown + " switched off), and opening the tab changes none");
                 ui.WordFrom.Text = " Niamh "; ui.WordTo.Text = "Neev";
                 ui.SaveWord();
                 List<Rule> added = Rules("Niamh");

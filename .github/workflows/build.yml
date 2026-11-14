@@ -89,7 +89,7 @@ jobs:
           }
           $clashes = ./tools/dev/scopescan.ps1 (Get-ChildItem installer -Filter *.ps1).FullName
           $clashes | Out-Host
-          if ($clashes -match ' / ') { Write-Host '::warning::variable names that differ only by case (see the list above)' }
+          if ($clashes -match ' / ') { Write-Host 'Variable names that differ only by case (PowerShell takes them for one variable): see above.' -ForegroundColor Red; $bad++ }
           if ($bad) { throw "$bad problem(s) in the scripts." }
       - name: Build Modern Voices Config (C#, with the compiler that is part of Windows)
         shell: powershell
