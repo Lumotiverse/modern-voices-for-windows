@@ -1,8 +1,41 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.12.4 (15 Nov 2026). Lumoti's batches so far are all done and delivered; wait
+Last updated at version 0.12.5 (15 Nov 2026). Lumoti's batches so far are all done and delivered; wait
 for his next one.
+
+## 0.12.5 (15 Nov 2026), delivered, not yet confirmed by him
+
+His words: "config hangs for a long time before opening the 1st time it runs after the install. add a
+'done' button next to the 'apply changes' button in add remove voices, which will open the voice manager
+tab. reduce the height of the 'list of voices box' in add/remove by 40%. add a dropdown menu above voices
+list, so you can select all voices, english only, american only (this would also be used later if/when
+adding multi language support). increase the height of the 'speakers preview list box' by 100%."
+
+1. **Slow first start (a likely cause fixed, NOT reproduced).** Config's own start is under a second on
+   the build machine (self-test notes "window built in N ms; Windows took N ms to start the program"),
+   so the wait is Windows', before the program runs. Likely cause: a kit unzipped from a download has the
+   "from the internet" mark (Zone.Identifier) on every file, `Copy-Item` keeps it, and Windows checks a
+   marked program (SmartScreen / Defender's cloud check) the first time it starts. `Install-Engine` now
+   runs `Unblock-File` over config, reader, engine and installer folders. Test-Kit marks the kit's exes
+   (after the kit's own Config test: `Start-Process` on a marked exe waits for ever at Windows' "Open
+   file?" box, which hung run #94 for 25 min) and checks the installed ones aren't marked.
+   **If he says it's still slow:** ask for `%TEMP%\ModernVoicesConfig-start.log` (`Program.Startup`: one
+   line per start, last 30: "Windows to program N ms, voice list read at, window built at, window shown
+   at"). A big first number = Windows/antivirus (next idea: nothing we control but Defender's scan of a
+   new exe; could try ngen, or not re-signing unchanged exes); big later numbers = our code.
+2. **Done button** (`DoneButton`, bottom strip between Apply changes and Close; visible on page 3 only,
+   set in `ShowPage`; disabled while applying): `ShowPage(0)`. It does not apply anything.
+3. **"Show" dropdown** (`VoiceFilterBox`: All voices / English only / American only / British only; I
+   added British only unasked, told him; All voices at every start, not saved). `VoiceItems` is the
+   master list of rows; `AddList` shows those `FilterShows` lets through (`ApplyVoiceFilter`; flag
+   `filtering` mutes the list's events meanwhile). **Anything that reads what is ticked must use
+   `VoiceItems`, never `AddList.Items`** (hidden rows keep their ticks; reading the list would make Apply
+   remove hidden voices). `Catalogue.Parse` still keeps English only, so "All voices" = "English only"
+   until other languages are let in; `FilterShows` goes by `Entry.Code`.
+4. **Heights:** the voice list and the speaker list share the tab's spare height 42% / 58% (both Percent
+   rows of `addGrid`). At the default window: voices 266 -> 150 px (-44%), speakers 110 -> 212 px (+93%).
+   The intro line was shortened to one line to make the room.
 
 ## 0.12.4 (15 Nov 2026), delivered, not yet confirmed by him
 
@@ -199,7 +232,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.12.4)
+## Current state (0.12.5)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last
