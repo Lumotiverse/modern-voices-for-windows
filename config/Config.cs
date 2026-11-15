@@ -1481,7 +1481,7 @@ namespace ModernVoicesConfig
             OnlyTickedBox.Anchor = AnchorStyles.Left;
             SpeakerLabel = Words("Select a voice to see its speakers: click a name to hear it, tick its box to install it.");
             // All three centred on the row's middle, so the words line up whether the label takes one line or two.
-            play.Anchor = AnchorStyles.Left; SpeakerLabel.TextAlign = ContentAlignment.MiddleLeft;
+            play.Anchor = AnchorStyles.Left; SpeakerLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             playLine.Controls.Add(play, 0, 0); playLine.Controls.Add(OnlyTickedBox, 1, 0); playLine.Controls.Add(SpeakerLabel, 2, 0);
             Row(addGrid, playLine);
             SpeakerList = new CheckedListBox();
