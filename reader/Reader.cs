@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.12.5.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.6.0")]
 
 namespace ModernVoicesReader
 {
@@ -1696,6 +1696,32 @@ namespace ModernVoicesReader
 
         // ---- the state kept between runs
 
+        // The voice selected as the program opens: Windows' default voice (the one with the dot); if that is
+        // not in the list, the voice used last time; else the first.
+        int StartVoiceIndex(string usedLast)
+        {
+            ReadDefaultVoice();
+            string token = defaultToken;
+            if (string.IsNullOrEmpty(token))
+            {
+                // (No default chosen by this person: the one Windows gives a program that doesn't choose.)
+                try { token = synth.Voice.Id; } catch (Exception) { token = ""; }
+            }
+            int chosen = -1;
+            for (int i = 0; i < voiceBox.Items.Count && chosen < 0; i++)
+            {
+                if (string.Equals(((VoiceChoice)voiceBox.Items[i]).TokenId, token, StringComparison.OrdinalIgnoreCase)) { chosen = i; }
+            }
+            for (int i = 0; i < voiceBox.Items.Count && chosen < 0; i++)
+            {
+                VoiceChoice kept = (VoiceChoice)voiceBox.Items[i];
+                if (kept.TokenId == usedLast || kept.Name == usedLast) { chosen = i; }
+            }
+            if (chosen < 0 && voiceBox.Items.Count > 0) { chosen = 0; }
+            return chosen;
+        }
+        public int TestStartVoice() { return StartVoiceIndex(""); }
+
         void Restore()
         {
             State s = store.State;
@@ -1716,9 +1742,7 @@ namespace ModernVoicesReader
             ApplyVolume();
             autoBox.Checked = s.AutoRead;
             tidyBox.Checked = s.Tidy;
-            int chosen = -1;
-            for (int i = 0; i < voiceBox.Items.Count; i++) { VoiceChoice kept = (VoiceChoice)voiceBox.Items[i]; if (kept.TokenId == s.Voice || kept.Name == s.Voice) { chosen = i; } }
-            if (chosen < 0 && voiceBox.Items.Count > 0) { chosen = 0; }
+            int chosen = StartVoiceIndex(s.Voice);
             voiceBox.SelectedIndex = chosen;
             voiceIndex = chosen;
             ReadDefaultVoice();
@@ -2628,6 +2652,7 @@ namespace ModernVoicesReader
                     int last = form.VoiceCount - 1;
                     form.TestSetDefault(last);
                     string now = Convert.ToString(Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Speech\Voices", "DefaultTokenId", ""));
+                    Check(form.TestStartVoice() == last, "the voice selected as the Reader opens is Windows' default voice");
                     Check(form.DefaultToken == form.TestToken(last) && now == @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\" + form.TestToken(last), "a voice's dot makes it Windows' default voice (" + form.DefaultToken + ")");
                     using (RegistryKey key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Speech\Voices"))
                     {

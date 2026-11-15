@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.12.5.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.6.0")]
 
 namespace ModernVoicesConfig
 {
@@ -733,6 +733,9 @@ namespace ModernVoicesConfig
     {
         public bool Dark;
         public Color Back, Raised, Input, Text, Muted, Warn, Border, Tab, Selected;
+        // The tabs' buttons: one not selected (its fill is Tab) has TabEdge around it and TabText on it;
+        // the selected one (filled as the lists are) has TabOn around it. Line: under the header.
+        public Color TabEdge, TabText, TabOn, Line;
     }
 
     // Light or dark: as last chosen with the moon (kept for the Windows user and shared with the Reader);
@@ -780,19 +783,85 @@ namespace ModernVoicesConfig
             {
                 p.Back = Color.FromArgb(32, 32, 32); p.Raised = Color.FromArgb(51, 51, 51); p.Input = Color.FromArgb(24, 24, 24);
                 p.Text = Color.FromArgb(240, 240, 240); p.Muted = Color.FromArgb(160, 160, 160); p.Warn = Color.FromArgb(255, 128, 128);
-                p.Border = Color.FromArgb(90, 90, 90); p.Tab = Color.FromArgb(20, 20, 20); p.Selected = Color.FromArgb(0, 84, 153);
+                p.Border = Color.FromArgb(90, 90, 90); p.Tab = Color.FromArgb(64, 64, 64); p.Selected = Color.FromArgb(0, 84, 153);
+                p.TabEdge = Color.FromArgb(112, 112, 112); p.TabText = Color.FromArgb(205, 205, 205); p.TabOn = Color.FromArgb(240, 240, 240);
+                p.Line = Color.Black;
             }
             else
             {
                 p.Back = SystemColors.Control; p.Raised = SystemColors.Control; p.Input = SystemColors.Window;
                 p.Text = SystemColors.ControlText; p.Muted = Color.DimGray; p.Warn = Color.Firebrick;
-                p.Border = SystemColors.ControlDark; p.Tab = SystemColors.ControlLight; p.Selected = SystemColors.Highlight;
+                p.Border = SystemColors.ControlDark; p.Tab = Color.FromArgb(222, 222, 222); p.Selected = SystemColors.Highlight;
+                p.TabEdge = Color.FromArgb(172, 172, 172); p.TabText = Color.FromArgb(64, 64, 64); p.TabOn = Color.FromArgb(96, 96, 96);
+                p.Line = Color.Black;
             }
             return p;
         }
     }
 
     // ---------------------------------------------------------------- the window
+
+    // The tick boxes of the lists, drawn by the program so that they can be larger than Windows' own:
+    // a white box with a grey edge; ticked, blue with a white tick.
+    public static class Boxes
+    {
+        public static void Draw(Graphics g, Rectangle r, bool ticked)
+        {
+            System.Drawing.Drawing2D.SmoothingMode was = g.SmoothingMode;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.None;
+            Rectangle edge = new Rectangle(r.X, r.Y, r.Width - 1, r.Height - 1);
+            using (SolidBrush fill = new SolidBrush(ticked ? Color.FromArgb(0, 103, 192) : Color.White)) { g.FillRectangle(fill, edge); }
+            using (Pen line = new Pen(ticked ? Color.FromArgb(0, 84, 153) : Color.FromArgb(96, 96, 96))) { g.DrawRectangle(line, edge); }
+            if (ticked)
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                float w = r.Width, h = r.Height;
+                using (Pen tick = new Pen(Color.White, Math.Max(1.6f, w / 8f)))
+                {
+                    tick.StartCap = System.Drawing.Drawing2D.LineCap.Round; tick.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+                    tick.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
+                    g.DrawLines(tick, new PointF[] { new PointF(r.X + w * 0.24f, r.Y + h * 0.52f), new PointF(r.X + w * 0.42f, r.Y + h * 0.70f),
+                        new PointF(r.X + w * 0.76f, r.Y + h * 0.30f) });
+                }
+            }
+            g.SmoothingMode = was;
+        }
+        // Not ticked (0) and ticked (1), for a list with tick boxes.
+        public static ImageList Images(int size)
+        {
+            ImageList images = new ImageList();
+            images.ColorDepth = ColorDepth.Depth32Bit;
+            images.ImageSize = new Size(size, size);
+            for (int i = 0; i < 2; i++)
+            {
+                Bitmap picture = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+                using (Graphics g = Graphics.FromImage(picture)) { g.Clear(Color.Transparent); Draw(g, new Rectangle(0, 0, size, size), i == 1); }
+                images.Images.Add(picture);
+            }
+            return images;
+        }
+    }
+
+    // The speakers' list: larger words and tick boxes than Windows gives a list of this kind (it draws its own rows).
+    public class BigCheckList : CheckedListBox
+    {
+        public int BoxSize = 16, RowGap = 6;
+        public Color SelectedBack = SystemColors.Highlight, SelectedText = SystemColors.HighlightText;
+        public override int ItemHeight { get { return Math.Max(Font.Height, BoxSize) + RowGap; } set { } }
+        // Where a row's words start, from its left edge.
+        public int TextLeft { get { return 3 + BoxSize + 5; } }
+        protected override void OnDrawItem(DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= Items.Count) { using (SolidBrush fill = new SolidBrush(BackColor)) { e.Graphics.FillRectangle(fill, e.Bounds); } return; }
+            bool selected = (e.State & DrawItemState.Selected) != 0;
+            using (SolidBrush fill = new SolidBrush(selected ? SelectedBack : BackColor)) { e.Graphics.FillRectangle(fill, e.Bounds); }
+            Rectangle box = new Rectangle(e.Bounds.X + 3, e.Bounds.Y + (e.Bounds.Height - BoxSize) / 2, BoxSize, BoxSize);
+            Boxes.Draw(e.Graphics, box, GetItemChecked(e.Index));
+            Rectangle words = new Rectangle(e.Bounds.X + TextLeft, e.Bounds.Y, Math.Max(0, e.Bounds.Width - TextLeft - 2), e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, Convert.ToString(Items[e.Index]), Font, words, selected ? SelectedText : ForeColor,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+    }
 
     public class Slider
     {
@@ -827,7 +896,9 @@ namespace ModernVoicesConfig
         public InstalledRow CurrentInstalled;               // the row selected on the Voice manager
         bool nameClick;
         float scale = 1f;
-        Font boldFont;
+        Font boldFont, listFont, listBold, speakerFont;
+        Panel headerLine;
+        public Button ReaderButton;
         Palette palette;
         bool? shownDark;
         public int PageIndex;
@@ -853,7 +924,7 @@ namespace ModernVoicesConfig
         public ProgressBar Progress;
         public Button ApplyButton, CloseButton, PreviewButton, ResetButton, DefaultButton, NickButton, GlobalPreview, RateReset, WordSave, WordRemove;
         public ListView InstalledList, WordList, AddList;
-        public CheckedListBox SpeakerList;
+        public BigCheckList SpeakerList;
         public TextBox NickBox, PreviewBox, WordFrom, WordTo;
         public CheckBox OwnBox, UsBox, WordWhole, WordCase, OnlyTickedBox;
         // Every voice of the catalogue as a row, shown or not: the list shows those the "Show" box lets
@@ -1028,6 +1099,8 @@ namespace ModernVoicesConfig
             ListView v = new ListView();
             v.View = View.Details; v.CheckBoxes = boxes; v.FullRowSelect = true; v.HideSelection = false;
             v.MultiSelect = false; v.Dock = DockStyle.Fill;
+            v.Font = listFont;
+            if (boxes) { v.StateImageList = Boxes.Images(Px(16)); }
             // While Windows makes a list's own window (when its tab is first shown), it reports every ticked
             // row as if it had just been ticked, with the rows only half there: ticks count as the person's
             // only once that is over.
@@ -1067,6 +1140,10 @@ namespace ModernVoicesConfig
             Bounds = WindowBounds(scale);
             Padding = new Padding(Px(8));
             boldFont = new Font(Font, FontStyle.Bold);
+            // The lists' words are a size larger than the rest (and their tick boxes: see Boxes); the speakers' larger still.
+            listFont = new Font("Segoe UI", 10f);
+            listBold = new Font(listFont, FontStyle.Bold);
+            speakerFont = new Font("Segoe UI", 12f);
             tips.AutoPopDelay = 20000;
 
             // The tabs: a button each and a page each (drawn by the program, so that they can be dark too).
@@ -1074,8 +1151,14 @@ namespace ModernVoicesConfig
             pageHost.Dock = DockStyle.Fill;
             Controls.Add(pageHost);
             // The strip across the top: the tabs' buttons at the left and, at the far right, the moon.
-            tabStrip = Line("auto", "fill", "auto");
+            // Under it, a gap (as there was between the tabs and the first list) and then a line: together a
+            // header. The pages, and their scroll bars, start below the line.
+            headerLine = new Panel();
+            headerLine.Dock = DockStyle.Top; headerLine.Height = Math.Max(1, Px(1)); headerLine.Tag = "line";
+            Controls.Add(headerLine);
+            tabStrip = Line("auto", "fill", "auto", "auto");
             tabStrip.Dock = DockStyle.Top;
+            tabStrip.Padding = new Padding(0, 0, 0, Px(6) + 3 - headerLine.Height);
             Controls.Add(tabStrip);
             FlowLayoutPanel tabFlow = Flow();
             tabFlow.WrapContents = false;
@@ -1088,7 +1171,7 @@ namespace ModernVoicesConfig
                 pageHost.Controls.Add(tab);
                 Pages.Add(tab);
                 Button tabButton = Btn(titles[i]);
-                tabButton.FlatStyle = FlatStyle.Flat; tabButton.FlatAppearance.BorderSize = 0; tabButton.TabStop = false;
+                tabButton.FlatStyle = FlatStyle.Flat; tabButton.FlatAppearance.BorderSize = 1; tabButton.TabStop = false;
                 tabButton.Margin = new Padding(0, 0, Px(2), 0);
                 int index = i;
                 tabButton.Click += delegate { ShowPage(index); };
@@ -1105,7 +1188,25 @@ namespace ModernVoicesConfig
             if (moon.Name == "Segoe MDL2 Assets") { ThemeButton.Font = moon; ThemeButton.Text = "\uE708"; }      // Windows' own symbols
             tips.SetToolTip(ThemeButton, "Dark or light (here and in the Reader)");
             ThemeButton.Click += delegate { Theme.Choice = Theme.IsDark() ? "light" : "dark"; ApplyTheme(); };
-            tabStrip.Controls.Add(ThemeButton, 2, 0);
+            tabStrip.Controls.Add(ThemeButton, 3, 0);
+            // Open Reader, left of the moon (the stretch of strip between it and the tabs is never less than a gap).
+            ReaderButton = Btn("Open Reader");
+            ReaderButton.Anchor = AnchorStyles.Right; ReaderButton.TabStop = false;
+            ReaderButton.Margin = new Padding(Px(24), 0, Px(6), 0);
+            tips.SetToolTip(ReaderButton, "Opens Modern Voices: Reader");
+            ReaderButton.Click += delegate { OpenReader(); };
+            tabStrip.Controls.Add(ReaderButton, 2, 0);
+            // (The window is never narrower than its header needs, the selected tab's bold words included.)
+            int headerNeeds = ReaderButton.PreferredSize.Width + ReaderButton.Margin.Horizontal + ThemeButton.PreferredSize.Width + ThemeButton.Margin.Horizontal;
+            foreach (Button tabButton in TabButtons)
+            {
+                Font plain = tabButton.Font;
+                tabButton.Font = boldFont;
+                headerNeeds += tabButton.PreferredSize.Width + tabButton.Margin.Horizontal;
+                tabButton.Font = plain;
+            }
+            headerNeeds += Padding.Horizontal + (Width - ClientSize.Width) + Px(4);
+            MinimumSize = new Size(Math.Min(Math.Max(MinimumSize.Width, headerNeeds), area.Width), MinimumSize.Height);
 
             // The bottom of the window: progress while applying changes, what is happening, Apply and Close.
             TableLayoutPanel bottom = Line("fill", "auto", "auto", "auto");
@@ -1201,15 +1302,18 @@ namespace ModernVoicesConfig
         void BuildVoiceManager(Panel tab)
         {
             TableLayoutPanel page = Rows(tab);
+            // (The list's top is the page's top, right under the header's line, where the page's scroll bar starts.)
+            page.Padding = new Padding(Px(6), 0, Px(6), Px(6));
             InstalledList = NewList(false);
+            InstalledList.Margin = new Padding(3, 0, 3, 3);
             InstalledList.Height = Px(240);
             InstalledList.MinimumSize = new Size(0, Px(240));
             InstalledList.Columns.Add("Voice", Px(210));
             InstalledList.Columns.Add("Speaker", Px(80));
             InstalledList.Columns[1].TextAlign = HorizontalAlignment.Center;
             InstalledList.Columns.Add("Nickname", Px(190));
-            InstalledList.Columns.Add("On disk", Px(70));
-            InstalledList.Columns.Add("Windows default", Px(110));
+            InstalledList.Columns.Add("On disk", Px(75));
+            InstalledList.Columns.Add("Windows default", Px(125));
             InstalledList.Columns.Add("Folder", Px(170));
             Row(page, InstalledList);
 
@@ -1467,9 +1571,9 @@ namespace ModernVoicesConfig
             AddList = NewList(true);
             AddList.Columns.Add("Voice", Px(220));
             AddList.Columns.Add("Accent", Px(90));
-            AddList.Columns.Add("Quality", Px(70));
-            AddList.Columns.Add("Speakers", Px(90));
-            AddList.Columns.Add("Download", Px(80));
+            AddList.Columns.Add("Quality", Px(75));
+            AddList.Columns.Add("Speakers", Px(105));
+            AddList.Columns.Add("Download", Px(90));
             AddList.Columns.Add("Catalogue key", Px(220));
             Dictionary<string, List<string>> speakersOf = SpeakersInstalled(null);
             foreach (KeyValuePair<string, List<string>> had in speakersOf)
@@ -1486,7 +1590,7 @@ namespace ModernVoicesConfig
                 item.SubItems.Add(v.Key);
                 item.Tag = v;
                 item.Checked = speakersOf.ContainsKey(v.Key);
-                if (item.Checked) { item.Font = boldFont; }
+                if (item.Checked) { item.Font = listBold; }
                 VoiceItems.Add(item);
                 AddList.Items.Add(item);
             }
@@ -1505,8 +1609,9 @@ namespace ModernVoicesConfig
             play.Anchor = AnchorStyles.Left; SpeakerLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             playLine.Controls.Add(play, 0, 0); playLine.Controls.Add(OnlyTickedBox, 1, 0); playLine.Controls.Add(SpeakerLabel, 2, 0);
             Row(addGrid, playLine);
-            SpeakerList = new CheckedListBox();
-            SpeakerList.MultiColumn = true; SpeakerList.ColumnWidth = Px(90); SpeakerList.CheckOnClick = true;
+            SpeakerList = new BigCheckList();
+            SpeakerList.Font = speakerFont; SpeakerList.BoxSize = Px(19); SpeakerList.RowGap = Px(6);
+            SpeakerList.MultiColumn = true; SpeakerList.ColumnWidth = Px(120); SpeakerList.CheckOnClick = true;
             SpeakerList.IntegralHeight = false; SpeakerList.Enabled = false;
             SpeakerList.Dock = DockStyle.Fill;
             SpeakerList.MinimumSize = new Size(0, Px(110));
@@ -1592,7 +1697,7 @@ namespace ModernVoicesConfig
         void SpeakerMouseDown(object sender, MouseEventArgs e)
         {
             int index = SpeakerList.IndexFromPoint(e.Location);
-            nameClick = index >= 0 && (e.X - SpeakerList.GetItemRectangle(index).Left) > Px(18);
+            nameClick = index >= 0 && (e.X - SpeakerList.GetItemRectangle(index).Left) > SpeakerList.TextLeft - 2;
         }
         void SpeakerTicking(object sender, ItemCheckEventArgs e)
         {
@@ -1681,6 +1786,7 @@ namespace ModernVoicesConfig
             else if (c is CheckBox) { c.ForeColor = p.Text; }
             else if (c is TrackBar) { c.BackColor = p.Back; }
             else if (c is ProgressBar) { }
+            else if ((c.Tag as string) == "line") { c.BackColor = p.Line; }
             else
             {
                 c.BackColor = (c.Tag as string) == "box" ? p.Input : p.Back;
@@ -1707,10 +1813,27 @@ namespace ModernVoicesConfig
             }
             catch (Exception) { }
             foreach (Control child in Controls) { ThemeOn(child, palette); }
+            SpeakerList.SelectedBack = palette.Selected;
+            SpeakerList.SelectedText = dark ? palette.Text : SystemColors.HighlightText;
             if (ThemeButton.Text.Length > 1) { ThemeButton.Text = dark ? "Light" : "Dark"; }
             ShowPage(PageIndex);
             ResumeLayout();
             Refresh();
+        }
+
+        public int HeaderLineBottom { get { return headerLine.PointToScreen(new Point(0, headerLine.Height)).Y; } }
+        public static string ReaderExe { get { return Path.Combine(Path.Combine(App.Folder, "reader"), "ModernVoicesReader.exe"); } }
+        void OpenReader()
+        {
+            string exe = ReaderExe;
+            if (!File.Exists(exe)) { StatusLabel.Text = "The Reader is not installed (" + exe + " is missing)."; return; }
+            try
+            {
+                ProcessStartInfo start = new ProcessStartInfo(exe);
+                start.UseShellExecute = false; start.WorkingDirectory = Path.GetDirectoryName(exe);
+                using (Process.Start(start)) { }
+            }
+            catch (Exception e) { StatusLabel.Text = "Could not open the Reader: " + e.Message; }
         }
 
         // Shows one of the tabs' pages; its button stands out.
@@ -1726,7 +1849,8 @@ namespace ModernVoicesConfig
                 if (palette != null)
                 {
                     b.BackColor = i == index ? palette.Input : palette.Tab;
-                    b.ForeColor = i == index ? palette.Text : palette.Muted;
+                    b.ForeColor = i == index ? palette.Text : palette.TabText;
+                    b.FlatAppearance.BorderColor = i == index ? palette.TabOn : palette.TabEdge;
                 }
             }
         }
@@ -1758,10 +1882,9 @@ namespace ModernVoicesConfig
             int left = cell.X + 4;
             if (e.ColumnIndex == 0 && view.CheckBoxes)
             {
-                CheckBoxState state = e.Item.Checked ? CheckBoxState.CheckedNormal : CheckBoxState.UncheckedNormal;
-                Size glyph = CheckBoxRenderer.GetGlyphSize(e.Graphics, state);
-                CheckBoxRenderer.DrawCheckBox(e.Graphics, new Point(left, cell.Y + (cell.Height - glyph.Height) / 2), state);
-                left += glyph.Width + 4;
+                int box = view.StateImageList != null ? view.StateImageList.ImageSize.Width : Px(16);
+                Boxes.Draw(e.Graphics, new Rectangle(left, cell.Y + (cell.Height - box) / 2, box, box), e.Item.Checked);
+                left += box + 4;
             }
             TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
             if (column.TextAlign == HorizontalAlignment.Center) { flags |= TextFormatFlags.HorizontalCenter; }
@@ -2444,6 +2567,13 @@ namespace ModernVoicesConfig
             }
             finally
             {
+                // (Columns as wide as the longest name shown needs, and no narrower than a short one.)
+                int widest = Px(120);
+                foreach (object shownName in SpeakerList.Items)
+                {
+                    widest = Math.Max(widest, TextRenderer.MeasureText(Convert.ToString(shownName), SpeakerList.Font).Width + SpeakerList.TextLeft + Px(14));
+                }
+                if (SpeakerList.ColumnWidth != widest) { SpeakerList.ColumnWidth = widest; }
                 SpeakerList.EndUpdate();
                 Filling = false;
             }
@@ -2632,7 +2762,7 @@ namespace ModernVoicesConfig
                     bool isIn = false;
                     foreach (string id in Installed) { if (string.Equals(Voices.KeyOf(id), key, StringComparison.OrdinalIgnoreCase)) { isIn = true; break; } }
                     item.Checked = isIn;
-                    item.Font = isIn ? boldFont : Font;
+                    item.Font = isIn ? listBold : listFont;
                 }
             }
             finally { Filling = false; }
@@ -3274,6 +3404,28 @@ namespace ModernVoicesConfig
                 Settle(50);
                 Check(showOnAdd && ui.PageIndex == 0 && !ui.DoneButton.Visible, "Done shows on Add or remove voices only, and opens the Voice manager");
                 ui.ShowPage(showPage);
+                Settle(50);
+            }
+
+            // The header: Open Reader left of the moon, with a gap after the last tab; the line under it; the
+            // Voice manager's list starts right under the line.
+            {
+                Button lastTab = ui.TabButtons[ui.TabButtons.Count - 1];
+                int tabsEnd = lastTab.PointToScreen(new Point(lastTab.Width, 0)).X;
+                int readerLeft = ui.ReaderButton.PointToScreen(Point.Empty).X;
+                int readerRight = ui.ReaderButton.PointToScreen(new Point(ui.ReaderButton.Width, 0)).X;
+                int moonLeft = ui.ThemeButton.PointToScreen(Point.Empty).X;
+                Note("header: tabs end at " + tabsEnd + ", Open Reader " + readerLeft + " to " + readerRight + ", moon at " + moonLeft + "; window at least " + ui.MinimumSize.Width + " wide");
+                Check(ui.ReaderButton.Visible && readerLeft - tabsEnd >= 12 && readerRight <= moonLeft, "Open Reader is left of the moon, with a gap after the tabs");
+                int headerPage = ui.PageIndex;
+                ui.ShowPage(0);
+                Settle(50);
+                int lineBottom = ui.HeaderLineBottom;
+                int listTop = ui.InstalledList.PointToScreen(Point.Empty).Y;
+                int pageTop = ui.Pages[0].PointToScreen(Point.Empty).Y;
+                Note("header line ends at " + lineBottom + "; the Voice manager's page starts at " + pageTop + ", its list at " + listTop);
+                Check(lineBottom == pageTop && listTop == pageTop, "the Voice manager's list starts right under the header's line, where its scroll bar does");
+                ui.ShowPage(headerPage);
                 Settle(50);
             }
 
