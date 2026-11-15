@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.12.3.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.4.0")]
 
 namespace ModernVoicesConfig
 {
@@ -855,7 +855,7 @@ namespace ModernVoicesConfig
         public ListView InstalledList, WordList, AddList;
         public CheckedListBox SpeakerList;
         public TextBox NickBox, PreviewBox, WordFrom, WordTo;
-        public CheckBox OwnBox, UsBox, WordWhole, WordCase;
+        public CheckBox OwnBox, UsBox, WordWhole, WordCase, OnlyTickedBox;
         public ComboBox PreviewVoiceBox;
         public TrackBar SpeedBar;
         public Dictionary<string, Slider> Sliders = new Dictionary<string, Slider>();
@@ -1472,10 +1472,15 @@ namespace ModernVoicesConfig
                 AddList.Items.Add(item);
             }
             Row(addGrid, AddList, true);
-            TableLayoutPanel playLine = Line("auto", "fill");
+            TableLayoutPanel playLine = Line("auto", "auto", "fill");
             Button play = Btn("Play sample");
-            SpeakerLabel = Words("Select a voice with several speakers to choose which of them to install (each becomes a voice).");
-            playLine.Controls.Add(play, 0, 0); playLine.Controls.Add(SpeakerLabel, 1, 0);
+            // Off at every start (not remembered): lists only the ticked speakers, to find the installed ones.
+            OnlyTickedBox = new CheckBox();
+            OnlyTickedBox.Text = "Only show selected speakers";
+            OnlyTickedBox.AutoSize = true; OnlyTickedBox.Checked = false;
+            OnlyTickedBox.Anchor = AnchorStyles.Left;
+            SpeakerLabel = Words("Select a voice to see its speakers: click a name to hear it, tick its box to install it.");
+            playLine.Controls.Add(play, 0, 0); playLine.Controls.Add(OnlyTickedBox, 1, 0); playLine.Controls.Add(SpeakerLabel, 2, 0);
             Row(addGrid, playLine);
             SpeakerList = new CheckedListBox();
             SpeakerList.MultiColumn = true; SpeakerList.ColumnWidth = Px(90); SpeakerList.CheckOnClick = true;
@@ -1497,7 +1502,19 @@ namespace ModernVoicesConfig
                 "start the more voices Windows has: keep the list to the ones you use.", true));
 
             AddList.SelectedIndexChanged += delegate { UpdateSelection(); };
-            AddList.ItemChecked += delegate { if (!Filling && listsReady.Contains(AddList)) { UpdateSummary(); } };
+            AddList.ItemChecked += delegate(object sender, ItemCheckedEventArgs e)
+            {
+                if (Filling || !listsReady.Contains(AddList)) { return; }
+                UpdateSummary();
+                // The selected voice's speaker box follows its tick: a one-speaker voice's box is the voice's own
+                // tick, and the filtered list gains or loses the voice's speakers. After the event, not inside it.
+                if (e.Item != null && AddList.SelectedItems.Count > 0 && AddList.SelectedItems[0] == e.Item &&
+                    (OnlyTickedBox.Checked || !((Entry)e.Item.Tag).Several))
+                {
+                    BeginInvoke((MethodInvoker)delegate { UpdateSelection(); });
+                }
+            };
+            OnlyTickedBox.CheckedChanged += delegate { UpdateSelection(); };
             // A click on a speaker's name only selects it (to play its sample); its box is what ticks it.
             SpeakerList.MouseDown += SpeakerMouseDown;
             SpeakerList.MouseUp += delegate { nameClick = false; };
@@ -1517,7 +1534,11 @@ namespace ModernVoicesConfig
         void SpeakerTicking(object sender, ItemCheckEventArgs e)
         {
             if (nameClick) { e.NewValue = e.CurrentValue; return; }
-            if (!Filling && e.NewValue == CheckState.Checked && AddList.SelectedItems.Count > 0) { AddList.SelectedItems[0].Checked = true; }
+            if (Filling || AddList.SelectedItems.Count == 0) { return; }
+            ListViewItem voice = AddList.SelectedItems[0];
+            // A one-speaker voice: its speaker's box is the voice's own tick, both ways (nothing goes in Speakers).
+            if (!((Entry)voice.Tag).Several) { voice.Checked = e.NewValue == CheckState.Checked; return; }
+            if (e.NewValue == CheckState.Checked) { voice.Checked = true; }
         }
 
         // The installed speakers of each installed voice (none for a voice with one), in the order installed.
@@ -2303,12 +2324,28 @@ namespace ModernVoicesConfig
             {
                 SpeakerList.Items.Clear();
                 SpeakerList.Enabled = false;
-                if (AddList.SelectedItems.Count == 0) { return; }
+                if (AddList.SelectedItems.Count == 0)
+                {
+                    SpeakerLabel.Text = "Select a voice to see its speakers: click a name to hear it, tick its box to install it.";
+                    return;
+                }
+                bool voiceTicked = AddList.SelectedItems[0].Checked;
+                bool onlyTicked = OnlyTickedBox.Checked;
                 Entry v = (Entry)AddList.SelectedItems[0].Tag;
                 Current = v;
                 if (!v.Several)
                 {
-                    SpeakerLabel.Text = v.Display + ": one speaker.";
+                    // Its one speaker, named by the catalogue or else by the voice; its box is the voice's tick.
+                    string only = OnlySpeaker(v);
+                    if (onlyTicked && !voiceTicked)
+                    {
+                        SpeakerLabel.Text = v.Display + " has one speaker, " + only + ", not ticked (untick \"Only show selected speakers\" to see it).";
+                        return;
+                    }
+                    SpeakerList.Items.Add(only, voiceTicked);
+                    SpeakerList.Enabled = true;
+                    SpeakerLabel.Text = "Speaker of " + v.Display + " (1): click the name to hear it (Play sample plays it again); its box ticks " +
+                        "the voice itself.";
                     return;
                 }
                 // Listed in name order, numbers by value (p225 before p1000; the voice's own order is kept in its files).
@@ -2319,6 +2356,23 @@ namespace ModernVoicesConfig
                     return order != 0 ? order : string.CompareOrdinal(a, b);
                 });
                 List<string> ticked = Speakers.ContainsKey(v.Key) ? Names(Speakers[v.Key]) : new List<string>();
+                if (onlyTicked)
+                {
+                    // Only the ticked ones. With none ticked, a ticked voice installs its first speaker: that one shows.
+                    List<string> shown = new List<string>();
+                    foreach (string n in names) { if (ticked.Contains(n)) { shown.Add(n); } }
+                    if (shown.Count == 0 && voiceTicked && v.FirstSpeaker != null) { shown.Add(v.FirstSpeaker); }
+                    if (shown.Count == 0)
+                    {
+                        SpeakerLabel.Text = "No speakers of " + v.Display + " are ticked (untick \"Only show selected speakers\" to see all " + names.Count + ").";
+                        return;
+                    }
+                    foreach (string n in shown) { SpeakerList.Items.Add(n, true); }
+                    SpeakerList.Enabled = true;
+                    SpeakerLabel.Text = "Speakers of " + v.Display + " ticked: " + shown.Count + " of " + names.Count + " (untick \"Only show selected " +
+                        "speakers\" to see them all). Click a name to hear it; untick its box to remove it.";
+                    return;
+                }
                 foreach (string n in names) { SpeakerList.Items.Add(n, ticked.Contains(n)); }
                 SpeakerList.Enabled = true;
                 SpeakerLabel.Text = "Speakers of " + v.Display + " (" + names.Count + "): click a name to hear it (Play sample plays it again); tick its box to " +
@@ -2329,6 +2383,11 @@ namespace ModernVoicesConfig
                 SpeakerList.EndUpdate();
                 Filling = false;
             }
+        }
+        // The name of a one-speaker voice's speaker: the catalogue's, if it names one; else the voice's own.
+        public static string OnlySpeaker(Entry v)
+        {
+            return v.FirstSpeaker ?? Catalogue.PrettyName(v.Name);
         }
         static string Padded(string name)
         {
@@ -3024,6 +3083,52 @@ namespace ModernVoicesConfig
             foreach (string kept in before) { Check(picked.Contains("en_GB-vctk-medium#" + kept), "speaker " + kept + " is still picked"); }
             ui.SpeakerList.SetItemChecked(index, false);
             ui.SaveSpeakers();
+            Settle(50);
+
+            // "Only show selected speakers": off as the window opens; on, only VCTK's ticked speakers show (its
+            // first, when none is ticked and the voice is); off again, all of them.
+            Check(!ui.OnlyTickedBox.Checked, "\"Only show selected speakers\" is off as the window opens");
+            List<string> tickedVctk = TickedSpeakers(ui);
+            int expected = tickedVctk.Count > 0 ? tickedVctk.Count : (vctk.Checked ? 1 : 0);
+            ui.OnlyTickedBox.Checked = true;
+            Settle(50);
+            Note("only selected: " + ui.SpeakerList.Items.Count + " shown, " + ui.SpeakerList.CheckedItems.Count + " ticked; " + ui.SpeakerLabel.Text);
+            Check(ui.SpeakerList.Items.Count == expected && ui.SpeakerList.CheckedItems.Count == expected,
+                "\"Only show selected speakers\" on: only the ticked speakers are listed (" + expected + ")");
+            List<string> pickedFiltered = ui.PickedIds();
+            ui.OnlyTickedBox.Checked = false;
+            Settle(50);
+            Check(ui.SpeakerList.Items.Count == vctkEntry.SpeakerNames.Count && string.Join(" ", ui.PickedIds().ToArray()) == string.Join(" ", pickedFiltered.ToArray()),
+                "and off again: all " + vctkEntry.SpeakerNames.Count + " are listed, with the same ones picked");
+
+            // A voice with one speaker: its name is listed, its box is the voice's own tick (both ways), and
+            // nothing goes into the speakers ticked.
+            ListViewItem single = null;
+            foreach (ListViewItem item in ui.AddList.Items) { if (!((Entry)item.Tag).Several) { single = item; break; } }
+            Check(single != null, "the catalogue has a voice with one speaker");
+            if (single != null)
+            {
+                Entry singleEntry = (Entry)single.Tag;
+                bool was = single.Checked;
+                single.Selected = true;
+                ui.UpdateSelection();
+                Settle(50);
+                Note("one speaker: " + singleEntry.Key + " lists " + (ui.SpeakerList.Items.Count > 0 ? Convert.ToString(ui.SpeakerList.Items[0]) : "nothing") + "; " + ui.SpeakerLabel.Text);
+                Check(ui.SpeakerList.Items.Count == 1 && Convert.ToString(ui.SpeakerList.Items[0]) == ConfigForm.OnlySpeaker(singleEntry) &&
+                    ui.SpeakerList.GetItemChecked(0) == was && ui.SpeakerList.Enabled, "a voice with one speaker lists its speaker, ticked as the voice is");
+                ui.SpeakerList.SetItemChecked(0, !was);
+                Settle(50);
+                Check(single.Checked == !was && ui.SpeakerList.Items.Count == 1 && ui.SpeakerList.GetItemChecked(0) == !was && !ui.Speakers.ContainsKey(singleEntry.Key),
+                    "ticking its speaker's box ticks the voice (and keeps no speaker list for it)");
+                single.Checked = was;
+                Settle(50);
+                Check(ui.SpeakerList.Items.Count == 1 && ui.SpeakerList.GetItemChecked(0) == was, "and the voice's own tick is shown in the speaker's box");
+                ui.OnlyTickedBox.Checked = true;
+                Settle(50);
+                Check(ui.SpeakerList.Items.Count == (was ? 1 : 0), "with \"Only show selected speakers\" on, it shows only if the voice is ticked");
+                ui.OnlyTickedBox.Checked = false;
+                Settle(50);
+            }
 
             // Two qualities of one voice: the warning.
             List<ListViewItem> lessac = new List<ListViewItem>();

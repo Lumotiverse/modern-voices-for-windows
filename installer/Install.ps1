@@ -82,7 +82,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.12.3'
+$Version = '0.12.4'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -691,48 +691,25 @@ function Register-Program {
     Set-ItemProperty $OurKey -Name 'EstimatedSize' -Value $sizeKb -Type DWord
     New-Item $StartMenu -ItemType Directory -Force | Out-Null
     $common = "-NoProfile -ExecutionPolicy Bypass -File `"$App\installer\"
-    # Windows' Start menu lists what was added last first ("Recently added"): so the entries are made
-    # in the order Uninstall, Repair, Test, Config, Reader, a moment apart, for the Reader to be on top
-    # and Config under it. (Only when an entry is new: one already there is not "recently added" again.)
     $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
-    # Entries from a version that made them in another order (before 0.12.1) are made again, once: an
-    # update over one would otherwise keep that order, as entries already there are left as they are.
-    $menuNames = @('Modern Voices Repair.lnk', 'Modern Voices Test.lnk', 'Modern Voices Config.lnk', 'Modern Voices Reader.lnk')
-    $menuTimes = @($menuNames | ForEach-Object { Get-Item (Join-Path $StartMenu $_) -ErrorAction SilentlyContinue } | ForEach-Object { $_.CreationTimeUtc })
-    $menuWrong = $false
-    for ($menuAt = 1; $menuAt -lt $menuTimes.Count; $menuAt++) { if ($menuTimes[$menuAt] -le $menuTimes[$menuAt - 1]) { $menuWrong = $true } }
-    if ($menuWrong -and $menuTimes.Count -eq $menuNames.Count) {
-        foreach ($menuName in $menuNames + 'Uninstall.lnk') { Remove-Item (Join-Path $StartMenu $menuName) -Force -ErrorAction SilentlyContinue }
-        Start-Sleep -Milliseconds 1500
-    }
-    $pause = { param([bool]$isFresh) if ($isFresh) { Start-Sleep -Milliseconds 1500 } }
     foreach ($menuItem in @(@('Uninstall.lnk', ($common + 'Uninstall.ps1"'), "Uninstall $AppName"),
                             @('Modern Voices Repair.lnk', ($common + 'Install.ps1" -Repair'), 'Register the voices again (if one went missing from programs)'),
                             @('Modern Voices Test.lnk', ($common + 'Test.ps1"'), 'Hear each Modern Voice, with each word shown as the engine reports it'))) {
-        $menuPath = Join-Path $StartMenu $menuItem[0]
-        $menuNew = -not (Test-Path $menuPath)
-        New-Shortcut $menuPath $menuItem[1] $menuItem[2] "$App\installer\repair.ico,0"
-        & $pause $menuNew
+        New-Shortcut (Join-Path $StartMenu $menuItem[0]) $menuItem[1] $menuItem[2] "$App\installer\repair.ico,0"
     }
     # Modern Voices Config and the Reader are programs: their entries start them (their icons are their own).
+    # (0.12.1 to 0.12.3 tried to order Windows' "Recently added" list, Reader then Config on top, by the
+    # entries' creation order and the programs' dates. None changed it, so it was taken out in 0.12.4.)
     foreach ($program in @(@($configExe, 'Modern Voices Config.lnk', 'Voices installed, how they sound, add or remove voices'),
                            @($readerExe, 'Modern Voices Reader.lnk', 'Reads text aloud with the Modern Voices: pasted or copied text, files, and text on the screen'))) {
         if (-not (Test-Path $program[0])) { continue }
-        $menuPath = Join-Path $StartMenu $program[1]
-        $menuNew = -not (Test-Path $menuPath)
-        # (0.12.3, a trial: with the entries made in order, Windows 10 still listed Test, Repair, Config,
-        # Reader. That fits the newest program first, by the program file's own date, so each is dated now.)
-        if ($menuNew) {
-            try { $stamp = [DateTime]::UtcNow; [System.IO.File]::SetCreationTimeUtc($program[0], $stamp); [System.IO.File]::SetLastWriteTimeUtc($program[0], $stamp) } catch { }
-        }
-        $link = (New-Object -ComObject WScript.Shell).CreateShortcut($menuPath)
+        $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $StartMenu $program[1]))
         $link.TargetPath = $program[0]
         $link.Arguments = ''
         $link.WorkingDirectory = Split-Path $program[0] -Parent
         $link.Description = $program[2]
         $link.IconLocation = "$($program[0]),0"
         $link.Save()
-        if ($program[1] -notlike '*Reader*') { & $pause $menuNew }
     }
 }
 
