@@ -169,7 +169,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.12.2)
+## Current state (0.12.3)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last
@@ -297,6 +297,13 @@ one batch at a time; every batch so far is done and delivered. He installs each 
 position (by design: Play starts from the caret), so the bar and the time left jump to show what's left
 from there, even when he only clicked to type. He called it an "unintended feature". Ask whether he wants
 it kept, or the bar and time to change only while reading.
+
+**0.12.3, Start menu "Recently added" (a trial):** on a CLEAN install of 0.12.1 (entries made Uninstall,
+Repair, Test, Config, Reader, 1.5 s apart) Windows 10 listed Test, Repair, Config, Reader. So it is not
+by the entries' creation time and not by name. Guess: newest first by the target program file's date
+(Test and Repair point at powershell.exe). 0.12.3 dates Config.exe then Reader.exe "now" (creation and
+last write) when their entries are new. If he still sees Reader and Config at the bottom after a clean
+install: drop the whole idea, take the stamping and the 1.5 s pauses out, and tell him so.
 
 **0.12.2 (his feedback on 0.12.1): "every now and again it says one of the lines really loud".**
 Cause, measured (sherpa-onnx in Python here: `pip install sherpa-onnx==1.12.40`, models from the

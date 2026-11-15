@@ -82,7 +82,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.12.2'
+$Version = '0.12.3'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -720,6 +720,11 @@ function Register-Program {
         if (-not (Test-Path $program[0])) { continue }
         $menuPath = Join-Path $StartMenu $program[1]
         $menuNew = -not (Test-Path $menuPath)
+        # (0.12.3, a trial: with the entries made in order, Windows 10 still listed Test, Repair, Config,
+        # Reader. That fits the newest program first, by the program file's own date, so each is dated now.)
+        if ($menuNew) {
+            try { $stamp = [DateTime]::UtcNow; [System.IO.File]::SetCreationTimeUtc($program[0], $stamp); [System.IO.File]::SetLastWriteTimeUtc($program[0], $stamp) } catch { }
+        }
         $link = (New-Object -ComObject WScript.Shell).CreateShortcut($menuPath)
         $link.TargetPath = $program[0]
         $link.Arguments = ''

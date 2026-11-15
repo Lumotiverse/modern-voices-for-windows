@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.12.2.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.3.0")]
 
 namespace ModernVoicesConfig
 {
