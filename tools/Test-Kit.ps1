@@ -102,13 +102,14 @@ $rulesFile = Join-Path $Data 'dictionary.txt'
 Step 'The "where to install" screen, and Modern Voices Config (before installing)'
 $code = Invoke-Install @('-PickerSelfTest') 300
 Check ($code -eq 0) 'the "where to install" screen builds, and makes its own folder in the one chosen'
-# The kit as a download leaves it: its programs carry Windows' "from the internet" mark (the installed
-# copies must not: see Install-Engine).
+$code = Invoke-ConfigTest (Join-Path $Kit 'config\ModernVoicesConfig.exe')
+Check ($code -eq 0) "Modern Voices Config's window builds from the real catalogue; speakers and duplicate warning work"
+# From here the kit is as a download leaves it: its programs carry Windows' "from the internet" mark (the
+# installed copies must not: see Install-Engine). Only now, as nothing starts the kit's own programs after
+# this: Start-Process on a marked program waits for ever at Windows' "Open file?" box.
 foreach ($markedExe in @((Join-Path $Kit 'config\ModernVoicesConfig.exe'), (Join-Path $Kit 'reader\ModernVoicesReader.exe'))) {
     Set-Content -LiteralPath $markedExe -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
 }
-$code = Invoke-ConfigTest (Join-Path $Kit 'config\ModernVoicesConfig.exe')
-Check ($code -eq 0) "Modern Voices Config's window builds from the real catalogue; speakers and duplicate warning work"
 
 Step 'Install: Alba, Northern English Male, VCTK speaker p239'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium,en_GB-northern_english_male-medium,en_GB-vctk-medium#p239', '-Unattended', '-NoPause',
