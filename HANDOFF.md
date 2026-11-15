@@ -1,7 +1,63 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.12.0 (14 Nov 2026).
+Last updated at version 0.12.3 (15 Nov 2026). **Start with "Next tasks" just below: Lumoti asked for
+them on 15 Nov and handed them to a new chat. Nothing in them is started.**
+
+## Next tasks (asked for 15 Nov 2026, not started): ship as 0.12.4
+
+Model: simple enough for Opus 5.5 (Config window and installer only, no engine work). Tell him that
+first, as his standing rule asks, then go ahead.
+
+His words: "in the add remove voices tab: if a voice only has 1 speaker put the name of that speaker in
+the play sample box below. same as the voices with multiple speakers. add a 'only show selected speakers'
+toggle for the play sample box (to hide all unselected speakers, to make locating the ones you have
+installed already easier) default this setting to off."
+
+1. **One-speaker voices show their speaker in the speaker box** (`config/Config.cs`,
+   `ConfigForm.UpdateSelection`, `SpeakerList`, a `CheckedListBox`). Now a voice with one speaker
+   (`!Entry.Several`) leaves the box empty and disabled, with the label "<voice>: one speaker.". Wanted:
+   its one name listed there like the others. Things to settle while doing it:
+   - The name: `Entry.FirstSpeaker` when the catalogue gives one; many single-speaker Piper voices have
+     no speaker names (`SpeakerNames` empty), so fall back to the voice's own name (`Entry.Name`). Check
+     what `Catalogue` fills in for them before choosing.
+   - Its tick: a one-speaker voice is installed by ticking the VOICE in `AddList`, and the `Speakers`
+     dictionary, `SaveSpeakers`, `SpeakerTicking`, the Apply arguments and `SpeakersInstalled` all assume
+     only `Several` voices have speaker ticks. Simplest that fits what he asked: show the name with its
+     box mirroring the voice's own tick (ticking either ticks both), or show it ticked-when-installed
+     and not tickable. Do NOT let it write an entry into `Speakers` for a one-speaker voice (the
+     installer's speaker handling is for multi-speaker voices). Say which you chose.
+   - Clicking the name plays the sample, as for the others (`PlaySample` already plays speaker 0 for a
+     one-speaker voice; `SelectedIndexChanged` triggers it).
+   - `SpeakerLabel`'s text for this case needs rewording.
+2. **"Only show selected speakers" toggle** for that box, off by default: a CheckBox by the Play sample
+   button or the speaker label. On: the box lists only the ticked speakers of the selected voice.
+   - Take care with `SaveSpeakers`: it rebuilds the voice's ticked list from `SpeakerList.CheckedItems`.
+     With unticked ones hidden that still works (everything shown is ticked), but unticking one while
+     filtered must remove it from `Speakers` and from view (or stay until the next refresh: choose, and
+     avoid re-filling the list inside `ItemCheck`, which fires before the state changes; use
+     BeginInvoke).
+   - `Filling` guards the refill; `UpdateSelection` calls `SaveSpeakers` first, so refill through it.
+   - Not asked to be remembered between runs: leave it a per-session toggle (off on every start).
+   - "None ticked" for a multi-speaker voice means its first speaker is installed (`FirstSpeaker`): with
+     the filter on and nothing ticked, show that one (or an explanatory empty state), not a blank box.
+   - Dark mode: new controls get their colours from `Theme` by type; check `dark-4.png`.
+   - Add checks to `SelfTest` (it already has a "Speakers: select VCTK, tick a second speaker" part) and
+     look at `open-4.png` / `small-4.png` in `ui-screens.zip`.
+3. **Take the Start menu ordering attempts back out** (`installer/Install.ps1`, `Register-Program`). He
+   wanted Reader then Config on top of Windows' "Recently added". Three tries failed, each tested by him
+   on a clean install; the list stayed Test, Repair, Config, Reader:
+   0.12.1 made the entries in order 1.5 s apart, 0.12.2 remade wrongly-ordered ones, 0.12.3 dated the two
+   program files "now". I told him I would remove them and drop the idea if 0.12.3 failed, and it did.
+   Remove: the `$pause` sleeps, the `$menuNames`/`$menuTimes`/`$menuWrong` remake block, and the `$stamp`
+   block. Keep the entries themselves and their descriptions. Don't try a fourth theory unless he asks;
+   the only untried lever is the entries' names, which isn't worth renaming programs for.
+4. Usual: bump the version in the five places, update `kit/README.txt` (the Add or remove voices
+   section) and this file, CI green, send `ModernVoicesForWindows0.12.4.zip`, say what is untested.
+
+**Confirmed by him on 15 Nov:** the 0.12.2 loudness fix works ("voices volume fix worked"). Not yet
+commented on: the 0.12.1 slider alignment, Reset position, shorter voice list, and the reduced variation
+(`VARIATION` 0.75).
 
 ## What it is
 
