@@ -172,7 +172,7 @@ function Set-SettingsText([string]$Path, [string]$Text) {
 }
 
 function Test-VoiceSettings([double]$Peak, [double]$Boost, [double]$LengthScale) {
-    if ($Peak -lt 0 -or $Peak -gt 2) { throw "peak must be from 0 to 2 (it is $(Format-Number $Peak))." }
+    if ($Peak -lt 0 -or $Peak -gt 1) { throw "peak must be from 0 to 1 (it is $(Format-Number $Peak))." }
     if ($Boost -lt 1 -or $Boost -gt 5) { throw "boost must be from 1 to 5 (it is $(Format-Number $Boost))." }
     if ($LengthScale -lt 0.3 -or $LengthScale -gt 4) { throw "length_scale must be from 0.3 to 4 (it is $(Format-Number $LengthScale))." }
 }

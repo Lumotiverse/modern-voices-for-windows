@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.12.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.1.0")]
 
 namespace ModernVoicesConfig
 {
@@ -514,7 +514,7 @@ namespace ModernVoicesConfig
         public const int SentenceLimit = 2000, CommaLimit = 1000, ParagraphLimit = 3000;
         public const int SentenceDefault = 500, CommaDefault = 0, ParagraphDefault = 1200;
         public const int SpeedDefault = 100;
-        public const double MaxPeak = 2;
+        public const double MaxPeak = 1;
 
         static string Format(double number) { return number.ToString("0.###", CultureInfo.InvariantCulture); }
 
@@ -968,7 +968,17 @@ namespace ModernVoicesConfig
             if (grid.Controls.Count > 0) { grid.RowCount++; grid.RowStyles.Add(new RowStyle(SizeType.AutoSize)); }
             return grid.RowCount - 1;
         }
-        Slider AddSlider(TableLayoutPanel grid, string title, int min, int max, int small, int large, int tick)
+        // A slider's own line sits near the top of its control, above the middle of the words beside it.
+        // Lowered: the control is shorter by as much as it is moved down, so its row is as tall as before
+        // and the words stay where they were, with the slider's line level with their middle.
+        void Lower(TrackBar bar)
+        {
+            int drop = Px(10);
+            bar.AutoSize = false;
+            bar.Height = Math.Max(Px(24), bar.PreferredSize.Height - drop);
+            bar.Margin = new Padding(0, drop, 0, 0);
+        }
+        Slider AddSlider(TableLayoutPanel grid, string title, int min, int max, int small, int large, int tick, bool lowered = false)
         {
             int row = GridRow(grid);
             Label label = Beside(title);
@@ -976,6 +986,7 @@ namespace ModernVoicesConfig
             bar.Maximum = max; bar.Minimum = min; bar.SmallChange = small; bar.LargeChange = large; bar.TickFrequency = tick;
             bar.Dock = DockStyle.Fill;
             bar.Margin = new Padding(0);
+            if (lowered) { Lower(bar); }
             // The mouse wheel over a slider scrolls the tab, not the slider (it moves by dragging, clicking or the arrow keys).
             bar.MouseWheel += SliderWheel;
             Label value = Beside("");
@@ -1180,8 +1191,8 @@ namespace ModernVoicesConfig
         {
             TableLayoutPanel page = Rows(tab);
             InstalledList = NewList(false);
-            InstalledList.Height = Px(300);
-            InstalledList.MinimumSize = new Size(0, Px(300));
+            InstalledList.Height = Px(240);
+            InstalledList.MinimumSize = new Size(0, Px(240));
             InstalledList.Columns.Add("Voice", Px(210));
             InstalledList.Columns.Add("Speaker", Px(80));
             InstalledList.Columns[1].TextAlign = HorizontalAlignment.Center;
@@ -1257,6 +1268,7 @@ namespace ModernVoicesConfig
             OutputBar.Value = 100;
             OutputBar.Dock = DockStyle.Fill;
             OutputBar.Margin = new Padding(0);
+            Lower(OutputBar);
             OutputBar.MouseWheel += SliderWheel;
             OutputValue = Beside("100%");
             OutputValue.MinimumSize = new Size(Px(90), 0);
@@ -1272,37 +1284,38 @@ namespace ModernVoicesConfig
                 if (!Filling) { outputTimer.Stop(); outputTimer.Start(); }
             };
 
-            TableLayoutPanel soundLine = Line("fill", "auto");
+            TableLayoutPanel soundLine = Line("auto", "auto", "fill");
             SoundLabel = Words("Select a voice above to set how it sounds.", false, true);
             SoundLabel.Dock = DockStyle.None; SoundLabel.Anchor = AnchorStyles.Left;
             ResetButton = Btn("Reset");
             ResetButton.Enabled = false;
+            ResetButton.Margin = new Padding(Px(10), ResetButton.Margin.Top, ResetButton.Margin.Right, ResetButton.Margin.Bottom);
             soundLine.Controls.Add(SoundLabel, 0, 0); soundLine.Controls.Add(ResetButton, 1, 0);
             Row(page, soundLine);
             TableLayoutPanel soundGrid = Line("auto", "fill", "auto");
-            Sliders["Volume"] = AddSlider(soundGrid, "Volume", 0, (int)(Store.MaxPeak * 100), 10, 10, 10);
-            Sliders["Boost"] = AddSlider(soundGrid, "Boost", 10, 40, 1, 5, 5);
-            Sliders["Speed"] = AddSlider(soundGrid, "Dictation speed", 25, 200, 1, 5, 25);
+            Sliders["Volume"] = AddSlider(soundGrid, "Volume", 0, (int)(Store.MaxPeak * 100), 10, 10, 10, true);
+            Sliders["Boost"] = AddSlider(soundGrid, "Boost", 10, 40, 1, 5, 5, true);
+            Sliders["Speed"] = AddSlider(soundGrid, "Dictation speed", 25, 200, 1, 5, 25, true);
             Row(page, soundGrid);
             OwnBox = new CheckBox();
             OwnBox.Text = "Modify pause duration for the selected voice";
             OwnBox.AutoSize = true; OwnBox.Enabled = false; OwnBox.Checked = false;
             Row(page, OwnBox);
             gapGrid = Line("auto", "fill", "auto");
-            Sliders["Sentence gap"] = AddSlider(gapGrid, "Sentence pause", 0, Store.SentenceLimit, 50, 250, 250);
-            Sliders["Comma gap"] = AddSlider(gapGrid, "Comma pause", 0, Store.CommaLimit, 50, 250, 250);
-            Sliders["Paragraph gap"] = AddSlider(gapGrid, "Paragraph gap", 0, Store.ParagraphLimit, 50, 250, 250);
+            Sliders["Sentence gap"] = AddSlider(gapGrid, "Sentence pause", 0, Store.SentenceLimit, 50, 250, 250, true);
+            Sliders["Comma gap"] = AddSlider(gapGrid, "Comma pause", 0, Store.CommaLimit, 50, 250, 250, true);
+            Sliders["Paragraph gap"] = AddSlider(gapGrid, "Paragraph gap", 0, Store.ParagraphLimit, 50, 250, 250, true);
             gapGrid.Visible = false;
             Row(page, gapGrid);
-            // Volume moves in tens only (0, 10, ... 200): dragged, it snaps to the nearest.
+            // Volume moves in tens only (0, 10, ... 100): dragged, it snaps to the nearest.
             Sliders["Volume"].Bar.ValueChanged += delegate
             {
                 TrackBar volume = Sliders["Volume"].Bar;
                 int snapped = (int)(Math.Round(volume.Value / 10.0, MidpointRounding.AwayFromZero) * 10);
                 if (volume.Value != snapped) { volume.Value = snapped; }
             };
-            Row(page, Words("Volume: each sentence's loudest moment (0 = as Piper made it; 100% = as loud as sound goes; above that, everything " +
-                "but the loudest moments is turned up further, to twice as loud at 200%, and sounds more pressed). Boost: lifts quiet parts more than loud ones " +
+            Row(page, Words("Volume: each sentence's loudest moment (0 = as Piper made it; 100% = as loud as sound goes). " +
+                "Boost: lifts quiet parts more than loud ones " +
                 "(higher sounds more compressed). Dictation speed: 100% = the speed for every voice (Speed and pauses tab). Unticked, the voice uses the pauses " +
                 "for every voice; ticked, its own.", true));
             Row(page, Words("Changes are saved as you move a slider and take effect straight away, also in programs already using the " +
@@ -3039,13 +3052,11 @@ namespace ModernVoicesConfig
                 VoiceSettings now = Store.GetVoice(dir);
                 Check(now.Peak == 0.6 && now.Boost == 2 && now.LengthScale == 1.25,
                     "sliders: " + ui.CurrentInstalled.Title + " -> peak " + now.Peak + ", boost " + now.Boost + ", length_scale " + now.LengthScale);
-                // Above 100%: to 200%, kept as a peak above 1.
-                ui.Sliders["Volume"].Bar.Value = 170;
-                ui.SaveSettings();
-                ui.StopTimers();
-                now = Store.GetVoice(dir);
-                Check(now.Peak == 1.7 && ui.Sliders["Volume"].Bar.Maximum == 200 && ui.Sliders["Volume"].Value.Text == "170%",
-                    "the Volume slider goes to " + ui.Sliders["Volume"].Bar.Maximum + "%: 170% is kept as peak " + now.Peak);
+                Check(ui.Sliders["Volume"].Bar.Maximum == 100, "the Volume slider ends at " + ui.Sliders["Volume"].Bar.Maximum + "%");
+                // A voice left above 100% by 0.12.0 shows as 100%.
+                File.WriteAllText(App.VoiceFile(dir), File.ReadAllText(App.VoiceFile(dir)).Replace("\"peak\": 0.6", "\"peak\": 1.7"));
+                ui.UpdateInstalled();
+                Check(ui.Sliders["Volume"].Bar.Value == 100, "a voice saved at 170% by 0.12.0 shows as " + ui.Sliders["Volume"].Bar.Value + "%");
                 Check(File.Exists(App.VoiceFile(dir)) && App.VoiceFile(dir).StartsWith(App.SettingsFolder, StringComparison.OrdinalIgnoreCase),
                     "a voice's settings are kept in the settings folder (" + App.VoiceFile(dir) + "), which needs no administrator");
                 Store.SetVoice(dir, was.Peak ?? App.DefaultPeak, was.Boost ?? App.DefaultBoost, was.LengthScale ?? 1);

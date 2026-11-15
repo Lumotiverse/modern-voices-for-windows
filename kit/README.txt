@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.12.0
+Modern Voices for Windows 0.12.1
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -64,10 +64,7 @@ How each voice sounds
 In the Modern Voices Config window, on "Voice manager", select a voice:
 
   Volume   how loud each sentence's loudest moment is: 100% = full volume (the default). 0 = as
-           Piper made it (quieter: the model's own level). Above 100%, up to 200%: sound can't go
-           above full, so everything but the loudest moments is turned up further (twice as loud
-           at 200%) and the loudest are eased off; the higher, the more pressed it sounds. It moves
-           in steps of 10%.
+           Piper made it (quieter: the model's own level). It moves in steps of 10%.
   Boost    lifts the quieter parts more than the loud ones, so the voice sounds louder overall without
            clipping. None, 1.5x (the default), up to 4x; higher sounds more compressed, like radio.
   Dictation speed  adjusts this voice from the speed for every voice (Speed and pauses): 100% = that

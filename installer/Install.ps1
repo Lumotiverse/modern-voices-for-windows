@@ -82,7 +82,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.12.0'
+$Version = '0.12.1'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -688,22 +688,34 @@ function Register-Program {
     Set-ItemProperty $OurKey -Name 'EstimatedSize' -Value $sizeKb -Type DWord
     New-Item $StartMenu -ItemType Directory -Force | Out-Null
     $common = "-NoProfile -ExecutionPolicy Bypass -File `"$App\installer\"
-    # Modern Voices Config and the Reader are programs: their entries start them (their icons are their own).
+    # Windows' Start menu lists what was added last first ("Recently added"): so the entries are made
+    # in the order Uninstall, Repair, Test, Config, Reader, a moment apart, for the Reader to be on top
+    # and Config under it. (Only when an entry is new: one already there is not "recently added" again.)
     $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
+    $pause = { param([bool]$isFresh) if ($isFresh) { Start-Sleep -Milliseconds 1500 } }
+    foreach ($menuItem in @(@('Uninstall.lnk', ($common + 'Uninstall.ps1"'), "Uninstall $AppName"),
+                            @('Modern Voices Repair.lnk', ($common + 'Install.ps1" -Repair'), 'Register the voices again (if one went missing from programs)'),
+                            @('Modern Voices Test.lnk', ($common + 'Test.ps1"'), 'Hear each Modern Voice, with each word shown as the engine reports it'))) {
+        $menuPath = Join-Path $StartMenu $menuItem[0]
+        $menuNew = -not (Test-Path $menuPath)
+        New-Shortcut $menuPath $menuItem[1] $menuItem[2] "$App\installer\repair.ico,0"
+        & $pause $menuNew
+    }
+    # Modern Voices Config and the Reader are programs: their entries start them (their icons are their own).
     foreach ($program in @(@($configExe, 'Modern Voices Config.lnk', 'Voices installed, how they sound, add or remove voices'),
                            @($readerExe, 'Modern Voices Reader.lnk', 'Reads text aloud with the Modern Voices: pasted or copied text, files, and text on the screen'))) {
         if (-not (Test-Path $program[0])) { continue }
-        $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $StartMenu $program[1]))
+        $menuPath = Join-Path $StartMenu $program[1]
+        $menuNew = -not (Test-Path $menuPath)
+        $link = (New-Object -ComObject WScript.Shell).CreateShortcut($menuPath)
         $link.TargetPath = $program[0]
         $link.Arguments = ''
         $link.WorkingDirectory = Split-Path $program[0] -Parent
         $link.Description = $program[2]
         $link.IconLocation = "$($program[0]),0"
         $link.Save()
+        if ($program[1] -notlike '*Reader*') { & $pause $menuNew }
     }
-    New-Shortcut (Join-Path $StartMenu 'Modern Voices Repair.lnk') ($common + 'Install.ps1" -Repair') 'Register the voices again (if one went missing from programs)' "$App\installer\repair.ico,0"
-    New-Shortcut (Join-Path $StartMenu 'Modern Voices Test.lnk') ($common + 'Test.ps1"') 'Hear each Modern Voice, with each word shown as the engine reports it' "$App\installer\repair.ico,0"
-    New-Shortcut (Join-Path $StartMenu 'Uninstall.lnk') ($common + 'Uninstall.ps1"') "Uninstall $AppName" "$App\installer\repair.ico,0"
 }
 
 # Runs a program with no window and returns what it printed.

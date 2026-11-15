@@ -170,7 +170,7 @@ impl Settings {
     /// From voice.json's text; a voice.json without them leaves the voice as Piper made it.
     fn from(info: &str) -> Settings {
         Settings {
-            peak: number(info, "peak", 0.0).min(MAX_PEAK),
+            peak: number(info, "peak", 0.0).min(1.0),
             boost: number(info, "boost", 1.0).clamp(1.0, 5.0),
             length_scale: number(info, "length_scale", 1.0).clamp(0.3, 4.0),
             own_pauses: (number(info, "own_pauses", 0.0) >= 1.0).then(|| Pauses::read(info)),
@@ -345,6 +345,10 @@ fn make_room(keep: &str) {
 /// (`noise_scale`) and of each sound's length (`noise_w`), below Piper's own 0.667 and 0.8.
 const NOISE_SCALE: f32 = 0.6;
 const NOISE_W: f32 = 0.65;
+/// How much of that variation is used, whatever sets it (a voice.json has its model's own, Piper's 0.667
+/// and 0.8 for most): Piper's own is a little strong, each saying of a sentence wandering further in
+/// tone and timing than sounds natural. (0.75: 0.667 and 0.8 become 0.5 and 0.6.)
+const VARIATION: f32 = 0.75;
 fn load_model(model_dir: &str, data_dir: &str) -> Option<Arc<Model>> {
     let key = format!("{model_dir}|{data_dir}");
     let slot = slots().lock().ok()?.entry(key.clone())
@@ -362,7 +366,7 @@ fn load_model(model_dir: &str, data_dir: &str) -> Option<Arc<Model>> {
     let started = Instant::now();
     let info = std::fs::read_to_string(format!("{model_dir}\\voice.json")).unwrap_or_default();
     // sherpa-onnx takes 0 as "not set" and uses its own 0.667 and 0.8: 0 here is near enough 0 instead.
-    let (noise_scale, noise_w) = (number(&info, "noise_scale", NOISE_SCALE).max(0.001), number(&info, "noise_w", NOISE_W).max(0.001));
+    let (noise_scale, noise_w) = ((number(&info, "noise_scale", NOISE_SCALE) * VARIATION).max(0.001), (number(&info, "noise_w", NOISE_W) * VARIATION).max(0.001));
     let config = OfflineTtsConfig {
         model: OfflineTtsModelConfig {
             vits: OfflineTtsVitsModelConfig {
@@ -956,8 +960,7 @@ mod tests {
         let own = r#"{ "pauses": { "own_pauses": 1, "sentence_ms": 300, "comma_ms": 0, "paragraph_ms": 900 } }"#;
         assert_eq!(Settings::from(own).own_pauses, Some(Pauses { sentence_ms: 300.0, comma_ms: 0.0, paragraph_ms: 900.0 }));
         assert_eq!(Settings::from(""), Settings { peak: 0.0, boost: 1.0, length_scale: 1.0, own_pauses: None });
-        assert_eq!(Settings::from(r#"{ "loudness": { "peak": 1.7, "boost": 1 } }"#).peak, 1.7);
-        assert_eq!(Settings::from(r#"{ "loudness": { "peak": 7 } }"#).peak, MAX_PEAK);
+        assert_eq!(Settings::from(r#"{ "loudness": { "peak": 1.7, "boost": 1 } }"#).peak, 1.0);
         assert_eq!(own_file(r"C:\ProgramData\Modern Voices for Windows\settings.json", r"C:\Program Files\Modern Voices for Windows\voices\en_GB-alba-medium"),
             std::path::PathBuf::from(r"C:\ProgramData\Modern Voices for Windows\voices\en_GB-alba-medium.json"));
         assert_eq!(Global::from(r#"{ "output_percent": 25 }"#).output, 0.25);

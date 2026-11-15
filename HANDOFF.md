@@ -169,7 +169,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.12.0)
+## Current state (0.12.1)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last
@@ -198,9 +198,9 @@ one batch at a time; every batch so far is done and delivered. He installs each 
   NOT user-writable.
 
 **Volume and output volume (0.12.0)**
-- Per-voice Volume slider 0 to 200% (`peak` 0 to 2, `MAX_PEAK`). Above 1: normalise to full, multiply,
-  then `limit` (soft knee at 0.6, tanh above) in `text::apply_loudness`. Louder on the whole (about 1.8x
-  rms at 200% on speech), more compressed.
+- Per-voice Volume slider is 0 to 100% again (0.12.1). 0.12.0 let it go to 200% (`peak` to 2, a soft
+  limiter above full): Lumoti said it "sounds horrid", so it is gone, engine and all. A voice file left
+  with a peak above 1 is read as 1. Don't offer it again.
 - Output volume: `output_percent` 0 to 100 in settings.json, for every voice. The engine applies it in
   `Output::write`, which now sends audio in 1024-sample pieces and re-reads the setting (a file stat)
   for each, ramping between levels: it changes mid-sentence, after whatever SAPI has buffered. Config's
@@ -298,9 +298,19 @@ position (by design: Play starts from the caret), so the bar and the time left j
 from there, even when he only clicked to type. He called it an "unintended feature". Ask whether he wants
 it kept, or the bar and time to change only while reading.
 
+**0.12.1 (his feedback on 0.12.0):** Volume back to 100% max. Voice manager: slider bars lowered by
+`Px(10)` (`ConfigForm.Lower`: the TrackBar is made that much shorter and given that top margin, so rows
+keep their height and labels don't move; the output bar's line is level with the middle of the default
+voice box), Reset sits right of the "How <voice> sounds" label, voice list 240 high (was 300; he wrote
+"font list box", taken as the voice list). Engine: `VARIATION` 0.75 multiplies noise_scale and noise_w at
+model load (he found Piper's variation "a little bit strong"; 0.75 is a guess, unheard). Start menu
+entries are made Uninstall, Repair, Test, Config, Reader, 1.5 s apart when new, so "Recently added"
+shows Reader, Config, Test, Repair (unverified how Windows orders them; only on a fresh install).
+Not confirmed by him: all of it.
+
 **Not yet confirmed on his machine (0.12.0):** the UAC prompt appearing once (first nickname or Apply) and
 not again; Config opening unelevated after Install.cmd (the explorer.exe hand-off); the output volume
-changing mid-sentence and how long the lag is; how 150 to 200% Volume sounds; the new Voice manager layout;
+changing mid-sentence and how long the lag is; the new Voice manager layout;
 the Reader's Read screen warning; a second Windows account using the settings folder.
 
 **Not yet confirmed on his machine (0.11.0):** everything about the C# Config on a real screen: its look

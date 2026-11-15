@@ -162,13 +162,6 @@ $slow = Test-Speech $PS64 64 3
 $ratio = $slow[$albaName].seconds / $normal[$albaName].seconds
 Check ($ratio -gt 1.45) ("length_scale 2: Alba {0:N2}x as long" -f $ratio)
 Check ((Test-Path (Get-VoiceFile $albaDir)) -and (Get-VoiceFile $albaDir).StartsWith($Data)) "a voice's settings are kept in the settings folder ($(Get-VoiceFile $albaDir))"
-# Volume above 100% (to 200%): the loudest moments stay under full, everything else is turned up.
-Set-VoiceSettings $albaDir 1 1 1
-$plain = Test-Speech $PS64 64 3
-Set-VoiceSettings $albaDir 2 1 1
-$loud = Test-Speech $PS64 64 3
-$louder = $loud[$albaName].level / [math]::Max(0.0001, $plain[$albaName].level)
-Check ($louder -gt 1.4 -and $loud[$albaName].peak -le 1) ("Volume 200%: Alba {0:N2}x as loud on the whole as at 100% (level {1} -> {2}), its peak {3}" -f $louder, $plain[$albaName].level, $loud[$albaName].level, $loud[$albaName].peak)
 Set-VoiceSettings $albaDir 1 1.5 1
 # The output volume (for every voice): half, every voice comes out at half.
 Set-OutputVolume $settingsFile 50
