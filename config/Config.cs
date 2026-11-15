@@ -3237,43 +3237,43 @@ namespace ModernVoicesConfig
             // a voice not shown keeps its tick (what would be installed is the same throughout). Done is on this
             // tab only and goes back to the Voice manager.
             {
-                int american = 0, british = 0;
-                foreach (Entry v in catalogue) { if (v.Code == "en_US") { american++; } else if (v.Code == "en_GB") { british++; } }
+                int showAmerican = 0, showBritish = 0;
+                foreach (Entry v in catalogue) { if (v.Code == "en_US") { showAmerican++; } else if (v.Code == "en_GB") { showBritish++; } }
                 Check(ui.VoiceFilterBox.SelectedIndex == 0 && ui.AddList.Items.Count == catalogue.Count, "\"Show\" is on All voices as the window opens");
-                ListViewItem gb = null;
-                foreach (ListViewItem item in ui.VoiceItems) { if (((Entry)item.Tag).Code == "en_GB" && !((Entry)item.Tag).Several && !item.Checked) { gb = item; break; } }
-                Check(gb != null, "the catalogue has a British voice not ticked");
-                if (gb != null) { gb.Checked = true; Settle(50); }
-                string before = string.Join(" ", ui.PickedIds().ToArray());
+                ListViewItem showGb = null;
+                foreach (ListViewItem item in ui.VoiceItems) { if (((Entry)item.Tag).Code == "en_GB" && !((Entry)item.Tag).Several && !item.Checked) { showGb = item; break; } }
+                Check(showGb != null, "the catalogue has a British voice not ticked");
+                if (showGb != null) { showGb.Checked = true; Settle(50); }
+                string showBefore = string.Join(" ", ui.PickedIds().ToArray());
                 ui.VoiceFilterBox.SelectedIndex = 2;
                 Settle(50);
-                bool allAmerican = true;
-                foreach (ListViewItem item in ui.AddList.Items) { if (((Entry)item.Tag).Code != "en_US") { allAmerican = false; } }
+                bool showAllAmerican = true;
+                foreach (ListViewItem item in ui.AddList.Items) { if (((Entry)item.Tag).Code != "en_US") { showAllAmerican = false; } }
                 Note("show American only: " + ui.AddList.Items.Count + " of " + catalogue.Count + " listed; " + ui.SizeLabel.Text);
-                Check(american > 0 && ui.AddList.Items.Count == american && allAmerican, "American only: the " + american + " American voices are listed");
-                Check(string.Join(" ", ui.PickedIds().ToArray()) == before && (gb == null || gb.Checked), "voices not shown keep their ticks");
+                Check(showAmerican > 0 && ui.AddList.Items.Count == showAmerican && showAllAmerican, "American only: the " + showAmerican + " American voices are listed");
+                Check(string.Join(" ", ui.PickedIds().ToArray()) == showBefore && (showGb == null || showGb.Checked), "voices not shown keep their ticks");
                 ui.VoiceFilterBox.SelectedIndex = 3;
                 Settle(50);
-                Check(ui.AddList.Items.Count == british && (gb == null || (gb.ListView == ui.AddList && gb.Checked)) && string.Join(" ", ui.PickedIds().ToArray()) == before,
-                    "British only: the " + british + " British voices, ticked as before");
+                Check(ui.AddList.Items.Count == showBritish && (showGb == null || (showGb.ListView == ui.AddList && showGb.Checked)) && string.Join(" ", ui.PickedIds().ToArray()) == showBefore,
+                    "British only: the " + showBritish + " British voices, ticked as before");
                 ui.VoiceFilterBox.SelectedIndex = 1;
                 Settle(50);
                 Check(ui.AddList.Items.Count == catalogue.Count, "English only: every voice (all are English for now)");
                 ui.VoiceFilterBox.SelectedIndex = 0;
                 Settle(50);
-                bool sameOrder = ui.AddList.Items.Count == ui.VoiceItems.Count;
-                for (int i = 0; sameOrder && i < ui.VoiceItems.Count; i++) { if (ui.AddList.Items[i] != ui.VoiceItems[i]) { sameOrder = false; } }
-                Check(sameOrder && string.Join(" ", ui.PickedIds().ToArray()) == before, "All voices again: the whole list in its order, ticked as before");
-                if (gb != null) { gb.Checked = false; Settle(50); }
+                bool showSameOrder = ui.AddList.Items.Count == ui.VoiceItems.Count;
+                for (int i = 0; showSameOrder && i < ui.VoiceItems.Count; i++) { if (ui.AddList.Items[i] != ui.VoiceItems[i]) { showSameOrder = false; } }
+                Check(showSameOrder && string.Join(" ", ui.PickedIds().ToArray()) == showBefore, "All voices again: the whole list in its order, ticked as before");
+                if (showGb != null) { showGb.Checked = false; Settle(50); }
 
-                int page = ui.PageIndex;
+                int showPage = ui.PageIndex;
                 ui.ShowPage(3);
                 Settle(50);
-                bool onAdd = ui.DoneButton.Visible;
+                bool showOnAdd = ui.DoneButton.Visible;
                 ui.DoneButton.PerformClick();
                 Settle(50);
-                Check(onAdd && ui.PageIndex == 0 && !ui.DoneButton.Visible, "Done shows on Add or remove voices only, and opens the Voice manager");
-                ui.ShowPage(page);
+                Check(showOnAdd && ui.PageIndex == 0 && !ui.DoneButton.Visible, "Done shows on Add or remove voices only, and opens the Voice manager");
+                ui.ShowPage(showPage);
                 Settle(50);
             }
 
