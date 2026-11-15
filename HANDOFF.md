@@ -1,63 +1,37 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.12.3 (15 Nov 2026). **Start with "Next tasks" just below: Lumoti asked for
-them on 15 Nov and handed them to a new chat. Nothing in them is started.**
+Last updated at version 0.12.4 (15 Nov 2026). Lumoti's batches so far are all done and delivered; wait
+for his next one.
 
-## Next tasks (asked for 15 Nov 2026, not started): ship as 0.12.4
-
-Model: simple enough for Opus 5.5 (Config window and installer only, no engine work). Tell him that
-first, as his standing rule asks, then go ahead.
+## 0.12.4 (15 Nov 2026), delivered, not yet confirmed by him
 
 His words: "in the add remove voices tab: if a voice only has 1 speaker put the name of that speaker in
 the play sample box below. same as the voices with multiple speakers. add a 'only show selected speakers'
-toggle for the play sample box (to hide all unselected speakers, to make locating the ones you have
-installed already easier) default this setting to off."
+toggle for the play sample box ... default this setting to off."
 
-1. **One-speaker voices show their speaker in the speaker box** (`config/Config.cs`,
-   `ConfigForm.UpdateSelection`, `SpeakerList`, a `CheckedListBox`). Now a voice with one speaker
-   (`!Entry.Several`) leaves the box empty and disabled, with the label "<voice>: one speaker.". Wanted:
-   its one name listed there like the others. Things to settle while doing it:
-   - The name: `Entry.FirstSpeaker` when the catalogue gives one; many single-speaker Piper voices have
-     no speaker names (`SpeakerNames` empty), so fall back to the voice's own name (`Entry.Name`). Check
-     what `Catalogue` fills in for them before choosing.
-   - Its tick: a one-speaker voice is installed by ticking the VOICE in `AddList`, and the `Speakers`
-     dictionary, `SaveSpeakers`, `SpeakerTicking`, the Apply arguments and `SpeakersInstalled` all assume
-     only `Several` voices have speaker ticks. Simplest that fits what he asked: show the name with its
-     box mirroring the voice's own tick (ticking either ticks both), or show it ticked-when-installed
-     and not tickable. Do NOT let it write an entry into `Speakers` for a one-speaker voice (the
-     installer's speaker handling is for multi-speaker voices). Say which you chose.
-   - Clicking the name plays the sample, as for the others (`PlaySample` already plays speaker 0 for a
-     one-speaker voice; `SelectedIndexChanged` triggers it).
-   - `SpeakerLabel`'s text for this case needs rewording.
-2. **"Only show selected speakers" toggle** for that box, off by default: a CheckBox by the Play sample
-   button or the speaker label. On: the box lists only the ticked speakers of the selected voice.
-   - Take care with `SaveSpeakers`: it rebuilds the voice's ticked list from `SpeakerList.CheckedItems`.
-     With unticked ones hidden that still works (everything shown is ticked), but unticking one while
-     filtered must remove it from `Speakers` and from view (or stay until the next refresh: choose, and
-     avoid re-filling the list inside `ItemCheck`, which fires before the state changes; use
-     BeginInvoke).
-   - `Filling` guards the refill; `UpdateSelection` calls `SaveSpeakers` first, so refill through it.
-   - Not asked to be remembered between runs: leave it a per-session toggle (off on every start).
-   - "None ticked" for a multi-speaker voice means its first speaker is installed (`FirstSpeaker`): with
-     the filter on and nothing ticked, show that one (or an explanatory empty state), not a blank box.
-   - Dark mode: new controls get their colours from `Theme` by type; check `dark-4.png`.
-   - Add checks to `SelfTest` (it already has a "Speakers: select VCTK, tick a second speaker" part) and
-     look at `open-4.png` / `small-4.png` in `ui-screens.zip`.
-3. **Take the Start menu ordering attempts back out** (`installer/Install.ps1`, `Register-Program`). He
-   wanted Reader then Config on top of Windows' "Recently added". Three tries failed, each tested by him
-   on a clean install; the list stayed Test, Repair, Config, Reader:
-   0.12.1 made the entries in order 1.5 s apart, 0.12.2 remade wrongly-ordered ones, 0.12.3 dated the two
-   program files "now". I told him I would remove them and drop the idea if 0.12.3 failed, and it did.
-   Remove: the `$pause` sleeps, the `$menuNames`/`$menuTimes`/`$menuWrong` remake block, and the `$stamp`
-   block. Keep the entries themselves and their descriptions. Don't try a fourth theory unless he asks;
-   the only untried lever is the entries' names, which isn't worth renaming programs for.
-4. Usual: bump the version in the five places, update `kit/README.txt` (the Add or remove voices
-   section) and this file, CI green, send `ModernVoicesForWindows0.12.4.zip`, say what is untested.
+1. **One-speaker voices list their speaker** (`ConfigForm.UpdateSelection`, `OnlySpeaker`). The name is
+   `Entry.FirstSpeaker`, else `Catalogue.PrettyName(Entry.Name)` (single-speaker Piper voices have an
+   empty `speaker_id_map`, so in practice it's the voice's pretty name, e.g. "Alba"). Its box MIRRORS the
+   voice's own tick both ways: `SpeakerTicking` sets the AddList tick for a one-speaker voice and returns;
+   `AddList.ItemChecked` re-fills the speaker box (BeginInvoke `UpdateSelection`) when the selected voice
+   is one-speaker or the filter is on. Nothing is written to `Speakers` for it (`SaveSpeakers` still returns
+   for `!Several`). Clicking the name plays the sample (speaker 0) as before.
+2. **"Only show selected speakers"** (`OnlyTickedBox`, between Play sample and the speaker label; off at
+   every start, not saved). On: only ticked speakers listed; a ticked multi-speaker voice with none ticked
+   shows its `FirstSpeaker` ticked (that's what gets installed; `SaveSpeakers` then stores it explicitly,
+   same `PickedIds`); an unticked voice with none ticked shows an empty box and a label saying so.
+   Unticking a speaker while filtered leaves it listed (unticked) until the next refresh, so a misclick
+   can be undone; ticking/unticking the voice itself refreshes.
+3. **Start menu ordering attempts removed** (`Register-Program`): no sleeps, no remake block, no program
+   file stamping. Windows' "Recently added" order is not by entry creation time nor by the program's file
+   date (three builds tried). Idea dropped; don't try again unless he asks.
 
-**Confirmed by him on 15 Nov:** the 0.12.2 loudness fix works ("voices volume fix worked"). Not yet
-commented on: the 0.12.1 slider alignment, Reset position, shorter voice list, and the reduced variation
-(`VARIATION` 0.75).
+SelfTest has new checks for both features (filter off at start; filtered count; one-speaker name, mirror
+both ways, nothing in `Speakers`; filter hides an unticked one-speaker voice).
+
+**Confirmed by him on 15 Nov:** the 0.12.2 loudness fix works. Not yet commented on: the 0.12.1 slider
+alignment, Reset position, shorter voice list, and the reduced variation (`VARIATION` 0.75).
 
 ## What it is
 
@@ -225,7 +199,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.12.3)
+## Current state (0.12.4)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last
@@ -354,12 +328,8 @@ position (by design: Play starts from the caret), so the bar and the time left j
 from there, even when he only clicked to type. He called it an "unintended feature". Ask whether he wants
 it kept, or the bar and time to change only while reading.
 
-**0.12.3, Start menu "Recently added" (a trial):** on a CLEAN install of 0.12.1 (entries made Uninstall,
-Repair, Test, Config, Reader, 1.5 s apart) Windows 10 listed Test, Repair, Config, Reader. So it is not
-by the entries' creation time and not by name. Guess: newest first by the target program file's date
-(Test and Repair point at powershell.exe). 0.12.3 dates Config.exe then Reader.exe "now" (creation and
-last write) when their entries are new. If he still sees Reader and Config at the bottom after a clean
-install: drop the whole idea, take the stamping and the 1.5 s pauses out, and tell him so.
+**Start menu "Recently added" (0.12.1 to 0.12.3, dropped in 0.12.4):** Windows 10 listed Test, Repair,
+Config, Reader whatever order or dates the installer gave. All the ordering code is gone.
 
 **0.12.2 (his feedback on 0.12.1): "every now and again it says one of the lines really loud".**
 Cause, measured (sherpa-onnx in Python here: `pip install sherpa-onnx==1.12.40`, models from the
@@ -371,20 +341,13 @@ English Male: -13.5 to -5.2 dB). Now `apply_loudness` scales by `text::speech_le
 half of 1024-sample stretches) times `CREST` 4.2, and `ease`s what would pass the peak under it: the
 spread is under 1.5 dB on three voices, typical loudness as before or 1 dB more. A line's peak is no
 longer exactly the Volume (Test-Kit checks 0.6 to 1 of it). Not confirmed by ear.
-Start menu: he said Reader and Config were "still at the bottom" of Recently added. Unknown whether he
-installed over 0.12.0 (entries then kept their old creation order) or afresh. 0.12.2 remakes the
-entries once when their creation times are in the wrong order. If that still fails after a clean
-install, Windows does not order by creation time and the idea should be dropped (say so).
 
 **0.12.1 (his feedback on 0.12.0):** Volume back to 100% max. Voice manager: slider bars lowered by
 `Px(10)` (`ConfigForm.Lower`: the TrackBar is made that much shorter and given that top margin, so rows
 keep their height and labels don't move; the output bar's line is level with the middle of the default
 voice box), Reset sits right of the "How <voice> sounds" label, voice list 240 high (was 300; he wrote
 "font list box", taken as the voice list). Engine: `VARIATION` 0.75 multiplies noise_scale and noise_w at
-model load (he found Piper's variation "a little bit strong"; 0.75 is a guess, unheard). Start menu
-entries are made Uninstall, Repair, Test, Config, Reader, 1.5 s apart when new, so "Recently added"
-shows Reader, Config, Test, Repair (unverified how Windows orders them; only on a fresh install).
-Not confirmed by him: all of it.
+model load (he found Piper's variation "a little bit strong"; 0.75 is a guess, unheard). Not confirmed by him: all of it.
 
 **Not yet confirmed on his machine (0.12.0):** the UAC prompt appearing once (first nickname or Apply) and
 not again; Config opening unelevated after Install.cmd (the explorer.exe hand-off); the output volume
