@@ -102,6 +102,11 @@ $rulesFile = Join-Path $Data 'dictionary.txt'
 Step 'The "where to install" screen, and Modern Voices Config (before installing)'
 $code = Invoke-Install @('-PickerSelfTest') 300
 Check ($code -eq 0) 'the "where to install" screen builds, and makes its own folder in the one chosen'
+# The kit as a download leaves it: its programs carry Windows' "from the internet" mark (the installed
+# copies must not: see Install-Engine).
+foreach ($markedExe in @((Join-Path $Kit 'config\ModernVoicesConfig.exe'), (Join-Path $Kit 'reader\ModernVoicesReader.exe'))) {
+    Set-Content -LiteralPath $markedExe -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
+}
 $code = Invoke-ConfigTest (Join-Path $Kit 'config\ModernVoicesConfig.exe')
 Check ($code -eq 0) "Modern Voices Config's window builds from the real catalogue; speakers and duplicate warning work"
 
@@ -130,6 +135,8 @@ $menu = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Modern
 Check ((Test-Path "$menu\Modern Voices Config.lnk") -and (Test-Path "$menu\Modern Voices Repair.lnk") -and (Test-Path "$menu\Modern Voices Test.lnk")) 'Start menu: Modern Voices Config, Modern Voices Repair, Modern Voices Test'
 $configExe = Join-Path $App 'config\ModernVoicesConfig.exe'
 Check ((Test-Path $configExe) -and (Get-AuthenticodeSignature $configExe).Status -eq 'Valid') 'Modern Voices Config is installed, and signed by the build (trusted as the engine is)'
+$stillMarked = @($configExe, (Join-Path $App 'reader\ModernVoicesReader.exe')) | Where-Object { Get-Item -LiteralPath $_ -Stream Zone.Identifier -ErrorAction SilentlyContinue }
+Check ((Get-Item -LiteralPath (Join-Path $Kit 'config\ModernVoicesConfig.exe') -Stream Zone.Identifier -ErrorAction SilentlyContinue) -and @($stillMarked).Count -eq 0) "the kit's programs carried the `"from the internet`" mark; the installed ones don't"
 $configLink = (New-Object -ComObject WScript.Shell).CreateShortcut("$menu\Modern Voices Config.lnk")
 Check ($configLink.TargetPath -eq $configExe -and -not $configLink.Arguments) "Start menu: Modern Voices Config starts the program itself ($($configLink.TargetPath))"
 Check ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows').ModifyPath -eq "`"$configExe`"") "Installed apps' Modify opens Modern Voices Config"

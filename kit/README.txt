@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.12.4
+Modern Voices for Windows 0.12.5
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -27,9 +27,11 @@ Install
    becomes a voice. A voice with one speaker lists that one: its box is the voice's own tick.
    "Only show selected speakers" (beside Play sample, off each time the window opens) lists only
    the ticked speakers of the voice selected, to find the ones installed.
+   "Show" above the list narrows it (All voices, English only, American only, British only);
+   voices not shown keep their ticks.
 4. Press Apply changes. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices,
    version 1.0.0), prepares them, and tests each one through Windows' speech API, with the progress
-   shown at the bottom of the window.
+   shown at the bottom of the window. Done goes back to the Voice manager.
 
 Restart programs that were open to see the new voices. This folder can then be deleted.
 

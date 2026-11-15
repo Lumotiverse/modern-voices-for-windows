@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.12.4.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.5.0")]
 
 namespace ModernVoicesConfig
 {
@@ -856,6 +856,12 @@ namespace ModernVoicesConfig
         public CheckedListBox SpeakerList;
         public TextBox NickBox, PreviewBox, WordFrom, WordTo;
         public CheckBox OwnBox, UsBox, WordWhole, WordCase, OnlyTickedBox;
+        // Every voice of the catalogue as a row, shown or not: the list shows those the "Show" box lets
+        // through, and a row keeps its tick while it is not shown. What is ticked is always read from here.
+        public readonly List<ListViewItem> VoiceItems = new List<ListViewItem>();
+        public ComboBox VoiceFilterBox;
+        bool filtering;                                     // the list is being refilled for the "Show" box
+        public Button DoneButton;
         public ComboBox PreviewVoiceBox;
         public TrackBar SpeedBar;
         public Dictionary<string, Slider> Sliders = new Dictionary<string, Slider>();
@@ -1102,7 +1108,7 @@ namespace ModernVoicesConfig
             tabStrip.Controls.Add(ThemeButton, 2, 0);
 
             // The bottom of the window: progress while applying changes, what is happening, Apply and Close.
-            TableLayoutPanel bottom = Line("fill", "auto", "auto");
+            TableLayoutPanel bottom = Line("fill", "auto", "auto", "auto");
             bottom.Dock = DockStyle.Bottom;
             bottom.RowStyles.Clear();
             bottom.RowStyles.Add(new RowStyle(SizeType.Absolute, Px(20)));
@@ -1112,12 +1118,17 @@ namespace ModernVoicesConfig
             Progress.Dock = DockStyle.Fill; Progress.Visible = false;
             Progress.Margin = new Padding(3, Px(6), 3, 0);
             bottom.Controls.Add(Progress, 0, 0);
-            bottom.SetColumnSpan(Progress, 3);
+            bottom.SetColumnSpan(Progress, 4);
             StatusLabel = Words("", true);
             StatusLabel.MinimumSize = new Size(0, Px(34));
             ApplyButton = Btn("Apply changes");
             CloseButton = Btn("Close");
-            bottom.Controls.Add(StatusLabel, 0, 1); bottom.Controls.Add(ApplyButton, 1, 1); bottom.Controls.Add(CloseButton, 2, 1);
+            // Done (on Add or remove voices only): back to the Voice manager.
+            DoneButton = Btn("Done");
+            DoneButton.Visible = false;
+            DoneButton.Click += delegate { if (!Busy) { ShowPage(0); } };
+            bottom.Controls.Add(StatusLabel, 0, 1); bottom.Controls.Add(ApplyButton, 1, 1); bottom.Controls.Add(DoneButton, 2, 1);
+            bottom.Controls.Add(CloseButton, 3, 1);
             Controls.Add(bottom);
             CancelButton = CloseButton;
             CloseButton.Click += delegate { Close(); };
@@ -1444,8 +1455,15 @@ namespace ModernVoicesConfig
             addGrid.Padding = new Padding(Px(6));
             addGrid.Location = new Point(0, 0);
             tab.Controls.Add(addGrid);
-            Row(addGrid, Words("Tick the voices to install; untick one to remove it. Select a voice and press Play sample to hear it. " +
-                "Then press Apply changes: the window shows the progress below."));
+            Row(addGrid, Words("Tick the voices to install and untick the ones to remove, then press Apply changes."));
+            // Which voices the list shows (for other languages too, if they are ever added). All of them at every start.
+            TableLayoutPanel filterLine = Line("auto", "auto", "fill");
+            VoiceFilterBox = new ComboBox();
+            VoiceFilterBox.DropDownStyle = ComboBoxStyle.DropDownList; VoiceFilterBox.Width = Px(160); VoiceFilterBox.Anchor = AnchorStyles.Left;
+            VoiceFilterBox.Items.AddRange(new object[] { "All voices", "English only", "American only", "British only" });
+            VoiceFilterBox.SelectedIndex = 0;
+            filterLine.Controls.Add(Beside("Show"), 0, 0); filterLine.Controls.Add(VoiceFilterBox, 1, 0);
+            Row(addGrid, filterLine);
             AddList = NewList(true);
             AddList.Columns.Add("Voice", Px(220));
             AddList.Columns.Add("Accent", Px(90));
@@ -1469,9 +1487,12 @@ namespace ModernVoicesConfig
                 item.Tag = v;
                 item.Checked = speakersOf.ContainsKey(v.Key);
                 if (item.Checked) { item.Font = boldFont; }
+                VoiceItems.Add(item);
                 AddList.Items.Add(item);
             }
+            // The room left over is shared by the two lists: the voices' two fifths, the speakers' three.
             Row(addGrid, AddList, true);
+            addGrid.RowStyles[addGrid.RowCount - 1] = new RowStyle(SizeType.Percent, 42f);
             TableLayoutPanel playLine = Line("auto", "auto", "fill");
             Button play = Btn("Play sample");
             // Off at every start (not remembered): lists only the ticked speakers, to find the installed ones.
@@ -1487,9 +1508,10 @@ namespace ModernVoicesConfig
             SpeakerList = new CheckedListBox();
             SpeakerList.MultiColumn = true; SpeakerList.ColumnWidth = Px(90); SpeakerList.CheckOnClick = true;
             SpeakerList.IntegralHeight = false; SpeakerList.Enabled = false;
-            SpeakerList.Dock = DockStyle.Fill; SpeakerList.Height = Px(110);
+            SpeakerList.Dock = DockStyle.Fill;
             SpeakerList.MinimumSize = new Size(0, Px(110));
-            Row(addGrid, SpeakerList);
+            Row(addGrid, SpeakerList, true);
+            addGrid.RowStyles[addGrid.RowCount - 1] = new RowStyle(SizeType.Percent, 58f);
             SizeLabel = Words("");
             Row(addGrid, SizeLabel);
             WarnLabel = Words("");
@@ -1503,10 +1525,10 @@ namespace ModernVoicesConfig
                 "(medium and high) are separate models: each takes its full size. Some programs (World of Warcraft, for one) take longer to " +
                 "start the more voices Windows has: keep the list to the ones you use.", true));
 
-            AddList.SelectedIndexChanged += delegate { UpdateSelection(); };
+            AddList.SelectedIndexChanged += delegate { if (!filtering) { UpdateSelection(); } };
             AddList.ItemChecked += delegate(object sender, ItemCheckedEventArgs e)
             {
-                if (Filling || !listsReady.Contains(AddList)) { return; }
+                if (Filling || filtering || !listsReady.Contains(AddList)) { return; }
                 UpdateSummary();
                 // The selected voice's speaker box follows its tick: a one-speaker voice's box is the voice's own
                 // tick, and the filtered list gains or loses the voice's speakers. After the event, not inside it.
@@ -1517,6 +1539,7 @@ namespace ModernVoicesConfig
                 }
             };
             OnlyTickedBox.CheckedChanged += delegate { UpdateSelection(); };
+            VoiceFilterBox.SelectedIndexChanged += delegate { ApplyVoiceFilter(); };
             // A click on a speaker's name only selects it (to play its sample); its box is what ticks it.
             SpeakerList.MouseDown += SpeakerMouseDown;
             SpeakerList.MouseUp += delegate { nameClick = false; };
@@ -1526,6 +1549,44 @@ namespace ModernVoicesConfig
             SpeakerList.SelectedIndexChanged += delegate { if (!Filling && SpeakerList.SelectedIndex >= 0) { PlaySample(); } };
             tab.Resize += delegate { UpdateAddLayout(); };
             tab.ClientSizeChanged += delegate { UpdateAddLayout(); };
+        }
+
+        // Whether the "Show" box lets a voice through.
+        public static bool FilterShows(int filter, Entry v)
+        {
+            if (filter == 1) { return v.Code.StartsWith("en", StringComparison.OrdinalIgnoreCase); }
+            if (filter == 2) { return v.Code == "en_US"; }
+            if (filter == 3) { return v.Code == "en_GB"; }
+            return true;
+        }
+        // The list shows the voices the "Show" box lets through. Rows not shown keep their ticks, and the
+        // voice selected stays selected if it is still shown.
+        public void ApplyVoiceFilter()
+        {
+            int filter = VoiceFilterBox.SelectedIndex;
+            ListViewItem selected = AddList.SelectedItems.Count > 0 ? AddList.SelectedItems[0] : null;
+            // (A row's tick is remembered apart from the list, in case Windows' list loses it on the way out or in.)
+            Dictionary<ListViewItem, bool> ticks = new Dictionary<ListViewItem, bool>();
+            foreach (ListViewItem item in VoiceItems) { ticks[item] = item.Checked; }
+            SaveSpeakers();
+            filtering = true;
+            AddList.BeginUpdate();
+            try
+            {
+                AddList.Items.Clear();
+                foreach (ListViewItem item in VoiceItems)
+                {
+                    if (FilterShows(filter, (Entry)item.Tag)) { AddList.Items.Add(item); }
+                }
+                foreach (ListViewItem item in VoiceItems)
+                {
+                    if (item.Checked != ticks[item]) { item.Checked = ticks[item]; }
+                }
+                if (selected != null && selected.ListView == AddList) { selected.Selected = true; selected.EnsureVisible(); }
+            }
+            finally { AddList.EndUpdate(); filtering = false; }
+            UpdateSelection();
+            UpdateSummary();
         }
 
         void SpeakerMouseDown(object sender, MouseEventArgs e)
@@ -1656,6 +1717,7 @@ namespace ModernVoicesConfig
         public void ShowPage(int index)
         {
             PageIndex = index;
+            if (DoneButton != null) { DoneButton.Visible = index == 3; }
             for (int i = 0; i < Pages.Count; i++)
             {
                 Pages[i].Visible = i == index;
@@ -2255,7 +2317,7 @@ namespace ModernVoicesConfig
         List<Entry> Ticked()
         {
             List<Entry> ticked = new List<Entry>();
-            foreach (ListViewItem item in AddList.Items) { if (item.Checked) { ticked.Add((Entry)item.Tag); } }
+            foreach (ListViewItem item in VoiceItems) { if (item.Checked) { ticked.Add((Entry)item.Tag); } }
             return ticked;
         }
 
@@ -2479,7 +2541,7 @@ namespace ModernVoicesConfig
             applyDefault = Voices.DefaultToken;
             ProgressSeen = 0;
             Busy = true;
-            pageHost.Enabled = false; tabStrip.Enabled = false; ApplyButton.Enabled = false; CloseButton.Enabled = false;
+            pageHost.Enabled = false; tabStrip.Enabled = false; ApplyButton.Enabled = false; DoneButton.Enabled = false; CloseButton.Enabled = false;
             Progress.Value = 0; Progress.Visible = true;
             Cursor = Cursors.WaitCursor;
             StatusLabel.Text = "Starting...";
@@ -2552,7 +2614,7 @@ namespace ModernVoicesConfig
         {
             Busy = false;
             Progress.Visible = false;
-            pageHost.Enabled = true; tabStrip.Enabled = true; ApplyButton.Enabled = true; CloseButton.Enabled = true;
+            pageHost.Enabled = true; tabStrip.Enabled = true; ApplyButton.Enabled = true; DoneButton.Enabled = true; CloseButton.Enabled = true;
             Cursor = Cursors.Default;
             Installed = Voices.InstalledIds();
             if (code == 0 || code == 2)
@@ -2564,7 +2626,7 @@ namespace ModernVoicesConfig
             Filling = true;
             try
             {
-                foreach (ListViewItem item in AddList.Items)
+                foreach (ListViewItem item in VoiceItems)
                 {
                     string key = ((Entry)item.Tag).Key;
                     bool isIn = false;
@@ -2900,6 +2962,7 @@ namespace ModernVoicesConfig
             if (args.Length >= 3 && args[0] == "--speak-check") { return Speak(args[1], args[2], true); }
             // The administrator's part: this program started again by its own window (see Helper).
             if (args.Length >= 3 && args[0] == "--helper") { return Helper.Run(args[1], args[2]); }
+            Startup.Begin();
             try { Native.SetProcessDPIAware(); } catch (Exception) { }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -2914,11 +2977,48 @@ namespace ModernVoicesConfig
             if (!first) { ShowTheOther(); return 0; }
             string problem;
             List<Entry> catalogue = Catalogue.Load(out problem);
+            Startup.Mark("voice list read");
             ConfigForm form = new ConfigForm(catalogue, Voices.InstalledIds(), Voices.UsEnglishTags);
+            Startup.Mark("window built");
             if (problem != null) { form.StatusLabel.Text = problem; }
+            form.Shown += delegate { Startup.Mark("window shown"); Startup.Save(); };
             Application.Run(form);
             GC.KeepAlive(running);
             return 0;
+        }
+
+        // How long starting took, step by step, kept in a small file (the last 30 starts): if the window is
+        // ever slow to open, it says whether the wait was before this program ran at all (Windows checking
+        // or loading it) or in a step of its own.
+        public static class Startup
+        {
+            static readonly Stopwatch watch = new Stopwatch();
+            static readonly StringBuilder steps = new StringBuilder();
+            public static int BeforeMain = -1;      // ms from Windows starting the program to its first line
+            public static string LogFile { get { return Path.Combine(Path.GetTempPath(), "ModernVoicesConfig-start.log"); } }
+
+            public static void Begin()
+            {
+                watch.Start();
+                try { BeforeMain = (int)(DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds; } catch (Exception) { }
+                steps.Append("Windows to program " + BeforeMain + " ms");
+            }
+            public static void Mark(string step)
+            {
+                steps.Append(", " + step + " at " + watch.ElapsedMilliseconds + " ms");
+            }
+            public static void Save()
+            {
+                try
+                {
+                    List<string> lines = new List<string>();
+                    if (File.Exists(LogFile)) { lines.AddRange(File.ReadAllLines(LogFile)); }
+                    lines.Add(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) + "  " + App.VersionText + "  " + steps);
+                    if (lines.Count > 30) { lines.RemoveRange(0, lines.Count - 30); }
+                    File.WriteAllLines(LogFile, lines.ToArray());
+                }
+                catch (Exception) { }
+            }
         }
 
         static void ShowTheOther()
@@ -3047,7 +3147,8 @@ namespace ModernVoicesConfig
             List<string> ids = real.Count > 0 ? real : new List<string>(new string[] { "en_GB-alba-medium", "en_GB-vctk-medium#p239" });
             DateTime started = DateTime.UtcNow;
             ConfigForm ui = new ConfigForm(catalogue, ids, Voices.UsEnglishTags);
-            Note("the window was built in " + (int)(DateTime.UtcNow - started).TotalMilliseconds + " ms");
+            Note("the window was built in " + (int)(DateTime.UtcNow - started).TotalMilliseconds + " ms; Windows took " + Program.Startup.BeforeMain +
+                " ms to start the program");
             ui.Show();
             Settle(200);
             // (Lists on tabs not yet opened are made now, as opening their tabs would.)
@@ -3129,6 +3230,50 @@ namespace ModernVoicesConfig
                 Settle(50);
                 Check(ui.SpeakerList.Items.Count == (was ? 1 : 0), "with \"Only show selected speakers\" on, it shows only if the voice is ticked");
                 ui.OnlyTickedBox.Checked = false;
+                Settle(50);
+            }
+
+            // The "Show" box: all voices as the window opens; American only lists those, British only those, and
+            // a voice not shown keeps its tick (what would be installed is the same throughout). Done is on this
+            // tab only and goes back to the Voice manager.
+            {
+                int american = 0, british = 0;
+                foreach (Entry v in catalogue) { if (v.Code == "en_US") { american++; } else if (v.Code == "en_GB") { british++; } }
+                Check(ui.VoiceFilterBox.SelectedIndex == 0 && ui.AddList.Items.Count == catalogue.Count, "\"Show\" is on All voices as the window opens");
+                ListViewItem gb = null;
+                foreach (ListViewItem item in ui.VoiceItems) { if (((Entry)item.Tag).Code == "en_GB" && !((Entry)item.Tag).Several && !item.Checked) { gb = item; break; } }
+                Check(gb != null, "the catalogue has a British voice not ticked");
+                if (gb != null) { gb.Checked = true; Settle(50); }
+                string before = string.Join(" ", ui.PickedIds().ToArray());
+                ui.VoiceFilterBox.SelectedIndex = 2;
+                Settle(50);
+                bool allAmerican = true;
+                foreach (ListViewItem item in ui.AddList.Items) { if (((Entry)item.Tag).Code != "en_US") { allAmerican = false; } }
+                Note("show American only: " + ui.AddList.Items.Count + " of " + catalogue.Count + " listed; " + ui.SizeLabel.Text);
+                Check(american > 0 && ui.AddList.Items.Count == american && allAmerican, "American only: the " + american + " American voices are listed");
+                Check(string.Join(" ", ui.PickedIds().ToArray()) == before && (gb == null || gb.Checked), "voices not shown keep their ticks");
+                ui.VoiceFilterBox.SelectedIndex = 3;
+                Settle(50);
+                Check(ui.AddList.Items.Count == british && (gb == null || (gb.ListView == ui.AddList && gb.Checked)) && string.Join(" ", ui.PickedIds().ToArray()) == before,
+                    "British only: the " + british + " British voices, ticked as before");
+                ui.VoiceFilterBox.SelectedIndex = 1;
+                Settle(50);
+                Check(ui.AddList.Items.Count == catalogue.Count, "English only: every voice (all are English for now)");
+                ui.VoiceFilterBox.SelectedIndex = 0;
+                Settle(50);
+                bool sameOrder = ui.AddList.Items.Count == ui.VoiceItems.Count;
+                for (int i = 0; sameOrder && i < ui.VoiceItems.Count; i++) { if (ui.AddList.Items[i] != ui.VoiceItems[i]) { sameOrder = false; } }
+                Check(sameOrder && string.Join(" ", ui.PickedIds().ToArray()) == before, "All voices again: the whole list in its order, ticked as before");
+                if (gb != null) { gb.Checked = false; Settle(50); }
+
+                int page = ui.PageIndex;
+                ui.ShowPage(3);
+                Settle(50);
+                bool onAdd = ui.DoneButton.Visible;
+                ui.DoneButton.PerformClick();
+                Settle(50);
+                Check(onAdd && ui.PageIndex == 0 && !ui.DoneButton.Visible, "Done shows on Add or remove voices only, and opens the Voice manager");
+                ui.ShowPage(page);
                 Settle(50);
             }
 

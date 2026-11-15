@@ -82,7 +82,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.12.4'
+$Version = '0.12.5'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -580,6 +580,12 @@ function Install-Engine {
             Remove-Leftovers $programFrom $programInto '*.exe'
             Remove-Leftovers $programFrom $programInto '*.dll'
         }
+    }
+    # A kit unzipped from a download carries Windows' "this came from the internet" mark on every file,
+    # and copies keep it. Windows then checks a marked program with its reputation service the first time
+    # it starts, which can hold the program's window back for a long while. The installed files lose the mark.
+    foreach ($marked in @((Join-Path $App 'config'), (Join-Path $App 'reader'), $Engine, $scripts)) {
+        try { Get-ChildItem $marked -Recurse -File -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue } catch { }
     }
 }
 
