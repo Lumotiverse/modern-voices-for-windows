@@ -188,11 +188,17 @@ function Measure-Speech([string]$Voice, [string]$Text, [int]$Rate = 0) {
     Write-Host "    measured ($Voice, rate $Rate): $line" -ForegroundColor DarkGray
     $r = $line | ConvertFrom-Json
     $longest = if (@($r.gaps).Count) { (@($r.gaps) | Measure-Object -Maximum).Maximum } else { 0 }
-    return [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Tail = [double]$r.tail }
+    return [pscustomobject]@{ Seconds = [double]$r.seconds; Longest = [double]$longest; Tail = [double]$r.tail; Gaps = @($r.gaps) }
 }
 function Check-Added([string]$What, $Without, $With, [double]$Expected, [double]$Slack) {
-    $added = $With.Longest - $Without.Longest
-    Check ([math]::Abs($added - $Expected) -le $Slack) ("{0}: +{1:N0} ms (expected {2:N0} +/- {3:N0}; longest gap {4:N0} -> {5:N0} ms)" -f $What, $added, $Expected, $Slack, $Without.Longest, $With.Longest)
+    # Without the gap, the silence where it goes can be too short to be counted as one (then there is one
+    # gap more with it, and other silences in the sentence may be longer): it is taken as nothing, give or
+    # take what a silence must be to count.
+    $fresh = @($With.Gaps).Count -gt @($Without.Gaps).Count
+    $baseline = if ($fresh) { 0 } else { $Without.Longest }
+    $allowed = if ($fresh) { [math]::Max($Slack, 50) } else { $Slack }
+    $added = $With.Longest - $baseline
+    Check ([math]::Abs($added - $Expected) -le $allowed) ("{0}: +{1:N0} ms (expected {2:N0} +/- {3:N0}; the gap {4:N0} -> {5:N0} ms)" -f $What, $added, $Expected, $allowed, $baseline, $With.Longest)
 }
 # Piper varies its timing (noise_w) and its sound (noise_scale, which can put a faint breath inside a
 # pause) a little each time it speaks: both off for these measurements, so that each "with" and
