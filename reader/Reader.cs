@@ -1781,6 +1781,10 @@ namespace ModernVoicesReader
         public string StatusText { get { return statusLabel.Text; } }
         public void TestStatus(string text) { Status(text); }
 
+        // What is being read now. A reading that was stopped can still have words on their way here:
+        // without this they would be taken as the new reading's (and move the place to where the old one was).
+        Prompt currentPrompt;
+
         public void Play()
         {
             if (mode == Mode.Paused) { PauseOrResume(); return; }
@@ -1817,7 +1821,7 @@ namespace ModernVoicesReader
                 ApplyVolume();
                 stopping = false;
                 finished = false;
-                synth.SpeakAsync(prepared.Text.Substring(start));
+                currentPrompt = synth.SpeakAsync(prepared.Text.Substring(start));
             }
             catch (Exception e)
             {
@@ -1893,7 +1897,7 @@ namespace ModernVoicesReader
         void OnProgress(object sender, SpeakProgressEventArgs e)
         {
             if (InvokeRequired) { BeginInvoke(new EventHandler<SpeakProgressEventArgs>(OnProgress), sender, e); return; }
-            if (mode == Mode.Stopped || prepared == null) { return; }
+            if (mode == Mode.Stopped || prepared == null || e.Prompt != currentPrompt) { return; }
             ProgressEvents++;
             spokenAt = Math.Min(prepared.Text.Length, spokenFrom + e.CharacterPosition);
             int start = prepared.Original(spokenAt);
@@ -1915,7 +1919,7 @@ namespace ModernVoicesReader
         void OnCompleted(object sender, SpeakCompletedEventArgs e)
         {
             if (InvokeRequired) { BeginInvoke(new EventHandler<SpeakCompletedEventArgs>(OnCompleted), sender, e); return; }
-            if (stopping || e.Cancelled) { return; }
+            if (stopping || e.Cancelled || e.Prompt != currentPrompt) { return; }
             // The end of the text: next time from its start.
             mode = Mode.Stopped;
             box.ReadOnly = false;
