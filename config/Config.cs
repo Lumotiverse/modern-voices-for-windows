@@ -3421,7 +3421,7 @@ namespace ModernVoicesConfig
                 ui.ShowPage(0);
                 Settle(50);
                 int lineBottom = ui.HeaderLineBottom;
-                int listTop = ui.InstalledList.PointToScreen(Point.Empty).Y;
+                int listTop = ui.InstalledList.Parent.PointToScreen(ui.InstalledList.Location).Y;      // (its outer edge)
                 int pageTop = ui.Pages[0].PointToScreen(Point.Empty).Y;
                 Note("header line ends at " + lineBottom + "; the Voice manager's page starts at " + pageTop + ", its list at " + listTop);
                 Check(lineBottom == pageTop && listTop == pageTop, "the Voice manager's list starts right under the header's line, where its scroll bar does");
