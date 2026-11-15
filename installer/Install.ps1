@@ -536,6 +536,9 @@ function Install-Engine {
     if (-not (Test-Path (Join-Path $source 'x64\modern_voices.dll'))) { throw "The engine is missing from $source." }
     if ($InPlace) { return }
     foreach ($dll in $Dll64, $Dll32) {
+        # (A program that has just finished speaking, as the voice test before an Apply straight after another,
+        # can take a moment to let go of the engine.)
+        for ($freeTry = 0; $freeTry -lt 16 -and -not (Test-FileFree $dll); $freeTry++) { Start-Sleep -Milliseconds 500 }
         if (-not (Test-FileFree $dll)) {
             throw "A program is using the voices now (the engine is in use: $dll). Close programs that speak, then run this again."
         }
