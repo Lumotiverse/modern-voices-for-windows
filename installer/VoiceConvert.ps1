@@ -5,7 +5,7 @@
 # How a voice sounds is set in its voice.json, which the engine reads while speaking (a change takes
 # effect from the next thing said, in programs already using the voice):
 #   "loudness": { "peak": 1, "boost": 1.5 }
-#     peak:  each sentence is scaled so its loudest moment is this (1 = full; 0 = off,
+#     peak:  each sentence is made this loud on the whole (1 = its loudest moments at full; 0 = off,
 #            as Piper made it)
 #     boost: above 1, the quieter parts are lifted more than the loud ones (a soft limiter, tanh), so
 #            the voice is louder overall without its peaks clipping. 1 = none, 1.5 mild, 2-3 strong.

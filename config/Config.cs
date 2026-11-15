@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.12.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.2.0")]
 
 namespace ModernVoicesConfig
 {
@@ -1314,7 +1314,7 @@ namespace ModernVoicesConfig
                 int snapped = (int)(Math.Round(volume.Value / 10.0, MidpointRounding.AwayFromZero) * 10);
                 if (volume.Value != snapped) { volume.Value = snapped; }
             };
-            Row(page, Words("Volume: each sentence's loudest moment (0 = as Piper made it; 100% = as loud as sound goes). " +
+            Row(page, Words("Volume: how loud the voice is, every line the same (0 = as Piper made it; 100% = as loud as speech goes). " +
                 "Boost: lifts quiet parts more than loud ones " +
                 "(higher sounds more compressed). Dictation speed: 100% = the speed for every voice (Speed and pauses tab). Unticked, the voice uses the pauses " +
                 "for every voice; ticked, its own.", true));

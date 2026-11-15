@@ -155,26 +155,60 @@ pub fn number(info: &str, key: &str, default: f32) -> f32 {
     rest[..end].parse().ok().filter(|v: &f32| v.is_finite() && *v >= 0.0).unwrap_or(default)
 }
 
-/// A sentence's audio made louder, as Piper's own program does and then some:
-///   peak:  scaled so its loudest moment is this (0.95 = just under full). 0 = left as it is.
+/// How loud a piece of speech is on the whole: the level (rms) of the louder half of its 1024-sample
+/// stretches (about 50 ms each), which leaves out the silence around and between its words.
+pub fn speech_level(audio: &[f32]) -> f32 {
+    let mut levels: Vec<f32> = audio.chunks(1024).map(|c| c.iter().map(|s| s * s).sum::<f32>() / c.len() as f32).collect();
+    if levels.is_empty() {
+        return 0.0;
+    }
+    levels.sort_by(|a, b| b.total_cmp(a));
+    let half = (levels.len() + 1) / 2;
+    (levels[..half].iter().sum::<f32>() / half as f32).sqrt()
+}
+
+/// A voice's loudest moments are about this many times its level on the whole (measured: 4.2 to 5 for
+/// Piper's voices, line by line from 2.4 to 7).
+const CREST: f32 = 4.2;
+
+/// A sentence's audio made as loud as the voice is set:
+///   peak:  1 = as loud as sound goes for speech (its loudest moments at full), 0.5 half that. 0 = left
+///          as the model made it.
 ///   boost: above 1, the quieter parts lifted more than the loud ones (tanh, a soft limiter), so it
 ///          is louder overall without its peaks clipping. 1 = none.
-/// The loudest moment is taken as at least 0.01, as Piper does, so near-silence is not blown up.
+/// Every line comes out as loud as the next. It is scaled by how loud it is on the whole
+/// (`speech_level`), not by its one loudest moment as before 0.12.2 (and as Piper's own program does):
+/// that way a line with a stray loud moment came out quiet, and a line without one (many short ones,
+/// "No.", "Hello there.") up to 8 dB louder than the rest. The moments that would now pass full are
+/// eased under it (the same soft limiter).
+/// The level is taken as at least what goes with a loudest moment of 0.01, so near-silence is not blown up.
 pub fn apply_loudness(audio: &mut [f32], peak: f32, boost: f32) {
     if peak <= 0.0 || audio.is_empty() {
         return;
     }
-    let loudest = audio.iter().fold(0f32, |m, s| m.max(s.abs())).max(0.01);
+    let full = (speech_level(audio) * CREST).max(0.01);
     if boost > 1.0001 {
+        // (What is at `full` comes out at the peak, as it always did; the little above it is eased under.)
         let level = peak / boost.tanh();
         for s in audio.iter_mut() {
-            *s = (*s / loudest * boost).tanh() * level;
+            *s = ease((*s / full * boost).tanh() * level, peak, 0.85);
         }
     } else {
-        let level = peak / loudest;
         for s in audio.iter_mut() {
-            *s *= level;
+            *s = ease(*s / full * peak, peak, 0.7);
         }
+    }
+}
+
+/// A sample kept under `peak`: unchanged up to `knee` of it, above that eased towards the peak (tanh),
+/// never past it.
+fn ease(sample: f32, peak: f32, knee: f32) -> f32 {
+    let (knee, room) = (knee * peak, (1.0 - knee) * peak);
+    let size = sample.abs();
+    if size <= knee {
+        sample
+    } else {
+        (knee + room * ((size - knee) / room).tanh()).copysign(sample)
     }
 }
 
@@ -571,27 +605,52 @@ mod tests {
 
     #[test]
     fn loudness() {
-        let quiet: Vec<f32> = (0..1000).map(|i| (i as f32 * 0.05).sin() * 0.3).collect();
+        // A tone at 0.3: its level on the whole is 0.3 / sqrt(2), so its tops come to sqrt(2) / CREST of full.
+        let quiet: Vec<f32> = (0..4096).map(|i| (i as f32 * 0.05).sin() * 0.3).collect();
         let loudest = |a: &[f32]| a.iter().fold(0f32, |m, s| m.max(s.abs()));
         let rms = |a: &[f32]| (a.iter().map(|s| s * s).sum::<f32>() / a.len() as f32).sqrt();
+        assert!((speech_level(&quiet) - 0.3 / 2f32.sqrt()).abs() < 0.003);
+        let tops = 2f32.sqrt() / CREST;
         let mut plain = quiet.clone();
         apply_loudness(&mut plain, 0.95, 1.0);
-        assert!((loudest(&plain) - 0.95).abs() < 1e-4);
+        assert!((loudest(&plain) - 0.95 * tops).abs() < 0.01, "{}", loudest(&plain));
         let mut boosted = quiet.clone();
         apply_loudness(&mut boosted, 0.95, 1.5);
-        assert!((loudest(&boosted) - 0.95).abs() < 1e-3);
+        assert!((loudest(&boosted) - (tops * 1.5).tanh() * 0.95 / 1.5f32.tanh()).abs() < 0.01 && loudest(&boosted) < 0.85 * 0.95);
         assert!(rms(&boosted) > rms(&plain));
-        // As the model stage it replaces computed it: tanh(n * k) * peak / tanh(k).
-        let n = 0.5f32;
-        let mut one = vec![0.3 * n, 0.3];
-        apply_loudness(&mut one, 0.8, 3.0);
-        assert!((one[0] - (n * 3.0).tanh() * 0.8 / 3f32.tanh()).abs() < 1e-5);
+        // Half the Volume: half as loud.
+        let mut half = quiet.clone();
+        apply_loudness(&mut half, 0.475, 1.0);
+        assert!((rms(&half) / rms(&plain) - 0.5).abs() < 1e-3);
+        // As loud as each other, whatever the model made them: the same line at a tenth, and one with
+        // a stray loud moment in it (which is eased under full, not let through or clipped).
+        for boost in [1.0f32, 1.5] {
+            let mut same = quiet.clone();
+            apply_loudness(&mut same, 0.95, boost);
+            let mut faint: Vec<f32> = quiet.iter().map(|s| s * 0.1).collect();
+            apply_loudness(&mut faint, 0.95, boost);
+            assert!((rms(&faint) / rms(&same) - 1.0).abs() < 1e-3);
+            let mut spiked = quiet.clone();
+            spiked[2000] = 0.9;
+            spiked[2001] = -1.2;
+            apply_loudness(&mut spiked, 0.95, boost);
+            assert!((rms(&spiked[..1024]) / rms(&same[..1024]) - 1.0).abs() < 0.02, "{}", rms(&spiked[..1024]) / rms(&same[..1024]));
+            assert!(loudest(&spiked) <= 0.95 + 1e-4 && loudest(&spiked) > 0.9);
+            assert!(spiked[2000] > 0.6 && spiked[2001] < -0.9);
+        }
+        // Off, silence, nothing.
         let mut off = quiet.clone();
         apply_loudness(&mut off, 0.0, 2.0);
         assert_eq!(off, quiet);
         let mut silence = vec![0.001f32; 10];
         apply_loudness(&mut silence, 0.95, 1.0);
         assert!((silence[0] - 0.095).abs() < 1e-6);
+        apply_loudness(&mut [], 0.95, 1.0);
+        assert_eq!(speech_level(&[]), 0.0);
+        // The louder half only: silence around the words does not count.
+        let mut padded = vec![0f32; 4096];
+        padded.extend(&quiet);
+        assert!((speech_level(&padded) - speech_level(&quiet)).abs() < 0.003);
     }
 
     #[test]

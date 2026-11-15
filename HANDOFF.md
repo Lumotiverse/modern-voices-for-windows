@@ -169,7 +169,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.12.1)
+## Current state (0.12.2)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last
@@ -297,6 +297,21 @@ one batch at a time; every batch so far is done and delivered. He installs each 
 position (by design: Play starts from the caret), so the bar and the time left jump to show what's left
 from there, even when he only clicked to type. He called it an "unintended feature". Ask whether he wants
 it kept, or the bar and time to change only while reading.
+
+**0.12.2 (his feedback on 0.12.1): "every now and again it says one of the lines really loud".**
+Cause, measured (sherpa-onnx in Python here: `pip install sherpa-onnx==1.12.40`, models from the
+k2-fsa/sherpa-onnx `tts-models` GitHub release; 2.x wheels have no espeak): the per-line PEAK
+normalisation that `apply_loudness` had from the start (as Piper's own program does). The models' raw
+output is even line to line (sd about 1 dB), but a line's one loudest moment is not: a line without a
+stray peak ("No.", "Hello there.", many short ones) came out up to 8 dB louder than the rest (Northern
+English Male: -13.5 to -5.2 dB). Now `apply_loudness` scales by `text::speech_level` (rms of the louder
+half of 1024-sample stretches) times `CREST` 4.2, and `ease`s what would pass the peak under it: the
+spread is under 1.5 dB on three voices, typical loudness as before or 1 dB more. A line's peak is no
+longer exactly the Volume (Test-Kit checks 0.6 to 1 of it). Not confirmed by ear.
+Start menu: he said Reader and Config were "still at the bottom" of Recently added. Unknown whether he
+installed over 0.12.0 (entries then kept their old creation order) or afresh. 0.12.2 remakes the
+entries once when their creation times are in the wrong order. If that still fails after a clean
+install, Windows does not order by creation time and the idea should be dropped (say so).
 
 **0.12.1 (his feedback on 0.12.0):** Volume back to 100% max. Voice manager: slider bars lowered by
 `Px(10)` (`ConfigForm.Lower`: the TrackBar is made that much shorter and given that top margin, so rows

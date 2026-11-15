@@ -82,7 +82,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.12.1'
+$Version = '0.12.2'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -695,6 +695,16 @@ function Register-Program {
     # in the order Uninstall, Repair, Test, Config, Reader, a moment apart, for the Reader to be on top
     # and Config under it. (Only when an entry is new: one already there is not "recently added" again.)
     $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
+    # Entries from a version that made them in another order (before 0.12.1) are made again, once: an
+    # update over one would otherwise keep that order, as entries already there are left as they are.
+    $menuNames = @('Modern Voices Repair.lnk', 'Modern Voices Test.lnk', 'Modern Voices Config.lnk', 'Modern Voices Reader.lnk')
+    $menuTimes = @($menuNames | ForEach-Object { Get-Item (Join-Path $StartMenu $_) -ErrorAction SilentlyContinue } | ForEach-Object { $_.CreationTimeUtc })
+    $menuWrong = $false
+    for ($menuAt = 1; $menuAt -lt $menuTimes.Count; $menuAt++) { if ($menuTimes[$menuAt] -le $menuTimes[$menuAt - 1]) { $menuWrong = $true } }
+    if ($menuWrong -and $menuTimes.Count -eq $menuNames.Count) {
+        foreach ($menuName in $menuNames + 'Uninstall.lnk') { Remove-Item (Join-Path $StartMenu $menuName) -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Milliseconds 1500
+    }
     $pause = { param([bool]$isFresh) if ($isFresh) { Start-Sleep -Milliseconds 1500 } }
     foreach ($menuItem in @(@('Uninstall.lnk', ($common + 'Uninstall.ps1"'), "Uninstall $AppName"),
                             @('Modern Voices Repair.lnk', ($common + 'Install.ps1" -Repair'), 'Register the voices again (if one went missing from programs)'),
