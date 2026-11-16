@@ -1,16 +1,29 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.12.6 (15 Nov 2026). Lumoti's batches so far are all done and delivered; wait
+Last updated at version 0.12.7 (16 Nov 2026). Lumoti's batches so far are all done and delivered; wait
 for his next one.
+
+## 0.12.7 (16 Nov 2026), delivered, not yet confirmed by him
+
+1. **Header line taken out, spacing kept.** `headerLine` stays as a 1 px spacer painted the page colour
+   (no Tag); `Palette.Line` is gone.
+2. **Play sample stops a sample playing.** `Sample.Playing` / `Sample.Check()` (a sample that played to
+   its end is let go: a 200 ms WinForms timer compares `MediaPlayer.Position` with `NaturalDuration`, so
+   no reliance on WPF events). The button reads "Stop sample" while one plays (`PlayButton`, minimum
+   width fits both words). Clicking a speaker's name still plays (restarts); only the button toggles.
+3. **Add or remove voices columns:** Voice, Speakers, Accent, Quality, Download, Catalogue key.
+4. **Sliders level with their labels:** `Lower` drops a slider Px(13) (was 10); Speed and pauses' sliders
+   are lowered too now (they weren't at all). Screenshots: label middle and slider line at the same y on
+   both tabs.
 
 ## 0.12.6 (15 Nov 2026), delivered, not yet confirmed by him
 
 He confirmed the 0.12.5 first-start fix ("it opened quicker"). The Reader had the same fix already.
 
 1. **Header bar (Config).** `tabStrip` (tabs | stretch | Open Reader | moon) has bottom padding equal to
-   the old gap (Px(6)+3, less the line), then `headerLine` (1 px Panel, Tag "line", `Palette.Line`, black
-   in both themes) docked Top under it. Docking order matters: `pageHost`, then `headerLine`, then
+   the old gap (Px(6)+3, less the line), then `headerLine` (1 px Panel; black until 0.12.7, now a page-coloured
+   spacer) docked Top under it. Docking order matters: `pageHost`, then `headerLine`, then
    `tabStrip` are added in that order. Pages and their scroll bars start below the line. The Voice
    manager's page has no top padding and `InstalledList` no top margin, so list top = scroll bar top =
    just under the line (self-test checks this; use the list's outer edge, `PointToScreen(Point.Empty)`
@@ -256,7 +269,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.12.6)
+## Current state (0.12.7)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last
