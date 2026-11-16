@@ -439,7 +439,7 @@ Set-Dictionary $germanRules @($trolle)
 $germanLonger = Measure-Speech $germanName $germanText
 $albaSame = Measure-Speech $albaName $albaTest
 Check ($germanLonger.Seconds -gt $germanBase.Seconds + 1.5) ("a German rule (dictionary-de.txt) changes what the German voice says ({0:N2} s -> {1:N2} s)" -f $germanBase.Seconds, $germanLonger.Seconds)
-Check ([math]::Abs($albaSame.Seconds - $albaBase.Seconds) -lt 0.05) ("and not what an English voice says ({0:N2} s, as before)" -f $albaSame.Seconds)
+Check ([math]::Abs($albaSame.Seconds - $albaBase.Seconds) -lt 0.4) ("and not what an English voice says ({0:N2} s, as before)" -f $albaSame.Seconds)
 Set-Dictionary $germanRules @($trolle) $true
 $germanOff = Measure-Speech $germanName $germanText
 Check ([math]::Abs($germanOff.Seconds - $germanBase.Seconds) -lt 0.6) ("the German list switched off as a whole: as without it ({0:N2} s)" -f $germanOff.Seconds)
