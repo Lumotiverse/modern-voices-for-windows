@@ -1,8 +1,69 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.12.7 (16 Nov 2026). Lumoti's batches so far are all done and delivered; wait
-for his next one.
+Last updated at version 0.13.0 (16 Nov 2026).
+
+## NEXT: the rest of his 16 Nov batch (held back for Opus 5.5 at his standing request)
+
+He asked for all of this in one message; the language part was done on Fable as 0.13.0, and these simple
+items were left for when he switches to Opus 5.5 and says "carry on" (he wants Opus-level work done on
+Opus to save his Fable allowance: tell him which model a batch suits BEFORE starting, and if he is on
+Fable for Opus-level work, recommend switching and wait). His words:
+
+1. "reduce the width of the preview text box so the left side aligns with the start of the volume/boost
+   sliders below. increase the gap between the preview box and the make default voice button above it by
+   100%." (Voice manager.)
+2. "change the speaker icon to the left of default voice display so it a clickable mute for the output
+   volume slider beside it." (The icon is at the output volume slider, right of the default voice box.)
+3. "'modify pause duration for selected voice' should be 'override pause duration for selected voice'"
+4. "move the open reader button down to left of the close button. remove apply changes button from any
+   tab that doesn't actually need it for a anything." (Apply changes only does something on Add or remove
+   voices; check `UpdateApply` for anything else it covers before hiding it elsewhere.)
+5. "the decription text at the bottom of each page is wordy and complicated and doesnt make sense if you
+   dont already understand how the program works. reword so it make sense to a layman or write it as
+   clear instructions or remove entirely. dont use world of warcraft as an example anywhere. also check
+   the other descriptions and make sure they are simple, clear and obvious" (Config's grey texts, the
+   new Additional languages window and "Rules for" note included; kit/README.txt also names World of
+   Warcraft, as does the installer's signature note and Config's Add or remove footnote.)
+6. "change the default comma pause value to 60ms." (`Store.CommaDefault`, the engine's default in
+   text.rs `Pauses`, the installer/VoiceConvert defaults, the "Defaults:" line, tests that assume 0.
+   Decide and tell him: existing installs with a saved 0 keep 0 unless he presses Reset to defaults.)
+7. "change the description under dictation speed slider to 'Change how fast all voices speak. You can
+   then adjust each voice individually in voice manager, to account for any differences'"
+
+## 0.13.0 (16 Nov 2026), delivered, not yet confirmed by him: other languages
+
+His ask: Windows' language table for every language; an "Additional languages" button with a tick list
+(easy European languages only); ticked languages join Add or remove voices and the "Show" dropdown;
+pronunciation lists per language, used by that language's voices; a way to switch a list off.
+
+- **Engine:** a voice's language is the letters before `_` in its model folder (`text::language_of`,
+  kept in `Voice.language`). Rules: `dictionary.txt` for English, `dictionary-<lang>.txt` for others
+  (`text::dictionary_file`). A line `#off` anywhere in a list switches the whole list off. `money()`
+  (pounds/dollars said the English way) runs for English voices only.
+- **Installer:** `Get-Catalogue` returns every language (objects have `Family`); `$Lcids` covers all of
+  Piper's language codes (unknown: 409); `-UsEnglishTags` only touches English voices; a fresh install's
+  default voices are still English. `Set-Dictionary ... $true` writes `#off`; `Add-DefaultRules` keeps it.
+- **Accent** (the word in brackets in a voice's name) is worked out the same way in Install.ps1
+  (`Get-Catalogue`) and Config (`Catalogue.Parse`): British/American; else the language's English name,
+  plus ", Country" when the catalogue has that language from several countries ("Spanish, Mexico").
+  Keep the two in step or names will differ between Config and Windows.
+- **Config:** `Catalogue.Offered` is the list of languages offered (European, left to right, spaces
+  between words; Cyrillic and Greek included; no Arabic/Persian/Hebrew/Chinese etc.). `Languages.Enabled`
+  (HKCU `Languages`, space-separated; `Override` for the self-test). `LanguageShown(family)`: English,
+  enabled, or has a ticked voice (installed voices are never hidden). `FillLanguageChoices` fills both
+  "Show" (`LanguageChoice` items; the first four are as before) and the Pronunciation tab's "Rules for".
+  `LanguagesDialog` builds the tick window (`ChooseLanguages` shows it; `SetLanguages` applies).
+  Pronunciation: `wordFamily`, `App.DictionaryFor`, "Use these rules" (`WordListOnBox`) writes `#off`.
+- **Where I departed from his words (told him):** he asked for a button opening a window of pronunciation
+  lists to enable/disable; I put a "Rules for" dropdown and a "Use these rules" tick on the tab instead,
+  since a selector is needed anyway to say which list is shown. Default rules exist for English only:
+  no invented lists for languages neither of us can check.
+- **Tests:** engine unit tests (language_of, #off); Config self-test (German chosen/unchosen, its rules
+  file, pictures languages.png and german.png); Test-Kit installs de_DE-thorsten-medium, checks Language
+  407, that it speaks, and that a German rule changes German speech only.
+- **Not done / ideas:** Preview text and "Hear it" are English whatever the voice; Reader untouched; no
+  default rules for other languages; sentence/pause handling untested by ear in any other language.
 
 ## 0.12.7 (16 Nov 2026), delivered, not yet confirmed by him
 
@@ -269,7 +330,7 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
 - Piper's output varies slightly between runs, so tests compare with tolerances, and gap tests set
   noise to (almost) 0.
 
-## Current state (0.12.7)
+## Current state (0.13.0)
 
 Everything above works and is tested on the CI Windows machine. Lumoti uses it daily and sends UI tweaks
 one batch at a time; every batch so far is done and delivered. He installs each build over the last

@@ -3763,11 +3763,11 @@ namespace ModernVoicesConfig
             // after the English ones and it has a choice in "Show" and in the Pronunciation tab's "Rules for";
             // its rules are its own file, which can be switched off as a whole; unchosen, all as before.
             {
-                List<KeyValuePair<string, string>> others = ui.OtherLanguages();
-                string german = null;
-                foreach (KeyValuePair<string, string> other in others) { if (other.Key == "de") { german = other.Value; } }
-                Note("other languages offered: " + others.Count + (german == null ? " (no German)" : ""));
-                Check(others.Count >= 10 && german != null, "the catalogue's other languages are offered (" + others.Count + ")");
+                List<KeyValuePair<string, string>> offeredLanguages = ui.OtherLanguages();
+                string germanName = null;
+                foreach (KeyValuePair<string, string> offeredLanguage in offeredLanguages) { if (offeredLanguage.Key == "de") { germanName = offeredLanguage.Value; } }
+                Note("other languages offered: " + offeredLanguages.Count + (germanName == null ? " (no German)" : ""));
+                Check(offeredLanguages.Count >= 10 && germanName != null, "the catalogue's other languages are offered (" + offeredLanguages.Count + ")");
                 bool noneBadly = true;
                 foreach (Entry v in everything) { if (v.Family == "ar" || v.Family == "fa" || v.Family == "zh" || v.Family == "he") { noneBadly = false; } }
                 Check(noneBadly, "languages written right to left or without spaces are not offered");
@@ -3777,7 +3777,7 @@ namespace ModernVoicesConfig
                 List<string> languageFamilies;
                 using (Form languageDialog = ui.LanguagesDialog(out languageBoxes, out languageFamilies))
                 {
-                    Check(languageBoxes.Items.Count == others.Count && languageBoxes.CheckedItems.Count == 0, "the Additional languages window lists them, none ticked");
+                    Check(languageBoxes.Items.Count == offeredLanguages.Count && languageBoxes.CheckedItems.Count == 0, "the Additional languages window lists them, none ticked");
                     if (pictures)
                     {
                         languageDialog.StartPosition = FormStartPosition.Manual; languageDialog.Location = new Point(40, 40);
@@ -3791,11 +3791,11 @@ namespace ModernVoicesConfig
                                 shot.Save(Path.Combine(folder, "languages.png"), ImageFormat.Png);
                             }
                         }
-                        catch (Exception e) { Note("no picture of the languages window: " + e.Message); }
+                        catch (Exception pictureError) { Note("no picture of the languages window: " + pictureError.Message); }
                         languageDialog.Hide();
                     }
                 }
-                if (german != null)
+                if (germanName != null)
                 {
                     int germanVoices = 0;
                     foreach (Entry v in everything) { if (v.Family == "de") { germanVoices++; } }
@@ -3803,12 +3803,12 @@ namespace ModernVoicesConfig
                     Settle(50);
                     LanguageChoice lastShow = ui.VoiceFilterBox.Items[ui.VoiceFilterBox.Items.Count - 1] as LanguageChoice;
                     Note("German chosen: " + ui.AddList.Items.Count + " voices listed (" + germanVoices + " German); Show has \"" + (lastShow == null ? "?" : lastShow.Text) + "\"");
-                    Check(ui.AddList.Items.Count == catalogue.Count + germanVoices && ui.VoiceFilterBox.Items.Count == 5 && lastShow != null && lastShow.Text == german + " only",
-                        "German chosen: its " + germanVoices + " voices are listed, and Show has \"" + german + " only\"");
+                    Check(ui.AddList.Items.Count == catalogue.Count + germanVoices && ui.VoiceFilterBox.Items.Count == 5 && lastShow != null && lastShow.Text == germanName + " only",
+                        "German chosen: its " + germanVoices + " voices are listed, and Show has \"" + germanName + " only\"");
                     Check(((Entry)ui.AddList.Items[0].Tag).Family == "en" && ((Entry)ui.AddList.Items[ui.AddList.Items.Count - 1].Tag).Family == "de", "the English voices come first");
                     ui.VoiceFilterBox.SelectedIndex = 4;
                     Settle(50);
-                    Check(ui.AddList.Items.Count == germanVoices, "\"" + german + " only\" lists just those");
+                    Check(ui.AddList.Items.Count == germanVoices, "\"" + germanName + " only\" lists just those");
                     if (pictures) { ui.ShowPage(3); Settle(100); ui.Picture(Path.Combine(folder, "german.png")); }
                     ui.VoiceFilterBox.SelectedIndex = 0;
                     Settle(50);
@@ -3822,14 +3822,14 @@ namespace ModernVoicesConfig
                         if (hadGermanFile) { File.Delete(germanFile); }
                         int englishRules = ui.WordList.Items.Count;
                         string englishText = File.Exists(App.DictionaryFile) ? File.ReadAllText(App.DictionaryFile) : "";
-                        Check(ui.WordLanguageBox.Items.Count == 2, "the Pronunciation tab has rules for English and " + german);
+                        Check(ui.WordLanguageBox.Items.Count == 2, "the Pronunciation tab has rules for English and " + germanName);
                         ui.WordLanguageBox.SelectedIndex = 1;
                         Settle(50);
-                        Check(ui.WordList.Items.Count == 0 && ui.WordListOnBox.Checked && !File.Exists(germanFile), german + "'s rules start empty, in use, with no file");
+                        Check(ui.WordList.Items.Count == 0 && ui.WordListOnBox.Checked && !File.Exists(germanFile), germanName + "'s rules start empty, in use, with no file");
                         Store.SetDictionary(germanFile, new Rule[] { new Rule { On = true, Whole = true, Case = false, From = "zB", To = "zum Beispiel" } });
                         ui.UpdateWordList();
                         Settle(50);
-                        Check(ui.WordList.Items.Count == 1 && Path.GetFileName(germanFile) == "dictionary-de.txt", "a " + german + " rule is listed from dictionary-de.txt");
+                        Check(ui.WordList.Items.Count == 1 && Path.GetFileName(germanFile) == "dictionary-de.txt", "a " + germanName + " rule is listed from dictionary-de.txt");
                         ui.WordListOnBox.Checked = false;
                         Settle(50);
                         Check(Store.DictionaryOff(germanFile) && Store.GetDictionary(germanFile).Count == 1, "\"Use these rules\" unticked: the list is switched off, its rule kept");
