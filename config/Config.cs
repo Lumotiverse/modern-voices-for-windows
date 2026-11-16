@@ -2518,7 +2518,11 @@ namespace ModernVoicesConfig
             // The X, in the top right corner (over the rows).
             Label x = new Label();
             x.Text = "\u2715"; x.AutoSize = false; x.Size = new Size(Px(34), Px(30)); x.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-            x.Font = new Font(Font.FontFamily, Font.Size + 2f); x.ForeColor = palette.Text; x.BackColor = palette.Input; x.Cursor = Cursors.Hand;
+            x.Font = new Font(Font.FontFamily, Font.Size + 2f, FontStyle.Bold); x.ForeColor = palette.Text; x.BackColor = palette.Input; x.Cursor = Cursors.Hand;
+            // (Windows' own close symbol where it has its symbols; else the letter.)
+            Font closeSymbols = new Font("Segoe MDL2 Assets", Font.Size + 1f);
+            if (closeSymbols.Name == "Segoe MDL2 Assets") { x.Font = closeSymbols; x.Text = "\uE8BB"; } else { x.Text = "X"; }
+            x.Name = "close";
             x.Location = new Point(window.ClientSize.Width - x.Width - Px(4), Px(4));
             x.MouseEnter += delegate { x.BackColor = Color.FromArgb(196, 43, 28); x.ForeColor = Color.White; };
             x.MouseLeave += delegate { x.BackColor = palette.Input; x.ForeColor = palette.Text; };
@@ -4419,6 +4423,8 @@ namespace ModernVoicesConfig
                     bool allNamed = poweredText.Contains("MODERN VOICES") && poweredText.Contains("Powered By...") && poweredText.Contains(Credit.Thanks);
                     foreach (Credit credit in Credit.All) { if (!poweredText.Contains(credit.Name) || !poweredText.Contains(credit.By)) { allNamed = false; } }
                     Check(allNamed, "\"Powered by\" names the program and each project with its author, and thanks the voices");
+                    Control corner = powered.GetChildAtPoint(new Point(powered.ClientSize.Width - 16, 16));
+                    Check(corner != null && corner.Name == "close" && corner.Text.Length == 1, "its X is in the top right corner, over the rest");
                     if (pictures) { SavePicture(powered, Path.Combine(folder, "powered-by.png")); }
                 }
                 Check(ui.AboutButton.Visible && ui.AboutButton.PointToScreen(Point.Empty).X < ui.ThemeButton.PointToScreen(Point.Empty).X, "About is in the header, left of the moon");
