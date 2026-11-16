@@ -1,9 +1,37 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.13.1 (16 Nov 2026). Lumoti's batches so far are all done and delivered; wait
-for his next one. Model rule: say which model a batch suits BEFORE starting; Opus-level work while he is
-on Fable: recommend switching and wait.
+Last updated at version 0.13.2 (16 Nov 2026). Model rule: say which model a batch suits BEFORE
+starting; Opus-level work while he is on Fable: recommend switching and wait.
+
+## 0.13.2 (16 Nov 2026): COMMITTED BUT NOT BUILT
+
+GitHub refused to run the build (run #109, every job, in 2 s): "recent account payments have failed or
+your spending limit needs to be increased" (Actions minutes on his account). Nothing in 0.13.2 has been
+compiled or tested. When builds run again: push (or re-run the workflow), fix whatever fails, check the
+screenshots (Voice manager notes under sliders, Add or remove voices order, Speed and pauses reset
+spacing), then deliver ModernVoicesForWindows0.13.2.zip.
+
+His asks, and what was written:
+1. Installer: a yellow note before "testing each voice through Windows' speech API" that the first start
+   of Config or the Reader after installing may take a while.
+2. Busy pointer while starting: `Application.UseWaitCursor` on from Main until the form's Shown, in
+   Config and the Reader. (Can't cover the wait before the program runs at all, Windows' check: told him.)
+3. Add or remove voices: Show + Additional languages at the top; the instruction line under them (12 px
+   above), then the list.
+4. Speed and pauses: full stop after the dictation speed line; Reset to defaults line 18 px lower.
+5. Voice manager: one note under each slider (Volume, Boost, Dictation speed, via `AddNote(soundGrid)`);
+   only "Changes are saved straight away: press Preview to hear them." at the bottom.
+6. Preview text in the voice's language: `PreviewTexts` (English = his new wording, verbatim; one
+   translation per `Catalogue.Offered` language, written by Claude, unchecked; 'Paragraph gap' kept in
+   English as the window says it). The box switches language when a voice is selected, unless the text
+   was typed over (`IsOneOfThem`, which also knows the pre-0.13.2 English text, `App.OldPreviewText`).
+   The Speed tab's Preview uses the chosen voice's language the same way (`languageOfVoice`).
+7. README: other languages (interface English, translations unchecked, less tested, no ready-made
+   rules, how to find and share the dictionary files in C:\ProgramData\Modern Voices for Windows),
+   how it was made (£18, one month of Claude Pro, can't afford to maintain), the first-start hang as
+   the one known bug, testing (Windows 10; once on Windows 11), Balabolka, free and open source, and
+   the star line reworded ("if you star this one, star that one too").
 
 ## 0.13.1 (16 Nov 2026), delivered, not yet confirmed by him: the rest of his 16 Nov batch
 
