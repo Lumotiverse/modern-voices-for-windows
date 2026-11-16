@@ -1515,7 +1515,9 @@ namespace ModernVoicesConfig
             {
                 TrackBar first = Sliders["Volume"].Bar;
                 if (!first.IsHandleCreated || !previewLine.IsHandleCreated) { return; }
-                int wanted = first.PointToScreen(Point.Empty).X - previewLine.PointToScreen(Point.Empty).X - PreviewBox.Margin.Left;
+                // (The label's column widened or narrowed by however far the box's edge is from the sliders'.)
+                int now = previewLine.GetColumnWidths()[0];
+                int wanted = now + first.PointToScreen(Point.Empty).X - PreviewBox.PointToScreen(Point.Empty).X;
                 wanted = Math.Max(wanted, previewLabel.PreferredSize.Width + previewLabel.Margin.Horizontal);
                 ColumnStyle column = previewLine.ColumnStyles[0];
                 if (column.SizeType != SizeType.Absolute || Math.Abs(column.Width - wanted) > 0.5f)
@@ -3751,12 +3753,16 @@ namespace ModernVoicesConfig
                 Settle(20);
                 Check(!applyShown[0] && !applyShown[1] && !applyShown[2] && applyShown[3], "Apply changes shows on Add or remove voices only");
                 int volumeWas = ui.OutputBar.Value;
+                bool settingsHad = File.Exists(App.SettingsFile);
                 ui.OutputBar.Value = 70;
                 ui.ToggleMute();
                 bool muted = ui.OutputBar.Value == 0 && ui.MuteIcon.Text != "\uE767";
                 ui.ToggleMute();
                 Check(muted && ui.OutputBar.Value == 70, "the speaker mutes the output volume, and clicked again puts it back (70%)");
                 ui.OutputBar.Value = volumeWas;
+                // (Nothing saved by it: a settings file the test made would hide the installer's defaults.)
+                ui.StopTimers();
+                if (!settingsHad && File.Exists(App.SettingsFile)) { File.Delete(App.SettingsFile); }
                 ui.ShowPage(0);
                 Settle(100);
                 int boxLeft = ui.PreviewBox.PointToScreen(Point.Empty).X;
@@ -3965,7 +3971,7 @@ namespace ModernVoicesConfig
                 string silent = ui.OutputValue.Text;
                 ui.SaveOutput();
                 ui.StopTimers();
-                Check(outputWas == 100 && outputNow == 40 && Store.GetOutput(App.SettingsFile) == 0 && silent.Contains("silent") && Store.GetGlobalSpeed(App.SettingsFile) == speedBefore,
+                Check(outputWas == 100 && outputNow == 40 && Store.GetOutput(App.SettingsFile) == 0 && silent.Contains("muted") && Store.GetGlobalSpeed(App.SettingsFile) == speedBefore,
                     "output volume: " + outputWas + "% -> " + outputNow + "% -> 0% ('" + silent + "'), the speed beside it in the file untouched");
                 Store.SetOutput(App.SettingsFile, outputWas);
                 ui.UpdateOutput();
