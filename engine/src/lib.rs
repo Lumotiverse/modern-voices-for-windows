@@ -351,7 +351,10 @@ const NOISE_W: f32 = 0.65;
 /// and 0.8 become 0.5 and 0.6). A model is loaded with it, so a change is heard from the next time a
 /// program takes up a voice (a model loaded with another amount is another model here).
 fn load_model(model_dir: &str, data_dir: &str, settings_file: Option<&str>) -> Option<Arc<Model>> {
-    let varied = variation(&settings_file.and_then(|path| std::fs::read_to_string(path).ok()).unwrap_or_default());
+    // (A voice that overrides the settings for every voice can have its own: its own settings file's.)
+    let own = settings_file.and_then(|path| std::fs::read_to_string(own_file(path, model_dir)).ok()).unwrap_or_default();
+    let varied = own_variation(&own)
+        .unwrap_or_else(|| variation(&settings_file.and_then(|path| std::fs::read_to_string(path).ok()).unwrap_or_default()));
     let key = format!("{model_dir}|{data_dir}|{:.0}", varied * 100.0);
     let slot = slots().lock().ok()?.entry(key.clone())
         .or_insert_with(|| Arc::new(Slot { model: Mutex::new(None), used: AtomicU64::new(0) })).clone();

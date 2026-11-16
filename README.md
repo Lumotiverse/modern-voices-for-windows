@@ -12,6 +12,11 @@ added (see [Other languages](#other-languages)).
 
 Modern Voices for Windows is free to use and open source.
 
+**Better voices for Balabolka, and other text to speech programs.** If you are looking for more natural
+voices for [Balabolka](https://www.cross-plus-a.com/balabolka.htm), or any other reader that lists
+Windows' SAPI 5 voices, these appear in its voice list as soon as they are installed, in place of the
+old Microsoft David, Zira and Hazel.
+
 ## Who wrote the code
 
 All work (including uploading to GitHub) was done by Claude.ai
@@ -79,9 +84,8 @@ The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES
 | **Modern Voices Repair** | Registers the voices with Windows again, if a large Windows update makes them vanish from programs. |
 | **Modern Voices Test** | Speaks with each voice and shows what the engine reports, to find out whether a problem is with the voices or with the program using them. |
 
-**It is a simple install.** There are no registry values to edit and nothing to download or set up by
-hand: run the installer, and pick any further voices from a list inside the program, which downloads
-and registers them for you.
+**It is a simple install.** No manual registry editing or locating voice packs online. Just install,
+select the voices you want to add from the list, and everything should work.
 
 To install, download `ModernVoicesForWindows<version>.zip` from
 [Releases](../../releases), unzip it and run `Install.cmd`. To update, do the same with the new

@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.13.3
+Modern Voices for Windows 0.14.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -124,7 +124,8 @@ On the Speed and pauses tab, for every voice:
                   each part of a sentence separately so the pause can go between them, which can make
                   the intonation a little more broken up.
 
-Advanced setting, at the bottom of the tab: Voice variation. How much a voice changes its tone and
+(A voice can have its own variation too: tick "Override pause duration and variation for the
+selected voice" on the Voice manager.) Advanced setting, at the bottom of the tab: Voice variation. How much a voice changes its tone and
 rhythm each time it speaks: lower is steadier, higher is livelier. 100% is how the voices were made,
 75% is the default. Programs already open use a new value after they are restarted.
 
@@ -139,7 +140,7 @@ Speech settings, sapi.cpl), for programs that leave the speed to Windows: when t
 says so, with a button to set it to 0. Set the speed here instead, and leave Windows' and the
 program's at 0 unless you want faster still.
 
-A voice can have its own: in the Voice manager, tick "Override pause duration for the selected voice" and
+A voice can have its own: in the Voice manager, tick "Override pause duration and variation for the selected voice" and
 set its three pauses. Changes apply straight away, like volume. Preview on this tab says the Voice
 manager's line with the voice chosen beside it.
 
@@ -231,8 +232,9 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     voice can (not played). About 2.6 MB a minute.
   * Undo (Ctrl+Z) and redo (Ctrl+Y), or the two arrow buttons beside Clear, take back and put
     back the last ten changes to the text: typing, a paste, a file opened, Clear.
-  * The box starts empty each time: its text is not kept when the Reader is closed (a file's
-    place is: open the file again and Play goes on from where you stopped).
+  * Closed with text in the box, the Reader asks "Save text for next time?": Yes and the text is
+    there, at its place, the next time it opens; No and it opens empty. (A file's place is kept
+    either way: open the file again and Play goes on from where you stopped.)
   * Opened while it is already running, the Reader asks whether to start a second one; Cancel
     shows the one that is open.
   * Sums of money are said the way they are read aloud, by every program that uses the voices:

@@ -269,6 +269,13 @@ pub fn variation(info: &str) -> f32 {
     number(info, "variation_percent", DEFAULT_VARIATION_PERCENT).clamp(0.0, 150.0) / 100.0
 }
 
+/// A voice's own variation, from its own settings file: its `own_variation_percent`, when the voice
+/// overrides the settings for every voice (`"own_pauses": 1`, the one tick for both). None otherwise.
+pub fn own_variation(info: &str) -> Option<f32> {
+    let percent = number(info, "own_variation_percent", -1.0);
+    (number(info, "own_pauses", 0.0) >= 1.0 && percent >= 0.0).then(|| percent.clamp(0.0, 150.0) / 100.0)
+}
+
 /// Samples of silence for a pause of `ms` (at normal speed) when speaking `speed` times as fast:
 /// faster speech, shorter pauses, in proportion.
 pub fn gap_samples(ms: f32, speed: f32, sample_rate: u32) -> usize {
@@ -798,6 +805,13 @@ mod tests {
         assert_eq!(variation(r#"{ "speed_percent": 100, "variation_percent": 100 }"#), 1.0);
         assert_eq!(variation(r#"{ "variation_percent": 0 }"#), 0.0);
         assert_eq!(variation(r#"{ "variation_percent": 400 }"#), 1.5);
+        // A voice's own: only with its override on, and set.
+        assert_eq!(own_variation(r#"{ "own_variation_percent": 120, "pauses": { "own_pauses": 1 } }"#), Some(1.2));
+        assert_eq!(own_variation(r#"{ "own_variation_percent": 120, "pauses": { "own_pauses": 0 } }"#), None);
+        assert_eq!(own_variation(r#"{ "pauses": { "own_pauses": 1 } }"#), None);
+        assert_eq!(own_variation(r#"{ "own_variation_percent": 0, "pauses": { "own_pauses": 1 } }"#), Some(0.0));
+        // (The key for every voice is not found in a voice's own, nor the other way round.)
+        assert_eq!(variation(r#"{ "own_variation_percent": 120 }"#), 0.75);
     }
 
     #[test]

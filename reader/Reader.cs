@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.13.3.0")]
+[assembly: System.Reflection.AssemblyVersion("0.14.0.0")]
 
 namespace ModernVoicesReader
 {
@@ -618,6 +618,7 @@ namespace ModernVoicesReader
         public int Position;                 // in the text in the box
         public string OpenedFile = "";       // the file the box's text came from, while it is unchanged
         public bool ScreenWarningOff;        // "Do not display this warning again" was ticked (Read screen's warning)
+        public bool KeepText;                // "Save text for next time?" was answered Yes as the Reader closed
         public int[] Bounds = new int[0];
         public Dictionary<string, Place> Places = new Dictionary<string, Place>();
     }
@@ -1775,9 +1776,7 @@ namespace ModernVoicesReader
             voiceIndex = chosen;
             ReadDefaultVoice();
             UpdateNickButton();
-            // The box starts empty: its text is not kept when the program is closed (nor what an older version kept).
-            box.Text = ""; position = 0; s.Position = 0; s.OpenedFile = "";
-            try { if (File.Exists(store.CurrentFile)) { File.Delete(store.CurrentFile); } } catch (Exception) { }
+            RestoreKeptText();
             loading = false;
             RateChanged();
             ShowPlace();
@@ -1785,10 +1784,34 @@ namespace ModernVoicesReader
             else if (position > 0 && position < box.TextLength) { Status("Play goes on from where you stopped."); }
         }
 
+        // The box starts with the text kept as the Reader was last closed ("Save text for next time?": Yes),
+        // at the place it had; else empty. Kept for one start: closing asks again.
+        public void RestoreKeptText()
+        {
+            State s = store.State;
+            string kept = s.KeepText ? store.Read(store.CurrentFile) : "";
+            bool was = loading;
+            loading = true;
+            box.Text = kept;
+            position = kept.Length > 0 ? Math.Max(0, Math.Min(kept.Length, s.Position)) : 0;
+            loading = was;
+            heldText = kept; heldCaret = position;
+            s.KeepText = false; s.Position = 0; s.OpenedFile = "";
+            try { if (File.Exists(store.CurrentFile)) { File.Delete(store.CurrentFile); } } catch (Exception) { }
+        }
+        // As the Reader closes: the text is kept for the next start, or not.
+        public void KeepTextForNextTime(bool keep)
+        {
+            State s = store.State;
+            s.KeepText = keep && box.Text.Trim().Length > 0;
+            if (s.KeepText) { store.Write(store.CurrentFile, box.Text); s.Position = position; }
+            else { s.Position = 0; try { if (File.Exists(store.CurrentFile)) { File.Delete(store.CurrentFile); } } catch (Exception) { } }
+            store.Save();
+        }
         void Remember()
         {
             State s = store.State;
-            s.Position = 0;                    // (the box's text is not kept; a file's place is)
+            if (!s.KeepText) { s.Position = 0; }      // (the box's text is kept only when asked for; a file's place is)
             if (s.OpenedFile != "") { store.KeepPlace(s.OpenedFile, position, box.TextLength); }
             if (WindowState == FormWindowState.Normal) { s.Bounds = new int[] { Left, Top, Width, Height }; }
             store.Save();
@@ -2439,6 +2462,11 @@ namespace ModernVoicesReader
         {
             if (mode != Mode.Stopped) { Halt(); }
             if (saver != null) { try { saver.SpeakAsyncCancelAll(); } catch (Exception) { } SavingEnded(false, ""); }
+            // Text in the box: kept for next time, if wanted.
+            if (!silent && e.CloseReason == CloseReason.UserClosing && box.Text.Trim().Length > 0)
+            {
+                using (Form ask = Program.SaveTextWindow()) { KeepTextForNextTime(ask.ShowDialog(this) == DialogResult.Yes); }
+            }
             Remember();
             try { RemoveClipboardFormatListener(Handle); } catch (Exception) { }
             if (nickHelper) { AskNickHelper("quit", 300); }      // (it would end by itself within a second too)
@@ -2554,6 +2582,13 @@ namespace ModernVoicesReader
             return AskWindow("Modern Voices is already running. Would you like to start a 2nd instance?", null, out none);
         }
 
+        // Closing with text in the box: Yes keeps it for the next start, No lets it go.
+        public static Form SaveTextWindow()
+        {
+            CheckBox none;
+            return AskWindow("Save text for next time?", null, out none, "No");
+        }
+
         public const string ScreenWarning = "The screen reader can make mistakes, and is intended for use on images containing text. " +
             "It is more accurate to copy and paste actual text when you can.\r\n\r\nContinue?";
 
@@ -2565,7 +2600,7 @@ namespace ModernVoicesReader
 
         // A question's window (in the theme the Reader wears): the question, a box to tick under it when
         // 'tick' names one, Yes and Cancel.
-        static Form AskWindow(string asked, string tick, out CheckBox box)
+        static Form AskWindow(string asked, string tick, out CheckBox box, string refusal = "Cancel")
         {
             Form ask = new Form();
             ask.Text = "Modern Voices: Reader";
@@ -2594,7 +2629,7 @@ namespace ModernVoicesReader
             buttons.AutoSize = true; buttons.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             buttons.FlowDirection = FlowDirection.RightToLeft; buttons.Anchor = AnchorStyles.Right; buttons.Margin = new Padding(0);
             Button cancel = new Button();
-            cancel.Text = "Cancel"; cancel.DialogResult = DialogResult.Cancel; cancel.AutoSize = true;
+            cancel.Text = refusal; cancel.DialogResult = DialogResult.Cancel; cancel.AutoSize = true;
             cancel.MinimumSize = new Size(88, 30); cancel.Margin = new Padding(8, 0, 0, 0);
             Button yes = new Button();
             yes.Text = "Yes"; yes.DialogResult = DialogResult.Yes; yes.AutoSize = true;
@@ -2857,9 +2892,25 @@ namespace ModernVoicesReader
                     Check(!form.CanRedo, "a new change after undoing: nothing left to redo");
                     form.TestLoad(text, paused);
                     Check(form.PlayLabel == (form.PlayLabel.Length == 1 ? "\uE768" : "Play"), "the play button shows play when nothing is being read");
+                    // "Save text for next time?": Yes keeps the box's text for the next start (once); No, or no
+                    // answer, starts empty.
+                    form.KeepTextForNextTime(true);
                     form.Close();
                     form.Dispose();
+                    MainForm kept = new MainForm(new Store(data), true);
+                    Check(kept.BoxText == text, "Save text for next time, Yes: the next start has the text");
+                    kept.KeepTextForNextTime(false);
+                    kept.Close();
+                    kept.Dispose();
+                    using (Form saveAsk = Program.SaveTextWindow())
+                    {
+                        saveAsk.Show(); Application.DoEvents();
+                        Check(saveAsk.AcceptButton != null && saveAsk.CancelButton != null, "closing with text asks \"Save text for next time?\": Yes and No");
+                        try { using (Bitmap shot = new Bitmap(saveAsk.Width, saveAsk.Height)) { saveAsk.DrawToBitmap(shot, new Rectangle(0, 0, saveAsk.Width, saveAsk.Height)); shot.Save(Path.Combine(folder, "reader-save-text.png")); } } catch (Exception) { }
+                        saveAsk.Close();
+                    }
                     MainForm again = new MainForm(new Store(data), true);
+                    Check(again.BoxText == "", "No: the next start is empty");
                     again.Show();
                     Application.DoEvents();
                     using (Form ask = Program.AlreadyRunningWindow())

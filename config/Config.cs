@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.13.3.0")]
+[assembly: System.Reflection.AssemblyVersion("0.14.0.0")]
 
 namespace ModernVoicesConfig
 {
@@ -725,6 +725,20 @@ namespace ModernVoicesConfig
             SetGlobalNumber(path, "variation_percent", percent);
         }
 
+        // A voice's own variation (its own settings file's own_variation_percent; null: none set), used
+        // by the engine while the voice overrides the settings for every voice (its own pauses' tick).
+        public static double? GetVoiceVariation(string dir)
+        {
+            double? found = Read(ReadAll(App.VoiceFile(dir)), "own_variation_percent");
+            if (!found.HasValue) { return null; }
+            return Math.Max(0, Math.Min(VariationLimit, found.Value));
+        }
+        public static void SetVoiceVariation(string dir, double percent)
+        {
+            if (percent < 0 || percent > VariationLimit) { throw new ArgumentException("variation must be 0 to " + VariationLimit + "% (got " + Format(percent) + ")"); }
+            SetGlobalNumber(App.VoiceFile(dir), "own_variation_percent", percent);
+        }
+
         // The output volume: how loud every voice comes out, of what its own settings make, in %
         // (settings.json's output_percent: 100 unless turned down, 0 for silence). The engine looks at it
         // as speech goes out, so it is heard while a voice is speaking.
@@ -959,6 +973,52 @@ namespace ModernVoicesConfig
         }
     }
 
+    // The "Powered by" window is shown the first time Modern Voices Config opens: whether it has been
+    // (kept with the theme; uninstalling removes it, so a new install shows the window again).
+    public static class Welcome
+    {
+        const string OurKey = @"Software\Modern Voices for Windows";
+        public static bool Seen
+        {
+            get
+            {
+                try
+                {
+                    using (RegistryKey key = Registry.CurrentUser.OpenSubKey(OurKey)) { return key != null && Convert.ToString(key.GetValue("Welcomed")) == "1"; }
+                }
+                catch (Exception) { return true; }
+            }
+            set
+            {
+                try
+                {
+                    using (RegistryKey key = Registry.CurrentUser.CreateSubKey(OurKey)) { key.SetValue("Welcomed", value ? "1" : "0"); }
+                }
+                catch (Exception) { }
+            }
+        }
+    }
+
+    // The work this program is put together from: what each is called here, whose it is, what it does
+    // here, and where it lives.
+    public class Credit
+    {
+        public string Name, By, Does, Link;
+        public Credit(string name, string by, string does, string link) { Name = name; By = by; Does = does; Link = link; }
+        public static readonly Credit[] All = {
+            new Credit("Spoken Players Engine", "f-rolf", "The Windows speech engine this program's engine is based on.", "https://github.com/f-rolf/spoken-players-voicepack"),
+            new Credit("Piper (Neural Voices)", "Michael Hansen and contributors", "The voices, and the way of making them.", "https://github.com/rhasspy/piper"),
+            new Credit("eSpeak NG", "Jonathan Duddington, Reece H. Dunn and contributors", "Works out how words are pronounced.", "https://github.com/espeak-ng/espeak-ng"),
+            new Credit("sherpa-onnx", "Xiaomi Corporation and the k2-fsa contributors", "Runs the voices.", "https://github.com/k2-fsa/sherpa-onnx"),
+            new Credit("ONNX Runtime", "Microsoft Corporation", "Runs the voices' models.", "https://github.com/microsoft/onnxruntime") };
+        public const string Thanks = "Thanks to everyone who recorded their voice for a research collection or an audiobook and let it be used in this software.";
+        public const string Home = "https://github.com/Lumotiverse/modern-voices-for-windows";
+        public const string Coding = "All coding done by Anthropic's Fable 5.2, assisted by Opus 5.5. Testing and UX done by Lumoti.";
+        public const string FromLumoti = "I hope anyone who uses this software finds it useful. It was only made possible by the incredible effort of the " +
+            "projects and people listed above, and also their generosity in publishing as open source. If you benefit from this program please show them " +
+            "your love and support.\r\n\r\nCompassion, acceptance and understanding are the answer. Reject hate. Kindness is free! <3";
+    }
+
     // A choice of the "Show" box (and of the Pronunciation tab's "Rules for"): the voices of a language
     // (Family; null: any) and of one of its countries (Code; null: any).
     public class LanguageChoice
@@ -1125,7 +1185,9 @@ namespace ModernVoicesConfig
         Font boldFont, listFont, listBold, speakerFont;
         Panel headerLine;
         public Button ReaderButton, PlayButton;
-        public Label MuteIcon;
+        public Label MuteIcon, AboutButton;
+        public Label SavedNote, FirstNote;
+        public Slider OwnVariation;          // the selected voice's own variation (with its own pauses)
         // Each installed voice's language, by the name programs see (for the preview text in its language).
         readonly Dictionary<string, string> languageOfVoice = new Dictionary<string, string>();
         int unmutedVolume = 100;            // the output volume to go back to when unmuted
@@ -1391,7 +1453,7 @@ namespace ModernVoicesConfig
             headerLine = new Panel();
             headerLine.Dock = DockStyle.Top; headerLine.Height = Math.Max(1, Px(1));     // (no longer drawn: it keeps the header's spacing)
             Controls.Add(headerLine);
-            tabStrip = Line("auto", "fill", "auto", "auto");
+            tabStrip = Line("auto", "fill", "auto", "auto");       // tabs, a stretch, About, the moon
             tabStrip.Dock = DockStyle.Top;
             tabStrip.Padding = new Padding(0, 0, 0, Px(6) + 3 - headerLine.Height);
             Controls.Add(tabStrip);
@@ -1423,10 +1485,18 @@ namespace ModernVoicesConfig
             if (moon.Name == "Segoe MDL2 Assets") { ThemeButton.Font = moon; ThemeButton.Text = "\uE708"; }      // Windows' own symbols
             tips.SetToolTip(ThemeButton, "Dark or light (here and in the Reader)");
             ThemeButton.Click += delegate { Theme.Choice = Theme.IsDark() ? "light" : "dark"; ApplyTheme(); };
+            // About, left of the moon.
+            AboutButton = Words("About", true);
+            AboutButton.Dock = DockStyle.None; AboutButton.Anchor = AnchorStyles.Right; AboutButton.Cursor = Cursors.Hand;
+            AboutButton.Margin = new Padding(Px(4), 0, Px(8), 0);
+            if (moon.Name == "Segoe MDL2 Assets") { AboutButton.Font = moon; AboutButton.Text = "\uE946"; }      // an i in a ring
+            tips.SetToolTip(AboutButton, "About Modern Voices, and the projects it is made from");
+            AboutButton.Click += delegate { using (Form about = AboutWindow()) { about.ShowDialog(this); } };
             tabStrip.Controls.Add(ThemeButton, 3, 0);
+            tabStrip.Controls.Add(AboutButton, 2, 0);
             // (The window is never narrower than its header needs, the selected tab's bold words included, and
             // a gap before the moon.)
-            int headerNeeds = Px(24) + ThemeButton.PreferredSize.Width + ThemeButton.Margin.Horizontal;
+            int headerNeeds = Px(24) + ThemeButton.PreferredSize.Width + ThemeButton.Margin.Horizontal + AboutButton.PreferredSize.Width + AboutButton.Margin.Horizontal;
             foreach (Button tabButton in TabButtons)
             {
                 Font plain = tabButton.Font;
@@ -1675,13 +1745,26 @@ namespace ModernVoicesConfig
             soundGrid.Layout += alignLater;
             HandleCreated += delegate { BeginInvoke(alignPreview); };
             OwnBox = new CheckBox();
-            OwnBox.Text = "Override pause duration for the selected voice";
+            OwnBox.Text = "Override pause duration and variation for the selected voice";
             OwnBox.AutoSize = true; OwnBox.Enabled = false; OwnBox.Checked = false;
             Row(page, OwnBox);
             gapGrid = Line("auto", "fill", "auto");
             Sliders["Sentence gap"] = AddSlider(gapGrid, "Sentence pause", 0, Store.SentenceLimit, 50, 250, 250, true);
             Sliders["Comma gap"] = AddSlider(gapGrid, "Comma pause", 0, Store.CommaLimit, 50, 250, 250, true);
             Sliders["Paragraph gap"] = AddSlider(gapGrid, "Paragraph gap", 0, Store.ParagraphLimit, 50, 250, 250, true);
+            // Its own variation too (Speed and pauses has the one for all voices).
+            OwnVariation = AddSlider(gapGrid, "Voice variation", 0, Store.VariationLimit, 5, 25, 25, true);
+            AddNote(gapGrid, Words("How much this voice changes its tone and rhythm each time it speaks. Programs that are already open use a " +
+                "new value after you restart them.", true));
+            OwnVariation.Bar.Enabled = false;
+            OwnVariation.Bar.ValueChanged += delegate
+            {
+                TrackBar bar = OwnVariation.Bar;
+                int snapped = (int)(Math.Round(bar.Value / 5.0, MidpointRounding.AwayFromZero) * 5);
+                if (bar.Value != snapped) { bar.Value = snapped; return; }
+                OwnVariation.Value.Text = bar.Value + "%";
+                if (!Filling) { saveTimer.Stop(); saveTimer.Start(); }
+            };
             gapGrid.Visible = false;
             Row(page, gapGrid);
             // Volume moves in tens only (0, 10, ... 100): dragged, it snaps to the nearest.
@@ -1691,7 +1774,20 @@ namespace ModernVoicesConfig
                 int snapped = (int)(Math.Round(volume.Value / 10.0, MidpointRounding.AwayFromZero) * 10);
                 if (volume.Value != snapped) { volume.Value = snapped; }
             };
-            Row(page, Words("Changes are saved straight away: press Preview to hear them.", true));
+            // Under the sliders' notes, in line with them, with room above.
+            Label savedNote = Words("Changes are saved straight away: press Preview to hear them.", true);
+            Label firstNote = (Label)soundGrid.GetControlFromPosition(1, 1);
+            Row(page, savedNote);
+            EventHandler alignSaved = delegate
+            {
+                if (firstNote == null || !firstNote.IsHandleCreated || !savedNote.IsHandleCreated) { return; }
+                int left = savedNote.Margin.Left + firstNote.PointToScreen(Point.Empty).X - savedNote.PointToScreen(Point.Empty).X;
+                if (left != savedNote.Margin.Left && left >= 0) { savedNote.Margin = new Padding(left, Px(16), savedNote.Margin.Right, savedNote.Margin.Bottom); }
+            };
+            savedNote.Margin = new Padding(savedNote.Margin.Left, Px(16), savedNote.Margin.Right, savedNote.Margin.Bottom);
+            soundGrid.Layout += delegate { if (IsHandleCreated) { BeginInvoke(alignSaved); } };
+            HandleCreated += delegate { BeginInvoke(alignSaved); };
+            SavedNote = savedNote; FirstNote = firstNote;
 
             InstalledList.SelectedIndexChanged += delegate { UpdateInstalled(); };
             PreviewButton.Click += delegate { CurrentVoice voice = GetCurrentVoice(); if (voice != null) { TogglePreview(voice.Voice, voice.Voice, null); } };
@@ -1750,7 +1846,11 @@ namespace ModernVoicesConfig
             resetLine.Margin = new Padding(resetLine.Margin.Left, Px(18), resetLine.Margin.Right, resetLine.Margin.Bottom);
             Button pausesReset = Btn("Reset to defaults");
             resetLine.Controls.Add(pausesReset, 0, 0);
-            resetLine.Controls.Add(Words("Defaults: speed 100%, sentence 500 ms, comma 60 ms, paragraph 1200 ms, variation 75%. Changes are saved straight away.", true), 1, 0);
+            // (Its words level with the button's: in the middle of the row's height.)
+            Label defaultsNote = Words("Defaults: speed 100%, sentence 500 ms, comma 60 ms, paragraph 1200 ms, variation 75%. Changes are saved straight away.", true);
+            defaultsNote.Dock = DockStyle.None; defaultsNote.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            defaultsNote.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            resetLine.Controls.Add(defaultsNote, 1, 0);
             Row(page, resetLine);
 
             // Advanced: how much the voices vary from one saying to the next.
@@ -2301,6 +2401,137 @@ namespace ModernVoicesConfig
             if (MuteIcon.Text != glyph) { MuteIcon.Text = glyph; }
         }
         public int HeaderLineBottom { get { return headerLine.PointToScreen(new Point(0, headerLine.Height)).Y; } }
+        // The About window: what the program is put together from (each with its link), who did what, and
+        // a message from Lumoti.
+        public Form AboutWindow()
+        {
+            Form about = new Form();
+            about.Text = "About " + App.Name; about.Font = Font; about.Icon = Icon;
+            about.FormBorderStyle = FormBorderStyle.FixedDialog; about.MaximizeBox = false; about.MinimizeBox = false;
+            about.StartPosition = FormStartPosition.CenterParent; about.ShowInTaskbar = false;
+            about.ClientSize = new Size(Px(560), Px(640)); about.Padding = new Padding(Px(14), Px(12), Px(6), Px(10));
+            Panel scroll = new Panel();
+            scroll.Dock = DockStyle.Fill; scroll.AutoScroll = true;
+            TableLayoutPanel rows = new TableLayoutPanel();
+            rows.ColumnCount = 1; rows.AutoSize = true; rows.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            rows.Dock = DockStyle.Top; rows.Padding = new Padding(0, 0, Px(8), 0);
+            rows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            int width = Px(560) - Px(14) - Px(6) - Px(8) - SystemInformation.VerticalScrollBarWidth - 8;
+            Func<string, bool, bool, int, Label> line = delegate(string text, bool muted, bool bold, int above)
+            {
+                Label l = Words(text, muted, bold);
+                l.Dock = DockStyle.None; l.MaximumSize = new Size(width, 0); l.Margin = new Padding(3, above, 3, 2);
+                Row(rows, l);
+                return l;
+            };
+            Label title = line(App.Name + " " + App.VersionText, false, true, 0);
+            title.Font = new Font(Font.FontFamily, Font.Size + 3f, FontStyle.Bold);
+            line("Modern, natural-sounding voices for any Windows program that can speak. Free and open source.", false, false, Px(2));
+            AddLink(rows, Credit.Home, Px(2));
+            line("What it is made from", false, true, Px(16));
+            line("This software does not make the voices or the speech engine itself. It takes the open source projects below and combines " +
+                "them into one program that is simple to install and use.", false, false, Px(2));
+            foreach (Credit credit in Credit.All)
+            {
+                line(credit.Name, false, true, Px(12));
+                line("By " + credit.By + ". " + credit.Does, false, false, 0);
+                AddLink(rows, credit.Link, 0);
+            }
+            line(Credit.Thanks, false, false, Px(14));
+            line("Who did what", false, true, Px(16));
+            line(Credit.Coding, false, false, Px(2));
+            line("A message from Lumoti:", false, true, Px(16));
+            line(Credit.FromLumoti, false, false, Px(2));
+            scroll.Controls.Add(rows);
+            FlowLayoutPanel buttons = Flow();
+            buttons.FlowDirection = FlowDirection.RightToLeft; buttons.Dock = DockStyle.Bottom;
+            buttons.Padding = new Padding(0, Px(8), Px(8), 0);
+            Button close = Btn("Close");
+            close.DialogResult = DialogResult.OK;
+            buttons.Controls.Add(close);
+            about.Controls.Add(scroll); about.Controls.Add(buttons);
+            about.AcceptButton = close; about.CancelButton = close;
+            ThemeOn(scroll, palette); ThemeOn(buttons, palette);
+            about.BackColor = palette.Back; about.ForeColor = palette.Text;
+            foreach (Control c in rows.Controls)
+            {
+                LinkLabel link = c as LinkLabel;
+                if (link != null) { link.LinkColor = palette.Dark ? Color.FromArgb(110, 180, 255) : Color.FromArgb(0, 90, 180); link.ActiveLinkColor = link.LinkColor; link.BackColor = palette.Back; }
+            }
+            return about;
+        }
+        void AddLink(TableLayoutPanel rows, string address, int above)
+        {
+            LinkLabel link = new LinkLabel();
+            link.Text = address; link.AutoSize = true; link.Margin = new Padding(3, above, 3, 2);
+            link.LinkBehavior = LinkBehavior.HoverUnderline; link.TabStop = false;
+            link.LinkClicked += delegate
+            {
+                try { Process.Start(address); } catch (Exception e) { StatusLabel.Text = "Could not open " + address + ": " + e.Message; }
+            };
+            Row(rows, link);
+        }
+
+        // The "Powered by" window, the first time Modern Voices Config opens: the program's name, and what
+        // it runs on, each with whose it is. A click anywhere on it (or its X, or a key) closes it.
+        public Form PoweredByWindow()
+        {
+            Form window = new Form();
+            window.Text = App.Name; window.Font = Font;
+            window.FormBorderStyle = FormBorderStyle.None; window.ShowInTaskbar = false;
+            window.StartPosition = FormStartPosition.CenterParent; window.KeyPreview = true;
+            window.BackColor = palette.Input; window.ForeColor = palette.Text;
+            window.Padding = new Padding(Px(2));
+            window.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                using (Pen edge = new Pen(palette.TabOn, Px(2))) { e.Graphics.DrawRectangle(edge, Px(1), Px(1), window.ClientSize.Width - Px(2), window.ClientSize.Height - Px(2)); }
+            };
+            int width = Px(460);
+            TableLayoutPanel rows = new TableLayoutPanel();
+            rows.ColumnCount = 1; rows.AutoSize = true; rows.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            rows.Location = new Point(Px(2), Px(2)); rows.Padding = new Padding(Px(24), Px(30), Px(24), Px(26));
+            rows.BackColor = palette.Input;
+            Func<string, float, FontStyle, Color, int, Label> line = delegate(string text, float size, FontStyle style, Color colour, int above)
+            {
+                Label l = new Label();
+                l.Text = text; l.AutoSize = false; l.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+                l.Font = new Font(Font.FontFamily, size, style); l.ForeColor = colour; l.BackColor = palette.Input;
+                l.Margin = new Padding(0, above, 0, 0);
+                l.Size = new Size(width, TextRenderer.MeasureText(text, l.Font, new Size(width, 0), TextFormatFlags.WordBreak | TextFormatFlags.HorizontalCenter).Height + 2);
+                rows.RowCount++;
+                rows.Controls.Add(l, 0, rows.RowCount - 1);
+                return l;
+            };
+            line("MODERN VOICES", Font.Size + 9f, FontStyle.Bold, palette.Text, 0);
+            line("Powered By...", Font.Size + 2f, FontStyle.Regular, palette.Muted, Px(4));
+            bool first = true;
+            foreach (Credit credit in Credit.All)
+            {
+                line(credit.Name, Font.Size + 3f, FontStyle.Bold, palette.Text, first ? Px(34) : Px(24));
+                line(credit.By, Font.Size, FontStyle.Regular, palette.Muted, Px(3));
+                first = false;
+            }
+            line(Credit.Thanks, Font.Size, FontStyle.Italic, palette.Text, Px(34));
+            window.Controls.Add(rows);
+            Size inner = rows.PreferredSize;
+            window.ClientSize = new Size(inner.Width + Px(4), inner.Height + Px(4));
+            // The X, in the top right corner (over the rows).
+            Label x = new Label();
+            x.Text = "\u2715"; x.AutoSize = false; x.Size = new Size(Px(34), Px(30)); x.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            x.Font = new Font(Font.FontFamily, Font.Size + 2f); x.ForeColor = palette.Text; x.BackColor = palette.Input; x.Cursor = Cursors.Hand;
+            x.Location = new Point(window.ClientSize.Width - x.Width - Px(4), Px(4));
+            x.MouseEnter += delegate { x.BackColor = Color.FromArgb(196, 43, 28); x.ForeColor = Color.White; };
+            x.MouseLeave += delegate { x.BackColor = palette.Input; x.ForeColor = palette.Text; };
+            window.Controls.Add(x);
+            x.BringToFront();
+            EventHandler shut = delegate { window.DialogResult = DialogResult.OK; window.Close(); };
+            window.Click += shut; rows.Click += shut; x.Click += shut;
+            foreach (Control c in rows.Controls) { c.Click += shut; c.Cursor = Cursors.Hand; }
+            rows.Cursor = Cursors.Hand; window.Cursor = Cursors.Hand;
+            window.KeyDown += delegate { shut(null, EventArgs.Empty); };
+            return window;
+        }
+
         public static string ReaderExe { get { return Path.Combine(Path.Combine(App.Folder, "reader"), "ModernVoicesReader.exe"); } }
         void OpenReader()
         {
@@ -2461,6 +2692,7 @@ namespace ModernVoicesConfig
         {
             bool own = OwnBox.Checked;
             foreach (string k in GapKeys) { Sliders[k].Bar.Enabled = CurrentInstalled != null && own; }
+            OwnVariation.Bar.Enabled = CurrentInstalled != null && own;
             gapGrid.Visible = own;
             if (!Filling && CurrentInstalled != null) { saveTimer.Stop(); saveTimer.Start(); }
         }
@@ -2556,6 +2788,7 @@ namespace ModernVoicesConfig
             Sliders["Volume"].Bar.Enabled = on; Sliders["Boost"].Bar.Enabled = on; Sliders["Speed"].Bar.Enabled = on;
             OwnBox.Enabled = on;
             foreach (string k in GapKeys) { Sliders[k].Bar.Enabled = false; }
+            OwnVariation.Bar.Enabled = false;
             PreviewButton.Enabled = on; ResetButton.Enabled = on; DefaultButton.Enabled = on;
             if (!on) { return; }
             InstalledRow row = (InstalledRow)InstalledList.SelectedItems[0].Tag;
@@ -2583,6 +2816,10 @@ namespace ModernVoicesConfig
                 Sliders["Sentence gap"].Bar.Value = Clamp(shown.Sentence, 0, Store.SentenceLimit);
                 Sliders["Comma gap"].Bar.Value = Clamp(shown.Comma, 0, Store.CommaLimit);
                 Sliders["Paragraph gap"].Bar.Value = Clamp(shown.Paragraph, 0, Store.ParagraphLimit);
+                // (Its own variation; with none set yet, the one for all voices.)
+                double? ownVaried = Store.GetVoiceVariation(row.Dir);
+                OwnVariation.Bar.Value = Clamp(Math.Round((ownVaried ?? Store.GetVariation(App.SettingsFile)) / 5.0) * 5, 0, Store.VariationLimit);
+                OwnVariation.Value.Text = OwnVariation.Bar.Value + "%";
                 Sliders["Volume"].Bar.Value = Clamp(Math.Round(peak * 10, MidpointRounding.AwayFromZero) * 10, 0, (int)(Store.MaxPeak * 100));
                 Sliders["Boost"].Bar.Value = Clamp(Math.Round(boost * 10), 10, 40);
                 Sliders["Speed"].Bar.Value = Clamp(Math.Round(100 / lengthScale), 25, 200);
@@ -2591,6 +2828,7 @@ namespace ModernVoicesConfig
             finally { Filling = false; }
             CurrentInstalled = row;
             foreach (string k in GapKeys) { Sliders[k].Bar.Enabled = OwnBox.Checked; }
+            OwnVariation.Bar.Enabled = OwnBox.Checked;
             // The nickname box: the selected row's nickname.
             bool named = row.Entry != null;
             NickBox.Enabled = named; NickButton.Enabled = named;
@@ -2626,6 +2864,8 @@ namespace ModernVoicesConfig
                 Store.SetVoice(row.Dir, peak, boost, lengthScale);
                 Store.SetVoicePauses(row.Dir, OwnBox.Checked, RoundedMs(Sliders["Sentence gap"].Bar.Value), RoundedMs(Sliders["Comma gap"].Bar.Value),
                     RoundedMs(Sliders["Paragraph gap"].Bar.Value));
+                // (Its own variation is written once it overrides, or once one is there to keep in step.)
+                if (OwnBox.Checked || Store.GetVoiceVariation(row.Dir).HasValue) { Store.SetVoiceVariation(row.Dir, OwnVariation.Bar.Value); }
             }
             catch (Exception e) { MessageBox.Show(this, "Could not save the settings: " + e.Message, App.Name); }
         }
@@ -3633,6 +3873,12 @@ namespace ModernVoicesConfig
                 Application.UseWaitCursor = false;
                 Cursor.Current = Cursors.Default;
                 Startup.Mark("window shown"); Startup.Save();
+                // The first time: "Powered by", over the window, until it is clicked.
+                if (!Welcome.Seen)
+                {
+                    Welcome.Seen = true;
+                    form.BeginInvoke((MethodInvoker)delegate { using (Form powered = form.PoweredByWindow()) { powered.ShowDialog(form); } });
+                }
             };
             Application.Run(form);
             GC.KeepAlive(running);
@@ -3725,6 +3971,24 @@ namespace ModernVoicesConfig
         public static bool Running;
         static StringBuilder log = new StringBuilder();
         static int failures;
+
+        // A picture of a window that is not on the screen for long (shown, drawn, hidden).
+        static void SavePicture(Form window, string file)
+        {
+            try
+            {
+                window.StartPosition = FormStartPosition.Manual; window.Location = new Point(40, 40);
+                window.Show();
+                Settle(200);
+                using (Bitmap shot = new Bitmap(window.Width, window.Height))
+                {
+                    window.DrawToBitmap(shot, new Rectangle(Point.Empty, shot.Size));
+                    shot.Save(file, ImageFormat.Png);
+                }
+                window.Hide();
+            }
+            catch (Exception e) { Note("no picture " + Path.GetFileName(file) + ": " + e.Message); }
+        }
 
         static void Check(bool ok, string what)
         {
@@ -4132,6 +4396,42 @@ namespace ModernVoicesConfig
                 if (hadSettings) { File.WriteAllText(App.SettingsFile, settingsWere); } else if (File.Exists(App.SettingsFile)) { File.Delete(App.SettingsFile); }
             }
 
+            // About and "Powered by": every project is named, with whose it is; About has their links, who did
+            // what and Lumoti's message.
+            {
+                using (Form aboutForm = ui.AboutWindow())
+                {
+                    int links = 0;
+                    StringBuilder aboutWords = new StringBuilder();
+                    foreach (Control c in aboutForm.Controls[0].Controls[0].Controls) { if (c is LinkLabel) { links++; } aboutWords.AppendLine(c.Text); }
+                    string aboutText = aboutWords.ToString();
+                    bool allNamed = true;
+                    foreach (Credit credit in Credit.All) { if (!aboutText.Contains(credit.Name) || !aboutText.Contains(credit.By) || !aboutText.Contains(credit.Link)) { allNamed = false; } }
+                    Check(allNamed && links == Credit.All.Length + 1 && aboutText.Contains(Credit.Coding) && aboutText.Contains("Kindness is free! <3") && aboutText.Contains("A message from Lumoti:"),
+                        "About names each project with its author and link, who did what, and Lumoti's message");
+                    if (pictures) { SavePicture(aboutForm, Path.Combine(folder, "about.png")); }
+                }
+                using (Form powered = ui.PoweredByWindow())
+                {
+                    StringBuilder poweredWords = new StringBuilder();
+                    foreach (Control c in powered.Controls) { foreach (Control inner in c.Controls) { poweredWords.AppendLine(inner.Text); } }
+                    string poweredText = poweredWords.ToString();
+                    bool allNamed = poweredText.Contains("MODERN VOICES") && poweredText.Contains("Powered By...") && poweredText.Contains(Credit.Thanks);
+                    foreach (Credit credit in Credit.All) { if (!poweredText.Contains(credit.Name) || !poweredText.Contains(credit.By)) { allNamed = false; } }
+                    Check(allNamed, "\"Powered by\" names the program and each project with its author, and thanks the voices");
+                    if (pictures) { SavePicture(powered, Path.Combine(folder, "powered-by.png")); }
+                }
+                Check(ui.AboutButton.Visible && ui.AboutButton.PointToScreen(Point.Empty).X < ui.ThemeButton.PointToScreen(Point.Empty).X, "About is in the header, left of the moon");
+                int notePage = ui.PageIndex;
+                ui.ShowPage(0);
+                Settle(150);
+                int savedLeft = ui.SavedNote.PointToScreen(Point.Empty).X, noteLeft = ui.FirstNote.PointToScreen(Point.Empty).X;
+                Note("\"Changes are saved\" starts at " + savedLeft + ", the sliders' notes at " + noteLeft);
+                Check(Math.Abs(savedLeft - noteLeft) <= 1, "\"Changes are saved straight away\" lines up with the sliders' notes");
+                ui.ShowPage(notePage);
+                Settle(20);
+            }
+
             // Two qualities of one voice: the warning.
             List<ListViewItem> lessac = new List<ListViewItem>();
             foreach (ListViewItem item in ui.AddList.Items)
@@ -4221,9 +4521,12 @@ namespace ModernVoicesConfig
                 ui.UpdateOwnPauses();
                 bool shown = ui.OwnPausesShown && ui.Sliders["Sentence gap"].Bar.Enabled;
                 ui.Sliders["Sentence gap"].Bar.Value = 300;
+                bool variationOffered = ui.OwnVariation.Bar.Enabled && !Store.GetVoiceVariation(dir).HasValue;
+                ui.OwnVariation.Bar.Value = 40;
                 ui.SaveSettings();
                 ui.StopTimers();
                 Pauses own = Store.GetVoicePauses(dir);
+                Check(variationOffered && Store.GetVoiceVariation(dir) == 40, "a voice's own variation is saved with its override (own_variation_percent 40)");
                 ui.UpdateApply();
                 if (pictures) { Pictures(ui, folder); }
                 ui.OwnBox.Checked = false;
