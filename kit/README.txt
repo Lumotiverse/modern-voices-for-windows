@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.13.1
+Modern Voices for Windows 0.13.2
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with

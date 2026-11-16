@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.13.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.13.2.0")]
 
 namespace ModernVoicesReader
 {
@@ -2447,7 +2447,11 @@ namespace ModernVoicesReader
             System.Threading.Mutex running = new System.Threading.Mutex(true, "ModernVoicesReader.Running", out first);
             if (!first && !AnotherWanted()) { return 0; }
             string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Modern Voices Reader");
+            // The busy pointer over the program until its window is up.
+            Application.UseWaitCursor = true;
+            Cursor.Current = Cursors.WaitCursor;
             MainForm form = new MainForm(new Store(folder), false);
+            form.Shown += delegate { Application.UseWaitCursor = false; Cursor.Current = Cursors.Default; };
             // A file given to the program (dropped on it, or "Open with") is opened.
             if (args.Length >= 1 && File.Exists(args[0]))
             {

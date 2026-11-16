@@ -82,7 +82,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.13.1'
+$Version = '0.13.2'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -841,6 +841,8 @@ function Set-InstalledVoices([string[]]$Wanted, [bool]$UsTags, $ByKey) {
 
     $allGood = $true
     if ($Wanted.Count -gt 0) {
+        Write-Status "`n  Note: the first time Modern Voices Config or the Reader opens after installing, it may take a while" 'Yellow'
+        Write-Status "  to appear: Windows checks a new program before its first start. Later starts are quick." 'Yellow'
         Write-Status "`n  testing each voice through Windows' speech API"
         foreach ($r in (Invoke-SelfTest $has32)) {
             $ok = -not $r['error'] -and [double]$r['seconds'] -gt 0.5 -and [int]$r['words'] -ge 5 -and [string]$r['bookmark'] -eq '7'

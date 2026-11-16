@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.13.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.13.2.0")]
 
 namespace ModernVoicesConfig
 {
@@ -67,7 +67,8 @@ namespace ModernVoicesConfig
         public const string BaseUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0";   // v1.0.0: the voices as tested
         public const double DefaultPeak = 1;
         public const double DefaultBoost = 1.5;
-        public const string PreviewText = "Speaking a preview of the selected voice, to hear how natural it sounds.\r\n" +
+        public static string PreviewText { get { return PreviewTexts.For("en"); } }
+        public const string OldPreviewText = "Speaking a preview of the selected voice, to hear how natural it sounds.\r\n" +
             "Change the dictation speed, and 'Comma pause' values, to adjust the sound to your liking.\r\n" +
             "Change the 'Paragraph gap', to adjust the wait before a new paragraph.";
 
@@ -782,6 +783,129 @@ namespace ModernVoicesConfig
     // dark until light is chosen.
     // The additional languages chosen (their voices are listed on Add or remove voices): the person's
     // own choice, kept as the theme is.
+    // The text the preview speaks before any is typed: the same words in each language offered (commas, full
+    // stops and lines where they are, so the pauses can be heard), in the voice's own language. The
+    // translations are Claude's, not checked by a speaker of each; 'Paragraph gap' is left in English, as
+    // the window names it so.
+    public static class PreviewTexts
+    {
+        public static readonly Dictionary<string, string> ByLanguage = new Dictionary<string, string>
+        {
+            { "en", "Speaking a preview of the selected voice, to hear how natural it sounds.\r\n" +
+                "You can change the volume, dictation speed, and 'pause' values, to modify each voice sound to your liking.\r\n" +
+                "Change the 'Paragraph gap', to adjust the wait time before a new paragraph starts." },
+            { "bg", "Това е преглед на избрания глас, за да чуете колко естествено звучи.\r\n" +
+                "Можете да промените силата на звука, скоростта на диктовка, и стойностите за 'пауза', за да настроите звученето на всеки глас по ваш вкус.\r\n" +
+                "Променете 'Paragraph gap', за да настроите времето за изчакване преди началото на нов абзац." },
+            { "ca", "Aquesta és una previsualització de la veu seleccionada, per escoltar com de natural sona.\r\n" +
+                "Podeu canviar el volum, la velocitat de dictat, i els valors de 'pausa', per ajustar el so de cada veu al vostre gust.\r\n" +
+                "Canvieu el 'Paragraph gap', per ajustar el temps d'espera abans que comenci un paràgraf nou." },
+            { "cs", "Toto je ukázka vybraného hlasu, abyste slyšeli, jak přirozeně zní.\r\n" +
+                "Můžete změnit hlasitost, rychlost diktování, a hodnoty 'pauzy', abyste zvuk každého hlasu upravili podle svých představ.\r\n" +
+                "Změňte 'Paragraph gap', abyste upravili čekací dobu před začátkem nového odstavce." },
+            { "cy", "Dyma ragolwg o'r llais a ddewiswyd, i glywed pa mor naturiol mae'n swnio.\r\n" +
+                "Gallwch newid lefel y sain, cyflymder arddweud, a gwerthoedd 'saib', i addasu sain pob llais at eich dant.\r\n" +
+                "Newidiwch y 'Paragraph gap', i addasu'r amser aros cyn i baragraff newydd ddechrau." },
+            { "da", "Dette er en forhåndsvisning af den valgte stemme, så du kan høre, hvor naturlig den lyder.\r\n" +
+                "Du kan ændre lydstyrken, dikteringshastigheden, og 'pause'-værdierne, for at tilpasse hver stemmes lyd efter din smag.\r\n" +
+                "Skift 'Paragraph gap', for at justere ventetiden, før et nyt afsnit begynder." },
+            { "de", "Hier hören Sie eine Vorschau der ausgewählten Stimme, damit Sie hören, wie natürlich sie klingt.\r\n" +
+                "Sie können die Lautstärke, die Diktiergeschwindigkeit, und die 'Pausen'-Werte ändern, um den Klang jeder Stimme nach Ihren Wünschen anzupassen.\r\n" +
+                "Ändern Sie den 'Paragraph gap', um die Wartezeit vor einem neuen Absatz einzustellen." },
+            { "el", "Αυτή είναι μια προεπισκόπηση της επιλεγμένης φωνής, για να ακούσετε πόσο φυσικά ακούγεται.\r\n" +
+                "Μπορείτε να αλλάξετε την ένταση, την ταχύτητα υπαγόρευσης, και τις τιμές 'παύσης', για να προσαρμόσετε τον ήχο κάθε φωνής όπως σας αρέσει.\r\n" +
+                "Αλλάξτε το 'Paragraph gap', για να ρυθμίσετε τον χρόνο αναμονής πριν ξεκινήσει μια νέα παράγραφος." },
+            { "es", "Esta es una vista previa de la voz seleccionada, para escuchar lo natural que suena.\r\n" +
+                "Puede cambiar el volumen, la velocidad de dictado, y los valores de 'pausa', para ajustar el sonido de cada voz a su gusto.\r\n" +
+                "Cambie el 'Paragraph gap', para ajustar el tiempo de espera antes de que empiece un nuevo párrafo." },
+            { "eu", "Hau hautatutako ahotsaren aurrebista bat da, zein natural entzuten den entzuteko.\r\n" +
+                "Bolumena, diktaketa-abiadura, eta 'eten' balioak alda ditzakezu, ahots bakoitzaren soinua zure gustura egokitzeko.\r\n" +
+                "Aldatu 'Paragraph gap', paragrafo berri bat hasi aurreko itxaronaldia doitzeko." },
+            { "fi", "Tämä on valitun äänen esikatselu, jotta kuulet, kuinka luonnolliselta se kuulostaa.\r\n" +
+                "Voit muuttaa äänenvoimakkuutta, sanelunopeutta, ja 'tauko'-arvoja, säätääksesi jokaisen äänen mieleiseksesi.\r\n" +
+                "Muuta 'Paragraph gap' -arvoa, säätääksesi odotusaikaa ennen uuden kappaleen alkua." },
+            { "fr", "Voici un aperçu de la voix sélectionnée, pour entendre à quel point elle semble naturelle.\r\n" +
+                "Vous pouvez modifier le volume, la vitesse de dictée, et les valeurs de 'pause', pour adapter le son de chaque voix à votre goût.\r\n" +
+                "Modifiez le 'Paragraph gap', pour régler le temps d'attente avant le début d'un nouveau paragraphe." },
+            { "gl", "Esta é unha vista previa da voz seleccionada, para escoitar o natural que soa.\r\n" +
+                "Pode cambiar o volume, a velocidade de ditado, e os valores de 'pausa', para axustar o son de cada voz ao seu gusto.\r\n" +
+                "Cambie o 'Paragraph gap', para axustar o tempo de espera antes de que comece un novo parágrafo." },
+            { "hu", "Ez a kiválasztott hang előnézete, hogy meghallja, milyen természetesen szól.\r\n" +
+                "Módosíthatja a hangerőt, a diktálási sebességet, és a 'szünet' értékeit, hogy minden hang hangzását ízlése szerint alakítsa.\r\n" +
+                "Módosítsa a 'Paragraph gap' értékét, hogy beállítsa a várakozási időt egy új bekezdés kezdete előtt." },
+            { "is", "Þetta er sýnishorn af valinni rödd, svo þú heyrir hversu eðlileg hún hljómar.\r\n" +
+                "Þú getur breytt hljóðstyrk, upplestrarhraða, og 'hlé'-gildum, til að laga hljóm hverrar raddar að þínum smekk.\r\n" +
+                "Breyttu 'Paragraph gap', til að stilla biðtímann áður en ný málsgrein hefst." },
+            { "it", "Questa è un'anteprima della voce selezionata, per sentire quanto suona naturale.\r\n" +
+                "Puoi modificare il volume, la velocità di dettatura, e i valori di 'pausa', per regolare il suono di ogni voce come preferisci.\r\n" +
+                "Cambia il 'Paragraph gap', per regolare l'attesa prima che inizi un nuovo paragrafo." },
+            { "lb", "Dëst ass eng Virschau vun der gewielter Stëmm, fir ze héieren, wéi natierlech se klénkt.\r\n" +
+                "Dir kënnt de Volume, d'Diktéiergeschwindegkeet, an d'Wäerter vun der 'Paus' änneren, fir de Klang vun all Stëmm no Ärem Goût unzepassen.\r\n" +
+                "Ännert de 'Paragraph gap', fir d'Waardezäit virun engem neien Abschnitt unzepassen." },
+            { "lv", "Šis ir izvēlētās balss priekšskatījums, lai dzirdētu, cik dabiski tā skan.\r\n" +
+                "Varat mainīt skaļumu, diktēšanas ātrumu, un 'pauzes' vērtības, lai pielāgotu katras balss skanējumu pēc savas gaumes.\r\n" +
+                "Mainiet 'Paragraph gap', lai pielāgotu gaidīšanas laiku pirms jaunas rindkopas sākuma." },
+            { "nl", "Dit is een voorbeeld van de geselecteerde stem, om te horen hoe natuurlijk die klinkt.\r\n" +
+                "Je kunt het volume, de dicteersnelheid, en de 'pauze'-waarden wijzigen, om het geluid van elke stem naar wens aan te passen.\r\n" +
+                "Wijzig de 'Paragraph gap', om de wachttijd voor een nieuwe alinea in te stellen." },
+            { "no", "Dette er en forhåndsvisning av den valgte stemmen, så du kan høre hvor naturlig den høres ut.\r\n" +
+                "Du kan endre volumet, dikteringshastigheten, og 'pause'-verdiene, for å tilpasse lyden til hver stemme etter ønske.\r\n" +
+                "Endre 'Paragraph gap', for å justere ventetiden før et nytt avsnitt begynner." },
+            { "pl", "To jest podgląd wybranego głosu, aby usłyszeć, jak naturalnie brzmi.\r\n" +
+                "Możesz zmienić głośność, szybkość dyktowania, oraz wartości 'pauzy', aby dostosować brzmienie każdego głosu do swoich upodobań.\r\n" +
+                "Zmień 'Paragraph gap', aby dostosować czas oczekiwania przed rozpoczęciem nowego akapitu." },
+            { "pt", "Esta é uma amostra da voz selecionada, para ouvir quão natural ela soa.\r\n" +
+                "Pode alterar o volume, a velocidade de ditado, e os valores de 'pausa', para ajustar o som de cada voz ao seu gosto.\r\n" +
+                "Altere o 'Paragraph gap', para ajustar o tempo de espera antes do início de um novo parágrafo." },
+            { "ro", "Aceasta este o previzualizare a vocii selectate, pentru a auzi cât de natural sună.\r\n" +
+                "Puteți modifica volumul, viteza de dictare, și valorile de 'pauză', pentru a ajusta sunetul fiecărei voci după preferințe.\r\n" +
+                "Modificați 'Paragraph gap', pentru a ajusta timpul de așteptare înainte de începerea unui paragraf nou." },
+            { "ru", "Это предварительное прослушивание выбранного голоса, чтобы услышать, насколько естественно он звучит.\r\n" +
+                "Вы можете изменить громкость, скорость диктовки, и значения 'пауз', чтобы настроить звучание каждого голоса по своему вкусу.\r\n" +
+                "Измените 'Paragraph gap', чтобы настроить время ожидания перед началом нового абзаца." },
+            { "sk", "Toto je ukážka vybraného hlasu, aby ste počuli, ako prirodzene znie.\r\n" +
+                "Môžete zmeniť hlasitosť, rýchlosť diktovania, a hodnoty 'pauzy', aby ste zvuk každého hlasu upravili podľa svojich predstáv.\r\n" +
+                "Zmeňte 'Paragraph gap', aby ste upravili čas čakania pred začiatkom nového odseku." },
+            { "sl", "To je predogled izbranega glasu, da slišite, kako naravno zveni.\r\n" +
+                "Spremenite lahko glasnost, hitrost narekovanja, in vrednosti 'premora', da zvok vsakega glasu prilagodite svojemu okusu.\r\n" +
+                "Spremenite 'Paragraph gap', da prilagodite čas čakanja pred začetkom novega odstavka." },
+            { "sr", "Ово је преглед изабраног гласа, да бисте чули колико природно звучи.\r\n" +
+                "Можете да промените јачину звука, брзину диктирања, и вредности 'паузе', да бисте прилагодили звук сваког гласа по свом укусу.\r\n" +
+                "Промените 'Paragraph gap', да бисте подесили време чекања пре почетка новог пасуса." },
+            { "sv", "Det här är en förhandsvisning av den valda rösten, så att du hör hur naturlig den låter.\r\n" +
+                "Du kan ändra volymen, dikteringshastigheten, och 'paus'-värdena, för att anpassa varje röst efter din smak.\r\n" +
+                "Ändra 'Paragraph gap', för att justera väntetiden innan ett nytt stycke börjar." },
+            { "tr", "Bu, seçilen sesin bir önizlemesidir, ne kadar doğal duyulduğunu dinlemeniz için.\r\n" +
+                "Her sesi beğeninize göre ayarlamak için ses düzeyini, dikte hızını, ve 'duraklama' değerlerini değiştirebilirsiniz.\r\n" +
+                "Yeni bir paragraf başlamadan önceki bekleme süresini ayarlamak için, 'Paragraph gap' değerini değiştirin." },
+            { "uk", "Це попереднє прослуховування вибраного голосу, щоб почути, наскільки природно він звучить.\r\n" +
+                "Ви можете змінити гучність, швидкість диктування, і значення 'пауз', щоб налаштувати звучання кожного голосу на свій смак.\r\n" +
+                "Змініть 'Paragraph gap', щоб налаштувати час очікування перед початком нового абзацу." },
+        };
+        // A language's preview text (English for one without).
+        public static string For(string family)
+        {
+            string text;
+            return family != null && ByLanguage.TryGetValue(family, out text) ? text : ByLanguage["en"];
+        }
+        // Whether a text is one of these, as given (not typed over): it can be swapped for another language's.
+        public static bool IsOneOfThem(string text)
+        {
+            string plain = Plain(text);
+            if (plain.Length == 0) { return true; }
+            foreach (string known in ByLanguage.Values) { if (Plain(known) == plain) { return true; } }
+            // (And the English text of earlier versions.)
+            return plain == Plain(App.OldPreviewText);
+        }
+        static string Plain(string text) { return (text ?? "").Replace("\r", "").Trim(); }
+        // A voice's language from its folder's name (en_GB-alba-medium: "en").
+        public static string LanguageOfKey(string key)
+        {
+            int mark = (key ?? "").IndexOfAny(new char[] { '_', '-' });
+            return mark > 0 ? key.Substring(0, mark).ToLowerInvariant() : "en";
+        }
+    }
+
     public static class Languages
     {
         const string OurKey = @"Software\Modern Voices for Windows";
@@ -987,6 +1111,8 @@ namespace ModernVoicesConfig
         Panel headerLine;
         public Button ReaderButton, PlayButton;
         public Label MuteIcon;
+        // Each installed voice's language, by the name programs see (for the preview text in its language).
+        readonly Dictionary<string, string> languageOfVoice = new Dictionary<string, string>();
         int unmutedVolume = 100;            // the output volume to go back to when unmuted
         Palette palette;
         bool? shownDark;
@@ -1507,8 +1633,11 @@ namespace ModernVoicesConfig
             Row(page, soundLine);
             TableLayoutPanel soundGrid = Line("auto", "fill", "auto");
             Sliders["Volume"] = AddSlider(soundGrid, "Volume", 0, (int)(Store.MaxPeak * 100), 10, 10, 10, true);
+            AddNote(soundGrid, Words("How loud this voice is.", true));
             Sliders["Boost"] = AddSlider(soundGrid, "Boost", 10, 40, 1, 5, 5, true);
+            AddNote(soundGrid, Words("Makes the voice's quieter parts louder.", true));
             Sliders["Speed"] = AddSlider(soundGrid, "Dictation speed", 25, 200, 1, 5, 25, true);
+            AddNote(soundGrid, Words("Makes this voice faster or slower than the others. The speed for all voices is on the Speed and pauses tab.", true));
             Row(page, soundGrid);
             // The preview box's left edge lines up with the sliders' (its label's column as wide as theirs).
             EventHandler alignPreview = delegate
@@ -1546,9 +1675,7 @@ namespace ModernVoicesConfig
                 int snapped = (int)(Math.Round(volume.Value / 10.0, MidpointRounding.AwayFromZero) * 10);
                 if (volume.Value != snapped) { volume.Value = snapped; }
             };
-            Row(page, Words("Volume sets how loud this voice is. Boost makes its quieter parts louder. Dictation speed makes this voice faster " +
-                "or slower than the others (the speed for all voices is on the Speed and pauses tab). Changes are saved straight away: " +
-                "press Preview to hear them.", true));
+            Row(page, Words("Changes are saved straight away: press Preview to hear them.", true));
 
             InstalledList.SelectedIndexChanged += delegate { UpdateInstalled(); };
             PreviewButton.Click += delegate { CurrentVoice voice = GetCurrentVoice(); if (voice != null) { TogglePreview(voice.Voice, voice.Voice, null); } };
@@ -1579,7 +1706,7 @@ namespace ModernVoicesConfig
             Slider speed = AddSlider(globalGrid, "Dictation speed", 25, 200, 5, 25, 25, true);
             SpeedBar = speed.Bar; SpeedValue = speed.Value;
             SpeedValue.Font = boldFont;
-            AddNote(globalGrid, Words("Change how fast all voices speak. You can then adjust each voice individually in voice manager, to account for any differences", true));
+            AddNote(globalGrid, Words("Change how fast all voices speak. You can then adjust each voice individually in voice manager, to account for any differences.", true));
             RateWarn = Words("");
             RateWarn.ForeColor = Color.Firebrick; RateWarn.Tag = "warn";
             AddNote(globalGrid, RateWarn);
@@ -1604,6 +1731,7 @@ namespace ModernVoicesConfig
             Row(page, Words("Pauses get shorter when speech is faster and longer when it is slower. A long comma pause can make sentences " +
                 "sound a little less smooth.", true));
             TableLayoutPanel resetLine = Line("auto", "fill");
+            resetLine.Margin = new Padding(resetLine.Margin.Left, Px(18), resetLine.Margin.Right, resetLine.Margin.Bottom);
             Button pausesReset = Btn("Reset to defaults");
             resetLine.Controls.Add(pausesReset, 0, 0);
             resetLine.Controls.Add(Words("Defaults: speed 100%, sentence 500 ms, comma 60 ms, paragraph 1200 ms. Changes are saved straight away.", true), 1, 0);
@@ -1689,7 +1817,6 @@ namespace ModernVoicesConfig
             addGrid.Padding = new Padding(Px(6));
             addGrid.Location = new Point(0, 0);
             tab.Controls.Add(addGrid);
-            Row(addGrid, Words("Tick the voices to install and untick the ones to remove, then press Apply changes."));
             // Which voices the list shows: all of them at every start. The additional languages chosen have
             // their voices in the list, and a choice here each.
             TableLayoutPanel filterLine = Line("auto", "auto", "auto", "fill");
@@ -1700,6 +1827,10 @@ namespace ModernVoicesConfig
             LanguagesButton.Click += delegate { ChooseLanguages(); };
             filterLine.Controls.Add(Beside("Show"), 0, 0); filterLine.Controls.Add(VoiceFilterBox, 1, 0); filterLine.Controls.Add(LanguagesButton, 2, 0);
             Row(addGrid, filterLine);
+            // The instructions under them, with room above.
+            Label addHow = Words("Tick the voices to install and untick the ones to remove, then press Apply changes.");
+            addHow.Margin = new Padding(addHow.Margin.Left, Px(12), addHow.Margin.Right, Px(4));
+            Row(addGrid, addHow);
             AddList = NewList(true);
             AddList.Columns.Add("Voice", Px(220));
             AddList.Columns.Add("Speakers", Px(105));
@@ -2339,6 +2470,7 @@ namespace ModernVoicesConfig
                     item.Tag = row;
                     InstalledList.Items.Add(item);
                     allVoices.Add(shown);
+                    languageOfVoice[shown] = PreviewTexts.LanguageOfKey(key);
                 }
             }
             InstalledList.EndUpdate();
@@ -2378,6 +2510,12 @@ namespace ModernVoicesConfig
             PreviewButton.Enabled = on; ResetButton.Enabled = on; DefaultButton.Enabled = on;
             if (!on) { return; }
             InstalledRow row = (InstalledRow)InstalledList.SelectedItems[0].Tag;
+            // The preview text, unless typed over, in the voice's language.
+            if (PreviewTexts.IsOneOfThem(PreviewBox.Text))
+            {
+                string inLanguage = PreviewTexts.For(PreviewTexts.LanguageOfKey(row.Key));
+                if (PreviewBox.Text != inLanguage) { PreviewBox.Text = inLanguage; }
+            }
             VoiceSettings settings = Store.GetVoice(row.Dir);
             double peak = App.DefaultPeak, boost = App.DefaultBoost, lengthScale = 1.0;
             if (settings != null)
@@ -2577,7 +2715,10 @@ namespace ModernVoicesConfig
             if (globalTimer.Enabled) { globalTimer.Stop(); SaveGlobalSettings(); }
             if (outputTimer.Enabled) { outputTimer.Stop(); SaveOutput(); }
             StopPreview();
-            string text = !string.IsNullOrEmpty(say) ? say : PreviewBox.Text.Trim().Length > 0 ? PreviewBox.Text : App.PreviewText;
+            // The preview box's words; as given (not typed over), in the voice's own language.
+            string language;
+            languageOfVoice.TryGetValue(voiceName ?? "", out language);
+            string text = !string.IsNullOrEmpty(say) ? say : !PreviewTexts.IsOneOfThem(PreviewBox.Text) ? PreviewBox.Text : PreviewTexts.For(language);
             if (text.Length > 6000) { text = text.Substring(0, 6000); }
             try
             {
@@ -3430,12 +3571,20 @@ namespace ModernVoicesConfig
             System.Threading.Mutex running = new System.Threading.Mutex(true, "ModernVoicesConfig.Running", out first);
             if (!first) { ShowTheOther(); return 0; }
             string problem;
+            // The busy pointer over the program until its window is up.
+            Application.UseWaitCursor = true;
+            Cursor.Current = Cursors.WaitCursor;
             List<Entry> catalogue = Catalogue.Load(out problem);
             Startup.Mark("voice list read");
             ConfigForm form = new ConfigForm(catalogue, Voices.InstalledIds(), Voices.UsEnglishTags);
             Startup.Mark("window built");
             if (problem != null) { form.StatusLabel.Text = problem; }
-            form.Shown += delegate { Startup.Mark("window shown"); Startup.Save(); };
+            form.Shown += delegate
+            {
+                Application.UseWaitCursor = false;
+                Cursor.Current = Cursors.Default;
+                Startup.Mark("window shown"); Startup.Save();
+            };
             Application.Run(form);
             GC.KeepAlive(running);
             return 0;
@@ -3902,6 +4051,21 @@ namespace ModernVoicesConfig
                     Check(ui.AddList.Items.Count == catalogue.Count && ui.VoiceFilterBox.Items.Count == 4 && ui.WordLanguageBox.Items.Count == 1,
                         "German unchosen: the lists are as they were");
                 }
+            }
+
+            // The preview text: in each language offered, three lines; swapped for a voice's language unless
+            // typed over.
+            {
+                bool allThree = true;
+                foreach (string offered in Catalogue.Offered)
+                {
+                    string text;
+                    if (!PreviewTexts.ByLanguage.TryGetValue(offered, out text) || text.Split('\n').Length != 3 || text.IndexOf(',') < 0) { allThree = false; }
+                }
+                Check(allThree && PreviewTexts.ByLanguage.Count == Catalogue.Offered.Length + 1, "a preview text in each language offered, in three lines with commas");
+                Check(PreviewTexts.For("de").StartsWith("Hier", StringComparison.Ordinal) && PreviewTexts.For("xx") == App.PreviewText &&
+                    PreviewTexts.LanguageOfKey("de_DE-thorsten-medium") == "de" && PreviewTexts.IsOneOfThem(PreviewTexts.For("fr")) &&
+                    PreviewTexts.IsOneOfThem(App.OldPreviewText) && !PreviewTexts.IsOneOfThem("my own words"), "a voice's language picks its preview text; typed text is kept");
             }
 
             // Two qualities of one voice: the warning.
