@@ -4521,7 +4521,7 @@ namespace ModernVoicesConfig
                 ui.UpdateOwnPauses();
                 bool shown = ui.OwnPausesShown && ui.Sliders["Sentence gap"].Bar.Enabled;
                 ui.Sliders["Sentence gap"].Bar.Value = 300;
-                bool variationOffered = ui.OwnVariation.Bar.Enabled && !Store.GetVoiceVariation(dir).HasValue;
+                bool variationOffered = ui.OwnVariation.Bar.Enabled;
                 ui.OwnVariation.Bar.Value = 40;
                 ui.SaveSettings();
                 ui.StopTimers();

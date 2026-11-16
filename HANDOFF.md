@@ -1,12 +1,36 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.13.3 (16 Nov 2026). Lumoti's batches so far are all done and delivered; wait
+Last updated at version 0.14.0 (16 Nov 2026). Lumoti's batches so far are all done and delivered; wait
 for his next one. Model rule: say which model a batch suits BEFORE starting; Opus-level work while he is
-on Fable: recommend switching and wait (he may still say "continue with Fable").
+on Fable: recommend switching and wait (he often answers "build on Fable": then go ahead).
+
+**Version:** he asked "0.14 or perhaps v1.0?"; I made it 0.14.0 and suggested the next build be 1.0.0
+with nothing new, once he has used 0.14 for a few days. Ask/confirm before calling a build 1.0.
 
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
+
+## 0.14.0 (16 Nov 2026), delivered, not yet confirmed by him
+
+1. **About window** (`AboutButton`, an i glyph left of the moon; `AboutWindow()`): the projects from
+   `Credit.All` (name, author, what it does, link), `Credit.Thanks`, `Credit.Coding` and
+   `Credit.FromLumoti`: the last two are HIS WORDS, verbatim; don't reword.
+2. **"Powered by" window** (`PoweredByWindow()`), shown once, over Config, the first time it opens
+   (`Welcome.Seen`, HKCU `Welcomed`; Uninstall removes that key, so a reinstall shows it again).
+   Borderless, centred text, an X top right; a click anywhere, the X or any key closes it. Shown from
+   `Program.Main`'s Shown handler only (never in the self-test).
+3. **A voice's own variation** (`OwnVariation`, in the override sliders on the Voice manager; the tick
+   now reads "Override pause duration and variation for the selected voice"): the voice's own file's
+   `own_variation_percent`, used by the engine only while `own_pauses` is 1 (`text::own_variation`,
+   `load_model` reads the voice's own file first, then the global). As with the global one, a model is
+   loaded with it: open programs need a restart.
+4. **Reader: "Save text for next time?"** on closing with text (Yes / No; `Program.SaveTextWindow`,
+   `KeepTextForNextTime`, `State.KeepText`, current.txt). Kept for one start (`RestoreKeptText`), with
+   its place; closing asks again. Not asked in the self-test (`silent`) or when Windows closes it.
+5. Layout: the Defaults text is level with Reset to defaults; "Changes are saved straight away" lines up
+   with the sliders' notes (`alignSaved`) with 16 px above.
+6. README: his "simple install" sentence (verbatim), a "Better voices for Balabolka" paragraph.
 
 ## 0.13.3 (16 Nov 2026), delivered, not yet confirmed by him
 
