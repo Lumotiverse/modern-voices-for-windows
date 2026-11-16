@@ -1,16 +1,30 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.13.2 (16 Nov 2026). Model rule: say which model a batch suits BEFORE
-starting; Opus-level work while he is on Fable: recommend switching and wait.
+Last updated at version 0.13.3 (16 Nov 2026). Lumoti's batches so far are all done and delivered; wait
+for his next one. Model rule: say which model a batch suits BEFORE starting; Opus-level work while he is
+on Fable: recommend switching and wait (he may still say "continue with Fable").
 
-## 0.13.2 (16 Nov 2026): COMMITTED BUT NOT BUILT
+**The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
+run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
-GitHub refused to run the build (run #109, every job, in 2 s): "recent account payments have failed or
-your spending limit needs to be increased" (Actions minutes on his account). Nothing in 0.13.2 has been
-compiled or tested. When builds run again: push (or re-run the workflow), fix whatever fails, check the
-screenshots (Voice manager notes under sliders, Add or remove voices order, Speed and pauses reset
-spacing), then deliver ModernVoicesForWindows0.13.2.zip.
+## 0.13.3 (16 Nov 2026), delivered, not yet confirmed by him
+
+1. **Reader reads from the word clicked.** Stopped: a click sets the place and `placeClicked`; Play then
+   starts at that word (`Cleaner.WordStart`), not its sentence. Reading or paused: a click (press and
+   release on the same character, so a drag still selects) restarts from that word
+   (`ClickedWhileReading`). A place the reading stopped at, or kept for a file, still starts at its
+   sentence. `TestClick` drives both in the self-test.
+2. **Voice variation** (Speed and pauses, "Advanced setting", `VariationBar`): settings.json
+   `variation_percent`, 0 to 150, default 75 (`Store.VariationDefault`, engine `text::variation`). The
+   engine multiplies the model's noise_scale / noise_w by it when it LOADS a model (`load_model`; the
+   model cache key includes it), so a change is heard when a program next takes up a voice: Preview at
+   once (new process), open programs after a restart. Only written to the file once it differs.
+   Reset to defaults puts it back to 75.
+3. README: simple install (no registry edits, no manual downloads), Balabolka's pitch control works.
+4. Everything listed under 0.13.2 below (it was never built on its own; 0.13.3 was the first build).
+
+## 0.13.2 (16 Nov 2026): built and delivered as part of 0.13.3
 
 His asks, and what was written:
 1. Installer: a yellow note before "testing each voice through Windows' speech API" that the first start

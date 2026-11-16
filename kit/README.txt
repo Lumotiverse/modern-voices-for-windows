@@ -124,6 +124,10 @@ On the Speed and pauses tab, for every voice:
                   each part of a sentence separately so the pause can go between them, which can make
                   the intonation a little more broken up.
 
+Advanced setting, at the bottom of the tab: Voice variation. How much a voice changes its tone and
+rhythm each time it speaks: lower is steadier, higher is livelier. 100% is how the voices were made,
+75% is the default. Programs already open use a new value after they are restarted.
+
 Each pause is silence added to the voice's own, in milliseconds at 100% dictation speed and a program's
 speech rate 0. Faster speech uses a smaller share of it and slower a larger share, in step with the
 speech: at the default 100%, a 500 ms pause is 500 ms, 401 ms if a program also sets rate +2, and
