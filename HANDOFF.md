@@ -1,35 +1,31 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.13.0 (16 Nov 2026).
+Last updated at version 0.13.1 (16 Nov 2026). Lumoti's batches so far are all done and delivered; wait
+for his next one. Model rule: say which model a batch suits BEFORE starting; Opus-level work while he is
+on Fable: recommend switching and wait.
 
-## NEXT: the rest of his 16 Nov batch (held back for Opus 5.5 at his standing request)
+## 0.13.1 (16 Nov 2026), delivered, not yet confirmed by him: the rest of his 16 Nov batch
 
-He asked for all of this in one message; the language part was done on Fable as 0.13.0, and these simple
-items were left for when he switches to Opus 5.5 and says "carry on" (he wants Opus-level work done on
-Opus to save his Fable allowance: tell him which model a batch suits BEFORE starting, and if he is on
-Fable for Opus-level work, recommend switching and wait). His words:
+1. **Preview box** lines up with the sliders: `alignPreview` sets the "Preview says" column to whatever
+   width puts the box's left edge on the Volume slider's (measured after layout; the self-test checks the
+   x positions are equal). The gap above it is doubled (+Px(9) top margin).
+2. **Mute:** the speaker beside the output volume (`MuteIcon`) is clickable: `ToggleMute` sets 0 and
+   back to the value before (`unmutedVolume`, not kept between runs: 100 if opened muted). `ShowMute`
+   swaps the glyph (E767 speaker / E74F muted). The value reads "0% (muted)".
+3. "Override pause duration for the selected voice" (was Modify).
+4. **Open Reader** moved to the bottom strip, left of Close (header now tabs + moon only). **Apply
+   changes** shows only on Add or remove voices (`ShowPage`), with Done.
+5. **Descriptions rewritten plainly** on every tab, in tooltips, the languages window, the speaker list
+   label, and kit/README.txt; World of Warcraft removed from Config, installer messages and the README.
+   The line under each pause shows only when the speed isn't 100%: "At 150% speed you hear about 500 ms."
+6. **Comma pause default 60 ms** (`Store.CommaDefault`, engine `DEFAULT_PAUSES`, VoiceConvert
+   `PauseDefaults`). Only applies where nothing is saved: a fresh install, or Reset to defaults.
+   Existing installs keep their saved comma value (told him).
+7. Dictation speed's line is his exact words.
 
-1. "reduce the width of the preview text box so the left side aligns with the start of the volume/boost
-   sliders below. increase the gap between the preview box and the make default voice button above it by
-   100%." (Voice manager.)
-2. "change the speaker icon to the left of default voice display so it a clickable mute for the output
-   volume slider beside it." (The icon is at the output volume slider, right of the default voice box.)
-3. "'modify pause duration for selected voice' should be 'override pause duration for selected voice'"
-4. "move the open reader button down to left of the close button. remove apply changes button from any
-   tab that doesn't actually need it for a anything." (Apply changes only does something on Add or remove
-   voices; check `UpdateApply` for anything else it covers before hiding it elsewhere.)
-5. "the decription text at the bottom of each page is wordy and complicated and doesnt make sense if you
-   dont already understand how the program works. reword so it make sense to a layman or write it as
-   clear instructions or remove entirely. dont use world of warcraft as an example anywhere. also check
-   the other descriptions and make sure they are simple, clear and obvious" (Config's grey texts, the
-   new Additional languages window and "Rules for" note included; kit/README.txt also names World of
-   Warcraft, as does the installer's signature note and Config's Add or remove footnote.)
-6. "change the default comma pause value to 60ms." (`Store.CommaDefault`, the engine's default in
-   text.rs `Pauses`, the installer/VoiceConvert defaults, the "Defaults:" line, tests that assume 0.
-   Decide and tell him: existing installs with a saved 0 keep 0 unless he presses Reset to defaults.)
-7. "change the description under dictation speed slider to 'Change how fast all voices speak. You can
-   then adjust each voice individually in voice manager, to account for any differences'"
+Self-test note: a test that moves the output slider must `StopTimers()` and delete a settings file it
+created, or the installer later finds settings.json and skips writing its defaults (broke run #105).
 
 ## 0.13.0 (16 Nov 2026), delivered, not yet confirmed by him: other languages
 
