@@ -418,6 +418,33 @@ Set-GlobalSpeed $settingsFile 100
 Set-VoiceSettings $albaDir 1 1.5 1
 Set-VoiceSettings $maleDir 1 1.5 1
 
+Step 'A voice of another language (German): Windows knows its language, it speaks, and it has its own pronunciation rules'
+$code = Invoke-Install @('-Voices', 'en_GB-alba-medium,en_GB-northern_english_male-medium,en_GB-vctk-medium#p239,de_DE-thorsten-medium', '-UsEnglishTags', '-Unattended', '-NoPause')
+Check ($code -eq 0) 'a German voice installs beside the English ones'
+$germanToken = Join-Path $Tokens64 'ModernVoices_de_DE-thorsten-medium'
+$germanName = if (Test-Path $germanToken) { [string](Get-ItemProperty $germanToken).'(default)' } else { '' }
+$germanLanguage = if (Test-Path "$germanToken\Attributes") { [string](Get-ItemProperty "$germanToken\Attributes").Language } else { '' }
+$albaLanguage = [string](Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')).Language
+Write-Host "    $germanName : language $germanLanguage (Alba, listed as US English: $albaLanguage)" -ForegroundColor DarkGray
+Check ($germanName -eq 'Thorsten (German)' -and $germanLanguage -eq '407') "it is named Thorsten (German), and Windows has it as German (407)"
+Check ($albaLanguage -eq '409') '"Also list British voices as US English" is for the English voices only (German stays German)'
+$germanText = 'Guten Tag. Das ist ein Test.'
+$germanBase = Measure-Speech $germanName $germanText
+Check ($germanBase.Seconds -gt 1 -and $germanBase.Seconds -lt 8) ("it speaks ({0:N2} s)" -f $germanBase.Seconds)
+$albaTest = 'Good day. This is a test.'
+$albaBase = Measure-Speech $albaName $albaTest
+$germanRules = Join-Path $Data 'dictionary-de.txt'
+$trolle = [pscustomobject]@{ On = $true; Whole = $true; Case = $false; From = 'Test'; To = 'Test mit sieben sehr grossen und wirklich furchtbar schlecht gelaunten Bergtrollen' }
+Set-Dictionary $germanRules @($trolle)
+$germanLonger = Measure-Speech $germanName $germanText
+$albaSame = Measure-Speech $albaName $albaTest
+Check ($germanLonger.Seconds -gt $germanBase.Seconds + 1.5) ("a German rule (dictionary-de.txt) changes what the German voice says ({0:N2} s -> {1:N2} s)" -f $germanBase.Seconds, $germanLonger.Seconds)
+Check ([math]::Abs($albaSame.Seconds - $albaBase.Seconds) -lt 0.05) ("and not what an English voice says ({0:N2} s, as before)" -f $albaSame.Seconds)
+Set-Dictionary $germanRules @($trolle) $true
+$germanOff = Measure-Speech $germanName $germanText
+Check ([math]::Abs($germanOff.Seconds - $germanBase.Seconds) -lt 0.6) ("the German list switched off as a whole: as without it ({0:N2} s)" -f $germanOff.Seconds)
+Remove-Item $germanRules -ErrorAction SilentlyContinue
+
 Step 'Change voices: Alba only'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium', '-Unattended', '-NoPause')
 Check ($code -eq 0) 'change finished without errors'

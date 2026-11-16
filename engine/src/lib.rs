@@ -223,12 +223,13 @@ fn global_settings(path: Option<&str>) -> Global {
     global
 }
 
-/// The pronunciation dictionary for every voice: `dictionary.txt` beside the settings file the voice
-/// token names, read again whenever it changes. Empty without one.
-fn dictionary(settings_path: Option<&str>) -> Arc<Dictionary> {
+/// The pronunciation dictionary for the voices of a language: beside the settings file the voice token
+/// names, `dictionary.txt` for English and `dictionary-<language>.txt` for another (`dictionary_file`),
+/// read again whenever it changes. Empty without one, or when it is switched off.
+fn dictionary(settings_path: Option<&str>, language: &str) -> Arc<Dictionary> {
     static CACHE: OnceLock<Mutex<HashMap<String, (Option<SystemTime>, Arc<Dictionary>)>>> = OnceLock::new();
     let Some(settings_path) = settings_path else { return Arc::new(Dictionary::default()) };
-    let path = std::path::Path::new(settings_path).with_file_name("dictionary.txt");
+    let path = std::path::Path::new(settings_path).with_file_name(dictionary_file(language));
     let key = path.to_string_lossy().to_string();
     let changed = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
     let Ok(mut cache) = CACHE.get_or_init(|| Mutex::new(HashMap::new())).lock() else { return Arc::new(Dictionary::default()) };
@@ -412,6 +413,8 @@ struct Voice {
     name: String,
     /// The program's settings file (pauses for every voice), from the token's `SettingsFile`.
     settings_file: Option<String>,
+    /// The voice's language ("en", "de"), from its model folder's name: which pronunciation rules it uses.
+    language: String,
 }
 
 #[implement(ISpTTSEngine, ISpObjectWithToken)]
@@ -454,7 +457,8 @@ impl ISpObjectWithToken_Impl for Engine_Impl {
             if log::enabled() {
                 log::write(&format!("voice #{number} {name}: {:?} (from {})", started.elapsed(), caller()));
             }
-            Some(Voice { model, speaker, name, settings_file })
+            let language = language_of(&model.dir);
+            Some(Voice { model, speaker, name, settings_file, language })
         }));
         match result {
             Ok(Some(voice)) => {
@@ -718,7 +722,7 @@ impl Engine_Impl {
         let settings = voice.model.settings(voice.settings_file.as_deref());
         let global = global_settings(voice.settings_file.as_deref());
         let pauses = settings.own_pauses.unwrap_or(global.pauses);
-        let dictionary = dictionary(voice.settings_file.as_deref());
+        let dictionary = dictionary(voice.settings_file.as_deref(), &voice.language);
         // The program's rate on top of the speed set for every voice (the window's Speed and pauses
         // tab): 100% unless set; 125% is about as fast as rate +2.
         let speed = (3f32.powf(rate / 10.0).clamp(0.4, 2.5) * global.speed).clamp(0.1, 3.0);
@@ -765,7 +769,9 @@ impl Engine_Impl {
         // Said as the pronunciation dictionary has it (the words reported to the program stay the text's
         // own), sums of money the way they are read aloud ("£150": "150 pounds"), and with an end mark
         // where it has none, which the voice needs to finish its last word.
-        let text = with_end_mark(&money(&dictionary.apply(&String::from_utf16_lossy(&run.text[from..to]))));
+        // (Money the English way for an English voice only: another language's voice reads "150 €" itself.)
+        let replaced = dictionary.apply(&String::from_utf16_lossy(&run.text[from..to]));
+        let text = with_end_mark(&if voice.language == "en" { money(&replaced) } else { replaced });
         let started = Instant::now();
         let made = {
             let _turn = voice.model.busy.lock();

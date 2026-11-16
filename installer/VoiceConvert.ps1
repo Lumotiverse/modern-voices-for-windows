@@ -317,8 +317,15 @@ function Get-Dictionary([string]$Path) {
     }
     return $rules
 }
-function Set-Dictionary([string]$Path, $Rules) {
+# Whether a pronunciation list is switched off as a whole (a line "#off": its rules are kept, none is used).
+function Test-DictionaryOff([string]$Path) {
+    if (-not (Test-Path $Path)) { return $false }
+    foreach ($line in [System.IO.File]::ReadAllLines($Path, $script:PevUtf8)) { if ($line.Trim() -eq '#off') { return $true } }
+    return $false
+}
+function Set-Dictionary([string]$Path, $Rules, [bool]$Off = $false) {
     $lines = @('# Modern Voices for Windows - pronunciation dictionary: on, whole words (w) or parts too (p), capitals matched (c) or not (i), said, as')
+    if ($Off) { $lines += '#off' }
     foreach ($rule in @($Rules)) {
         $from = ([string]$rule.From -replace '[\t\r\n]+', ' ').Trim()
         $to = ([string]$rule.To -replace '[\t\r\n]+', ' ').Trim()

@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.12.7.0")]
+[assembly: System.Reflection.AssemblyVersion("0.13.0.0")]
 
 namespace ModernVoicesConfig
 {
@@ -106,6 +106,12 @@ namespace ModernVoicesConfig
             SettingsFile = Path.Combine(SettingsFolder, "settings.json");
             DictionaryFile = Path.Combine(SettingsFolder, "dictionary.txt");
         }
+        // The file of a language's pronunciation rules (as the engine names them): dictionary.txt for
+        // English, dictionary-de.txt for German.
+        public static string DictionaryFor(string family)
+        {
+            return string.IsNullOrEmpty(family) || family == "en" ? DictionaryFile : Path.Combine(SettingsFolder, "dictionary-" + family + ".txt");
+        }
 
         // A voice's own settings file, for its folder: voices\<the folder's name>.json in the settings folder.
         public static string VoiceFile(string dir)
@@ -120,6 +126,7 @@ namespace ModernVoicesConfig
     public class Entry
     {
         public string Key, Name, Display, Code, Accent, Quality, Onnx;
+        public string Family, Language;     // "de" and "German" (from the catalogue)
         public int SizeMb;
         public List<string> SpeakerNames = new List<string>();
         public Dictionary<string, int> SpeakerIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -142,6 +149,13 @@ namespace ModernVoicesConfig
         static readonly Dictionary<string, string> PrettyNames = new Dictionary<string, string> {
             { "hfc_female", "HFC Female" }, { "hfc_male", "HFC Male" }, { "l2arctic", "L2 Arctic" }, { "libritts", "LibriTTS" },
             { "libritts_r", "LibriTTS-R" }, { "ljspeech", "LJ Speech" }, { "vctk", "VCTK" }, { "jenny_dioco", "Jenny" } };
+
+        // The languages offered beside English ("Additional languages"): European ones written left to
+        // right with spaces between words, which the engine's handling of sentences, pauses and words fits.
+        // Not offered: languages written right to left or without spaces (Arabic, Persian, Chinese), and
+        // the others not looked at yet. (The installer itself installs a voice of any language it is given.)
+        public static readonly string[] Offered = { "bg", "ca", "cs", "cy", "da", "de", "el", "es", "eu", "fi", "fr", "gl", "hu", "is", "it",
+            "lb", "lv", "nl", "no", "pl", "pt", "ro", "ru", "sk", "sl", "sr", "sv", "tr", "uk" };
 
         public static string PrettyName(string name)
         {
@@ -177,7 +191,8 @@ namespace ModernVoicesConfig
             return null;
         }
 
-        // The English voices of medium or high quality, by accent and name. The list is the installer's
+        // The voices of medium or high quality, English and the languages offered: English first, then by
+        // language, accent and name. The list is the installer's
         // (catalogue.json in the program's folder, downloaded when it installs or updates); without it,
         // downloaded now. 'problem' says what went wrong, when something did.
         public static List<Entry> Load(out string problem)
@@ -222,10 +237,20 @@ namespace ModernVoicesConfig
             Dictionary<string, object> all = serializer.DeserializeObject(json) as Dictionary<string, object>;
             List<Entry> list = new List<Entry>();
             if (all == null) { return list; }
+            // (A language the catalogue has from several countries: its voices say which, as the installer's do.)
+            Dictionary<string, HashSet<string>> codesOf = new Dictionary<string, HashSet<string>>();
             foreach (KeyValuePair<string, object> pair in all)
             {
                 object language = Value(pair.Value, "language");
-                if ((Value(language, "family") as string) != "en") { continue; }
+                string itsFamily = Convert.ToString(Value(language, "family"), CultureInfo.InvariantCulture);
+                if (!codesOf.ContainsKey(itsFamily)) { codesOf[itsFamily] = new HashSet<string>(); }
+                codesOf[itsFamily].Add(Convert.ToString(Value(language, "code"), CultureInfo.InvariantCulture));
+            }
+            foreach (KeyValuePair<string, object> pair in all)
+            {
+                object language = Value(pair.Value, "language");
+                string family = Convert.ToString(Value(language, "family"), CultureInfo.InvariantCulture);
+                if (family != "en" && Array.IndexOf(Offered, family) < 0) { continue; }
                 string quality = Value(pair.Value, "quality") as string;
                 if (quality != "medium" && quality != "high") { continue; }
                 Dictionary<string, object> files = Value(pair.Value, "files") as Dictionary<string, object>;
@@ -244,7 +269,12 @@ namespace ModernVoicesConfig
                 entry.Quality = quality;
                 entry.Onnx = onnx;
                 entry.Display = PrettyName(entry.Name) + (quality == "high" ? " HQ" : "");
-                entry.Accent = entry.Code == "en_GB" ? "British" : entry.Code == "en_US" ? "American" : entry.Code;
+                entry.Family = family;
+                entry.Language = Convert.ToString(Value(language, "name_english"), CultureInfo.InvariantCulture);
+                if (entry.Language.Length == 0) { entry.Language = entry.Code; }
+                string country = Convert.ToString(Value(language, "country_english"), CultureInfo.InvariantCulture);
+                entry.Accent = entry.Code == "en_GB" ? "British" : entry.Code == "en_US" ? "American"
+                    : codesOf[family].Count > 1 && country.Length > 0 ? entry.Language + ", " + country : entry.Language;
                 entry.SizeMb = (int)Math.Round(Convert.ToDouble(Value(Value(files, onnx), "size_bytes"), CultureInfo.InvariantCulture) / 1048576.0);
                 Dictionary<string, object> map = Value(pair.Value, "speaker_id_map") as Dictionary<string, object>;
                 if (map != null && map.Count > 0)
@@ -266,7 +296,9 @@ namespace ModernVoicesConfig
             }
             list.Sort(delegate(Entry a, Entry b)
             {
-                int order = string.Compare(a.Accent, b.Accent, StringComparison.CurrentCultureIgnoreCase);
+                int order = (a.Family == "en" ? 0 : 1).CompareTo(b.Family == "en" ? 0 : 1);
+                if (order == 0) { order = string.Compare(a.Language, b.Language, StringComparison.CurrentCultureIgnoreCase); }
+                if (order == 0) { order = string.Compare(a.Accent, b.Accent, StringComparison.CurrentCultureIgnoreCase); }
                 if (order == 0) { order = string.Compare(a.Display, b.Display, StringComparison.CurrentCultureIgnoreCase); }
                 if (order == 0) { order = string.CompareOrdinal(a.Key, b.Key); }
                 return order;
@@ -709,10 +741,18 @@ namespace ModernVoicesConfig
             }
             return rules;
         }
-        public static void SetDictionary(string path, IEnumerable<Rule> rules)
+        // Whether a list of rules is switched off as a whole (a line "#off": its rules are kept, none is used).
+        public static bool DictionaryOff(string path)
+        {
+            if (!File.Exists(path)) { return false; }
+            foreach (string line in File.ReadAllLines(path, Utf8)) { if (line.Trim() == "#off") { return true; } }
+            return false;
+        }
+        public static void SetDictionary(string path, IEnumerable<Rule> rules, bool off = false)
         {
             List<string> lines = new List<string>();
             lines.Add("# Modern Voices for Windows - pronunciation dictionary: on, whole words (w) or parts too (p), capitals matched (c) or not (i), said, as");
+            if (off) { lines.Add("#off"); }
             foreach (Rule rule in rules)
             {
                 string from = Regex.Replace(rule.From ?? "", @"[\t\r\n]+", " ").Trim();
@@ -740,6 +780,55 @@ namespace ModernVoicesConfig
 
     // Light or dark: as last chosen with the moon (kept for the Windows user and shared with the Reader);
     // dark until light is chosen.
+    // The additional languages chosen (their voices are listed on Add or remove voices): the person's
+    // own choice, kept as the theme is.
+    public static class Languages
+    {
+        const string OurKey = @"Software\Modern Voices for Windows";
+        public static string Override;      // (the build's test: its own choice, the person's left alone)
+
+        public static List<string> Enabled
+        {
+            get
+            {
+                string value = Override;
+                if (value == null)
+                {
+                    try
+                    {
+                        using (RegistryKey key = Registry.CurrentUser.OpenSubKey(OurKey)) { value = key == null ? null : key.GetValue("Languages") as string; }
+                    }
+                    catch (Exception) { }
+                }
+                List<string> list = new List<string>();
+                foreach (string family in (value ?? "").Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (family != "en" && !list.Contains(family)) { list.Add(family); }
+                }
+                return list;
+            }
+            set
+            {
+                string text = string.Join(" ", value.ToArray());
+                if (Override != null) { Override = text; return; }
+                try
+                {
+                    using (RegistryKey key = Registry.CurrentUser.CreateSubKey(OurKey)) { key.SetValue("Languages", text); }
+                }
+                catch (Exception) { }
+            }
+        }
+    }
+
+    // A choice of the "Show" box (and of the Pronunciation tab's "Rules for"): the voices of a language
+    // (Family; null: any) and of one of its countries (Code; null: any).
+    public class LanguageChoice
+    {
+        public string Text, Family, Code;
+        public LanguageChoice(string text, string family, string code) { Text = text; Family = family; Code = code; }
+        public override string ToString() { return Text; }
+    }
+
     public static class Theme
     {
         const string OurKey = @"Software\Modern Voices for Windows";
@@ -930,6 +1019,10 @@ namespace ModernVoicesConfig
         public readonly List<ListViewItem> VoiceItems = new List<ListViewItem>();
         public ComboBox VoiceFilterBox;
         bool filtering;                                     // the list is being refilled for the "Show" box
+        public Button LanguagesButton;
+        public ComboBox WordLanguageBox;                    // whose rules the Pronunciation tab lists
+        public CheckBox WordListOnBox;                      // that list in use, or switched off as a whole
+        string wordFamily = "en";
         public Button DoneButton;
         public ComboBox PreviewVoiceBox;
         public TrackBar SpeedBar;
@@ -1504,7 +1597,27 @@ namespace ModernVoicesConfig
         void BuildPronunciation(Panel tab)
         {
             TableLayoutPanel page = Rows(tab);
-            Row(page, Words("Words and names said your way: by every voice, in every program that uses these voices", false, true));
+            Row(page, Words("Words and names said your way, in every program that uses these voices", false, true));
+            // Each language has its own rules: its voices use them, and no other language's.
+            TableLayoutPanel rulesLine = Line("auto", "auto", "auto", "fill");
+            WordLanguageBox = new ComboBox();
+            WordLanguageBox.DropDownStyle = ComboBoxStyle.DropDownList; WordLanguageBox.Width = Px(200); WordLanguageBox.Anchor = AnchorStyles.Left;
+            WordListOnBox = new CheckBox();
+            WordListOnBox.Text = "Use these rules"; WordListOnBox.AutoSize = true; WordListOnBox.Checked = true;
+            WordListOnBox.Anchor = AnchorStyles.Left; WordListOnBox.Margin = new Padding(Px(12), 0, Px(12), 0);
+            Label rulesNote = Words("Voices use the rules of their own language. Untick to switch this whole list off.", true);
+            rulesNote.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            rulesLine.Controls.Add(Beside("Rules for"), 0, 0); rulesLine.Controls.Add(WordLanguageBox, 1, 0);
+            rulesLine.Controls.Add(WordListOnBox, 2, 0); rulesLine.Controls.Add(rulesNote, 3, 0);
+            Row(page, rulesLine);
+            WordLanguageBox.SelectedIndexChanged += delegate
+            {
+                LanguageChoice rulesFor = WordLanguageBox.SelectedItem as LanguageChoice;
+                if (fillingChoices || rulesFor == null || rulesFor.Family == wordFamily) { return; }
+                wordFamily = rulesFor.Family;
+                UpdateWordList();
+            };
+            WordListOnBox.CheckedChanged += delegate { if (!Filling) { SaveWords(); } };
             WordList = NewList(true);
             WordList.Height = Px(260);
             WordList.MinimumSize = new Size(0, Px(260));
@@ -1558,18 +1671,20 @@ namespace ModernVoicesConfig
             addGrid.Location = new Point(0, 0);
             tab.Controls.Add(addGrid);
             Row(addGrid, Words("Tick the voices to install and untick the ones to remove, then press Apply changes."));
-            // Which voices the list shows (for other languages too, if they are ever added). All of them at every start.
-            TableLayoutPanel filterLine = Line("auto", "auto", "fill");
+            // Which voices the list shows: all of them at every start. The additional languages chosen have
+            // their voices in the list, and a choice here each.
+            TableLayoutPanel filterLine = Line("auto", "auto", "auto", "fill");
             VoiceFilterBox = new ComboBox();
-            VoiceFilterBox.DropDownStyle = ComboBoxStyle.DropDownList; VoiceFilterBox.Width = Px(160); VoiceFilterBox.Anchor = AnchorStyles.Left;
-            VoiceFilterBox.Items.AddRange(new object[] { "All voices", "English only", "American only", "British only" });
-            VoiceFilterBox.SelectedIndex = 0;
-            filterLine.Controls.Add(Beside("Show"), 0, 0); filterLine.Controls.Add(VoiceFilterBox, 1, 0);
+            VoiceFilterBox.DropDownStyle = ComboBoxStyle.DropDownList; VoiceFilterBox.Width = Px(200); VoiceFilterBox.Anchor = AnchorStyles.Left;
+            LanguagesButton = Btn("Additional languages...");
+            LanguagesButton.Anchor = AnchorStyles.Left; LanguagesButton.Margin = new Padding(Px(12), 0, 0, 0);
+            LanguagesButton.Click += delegate { ChooseLanguages(); };
+            filterLine.Controls.Add(Beside("Show"), 0, 0); filterLine.Controls.Add(VoiceFilterBox, 1, 0); filterLine.Controls.Add(LanguagesButton, 2, 0);
             Row(addGrid, filterLine);
             AddList = NewList(true);
             AddList.Columns.Add("Voice", Px(220));
             AddList.Columns.Add("Speakers", Px(105));
-            AddList.Columns.Add("Accent", Px(90));
+            AddList.Columns.Add("Accent or language", Px(150));
             AddList.Columns.Add("Quality", Px(75));
             AddList.Columns.Add("Download", Px(90));
             AddList.Columns.Add("Catalogue key", Px(220));
@@ -1590,7 +1705,11 @@ namespace ModernVoicesConfig
                 item.Checked = speakersOf.ContainsKey(v.Key);
                 if (item.Checked) { item.Font = listBold; }
                 VoiceItems.Add(item);
-                AddList.Items.Add(item);
+            }
+            FillLanguageChoices();
+            foreach (ListViewItem item in VoiceItems)
+            {
+                if (LanguageShown(((Entry)item.Tag).Family)) { AddList.Items.Add(item); }
             }
             // The room left over is shared by the two lists: the voices' two fifths, the speakers' three.
             Row(addGrid, AddList, true);
@@ -1643,7 +1762,7 @@ namespace ModernVoicesConfig
                 }
             };
             OnlyTickedBox.CheckedChanged += delegate { UpdateSelection(); };
-            VoiceFilterBox.SelectedIndexChanged += delegate { ApplyVoiceFilter(); };
+            VoiceFilterBox.SelectedIndexChanged += delegate { if (!fillingChoices) { ApplyVoiceFilter(); } };
             // A click on a speaker's name only selects it (to play its sample); its box is what ticks it.
             SpeakerList.MouseDown += SpeakerMouseDown;
             SpeakerList.MouseUp += delegate { nameClick = false; };
@@ -1670,19 +1789,158 @@ namespace ModernVoicesConfig
             tab.ClientSizeChanged += delegate { UpdateAddLayout(); };
         }
 
-        // Whether the "Show" box lets a voice through.
-        public static bool FilterShows(int filter, Entry v)
+        // Whether the "Show" box's choice lets a voice through.
+        public static bool FilterShows(LanguageChoice choice, Entry v)
         {
-            if (filter == 1) { return v.Code.StartsWith("en", StringComparison.OrdinalIgnoreCase); }
-            if (filter == 2) { return v.Code == "en_US"; }
-            if (filter == 3) { return v.Code == "en_GB"; }
-            return true;
+            if (choice == null) { return true; }
+            return (choice.Family == null || v.Family == choice.Family) && (choice.Code == null || v.Code == choice.Code);
+        }
+        // Whether a language's voices are listed: English always; another when it is one of the additional
+        // languages chosen, or has a voice ticked (an installed one, say: never hidden).
+        public bool LanguageShown(string family)
+        {
+            if (family == "en" || Languages.Enabled.Contains(family)) { return true; }
+            foreach (ListViewItem item in VoiceItems) { if (item.Checked && ((Entry)item.Tag).Family == family) { return true; } }
+            return false;
+        }
+        // The catalogue's languages beside English, each with its name, in name order.
+        public List<KeyValuePair<string, string>> OtherLanguages()
+        {
+            List<KeyValuePair<string, string>> found = new List<KeyValuePair<string, string>>();
+            foreach (Entry v in CatalogueList)
+            {
+                if (v.Family == "en") { continue; }
+                bool had = false;
+                foreach (KeyValuePair<string, string> pair in found) { if (pair.Key == v.Family) { had = true; } }
+                if (!had) { found.Add(new KeyValuePair<string, string>(v.Family, v.Language)); }
+            }
+            found.Sort(delegate(KeyValuePair<string, string> x, KeyValuePair<string, string> y) { return string.Compare(x.Value, y.Value, StringComparison.CurrentCultureIgnoreCase); });
+            return found;
+        }
+        // The choices of the "Show" box and of the Pronunciation tab's "Rules for": English's, and one for
+        // each other language listed. What was chosen stays chosen if it is still there (else the first).
+        bool fillingChoices;
+        public void FillLanguageChoices()
+        {
+            fillingChoices = true;
+            try
+            {
+                List<LanguageChoice> shows = new List<LanguageChoice>();
+                shows.Add(new LanguageChoice("All voices", null, null));
+                shows.Add(new LanguageChoice("English only", "en", null));
+                shows.Add(new LanguageChoice("American only", "en", "en_US"));
+                shows.Add(new LanguageChoice("British only", "en", "en_GB"));
+                List<LanguageChoice> rules = new List<LanguageChoice>();
+                rules.Add(new LanguageChoice("English", "en", null));
+                foreach (KeyValuePair<string, string> language in OtherLanguages())
+                {
+                    if (!LanguageShown(language.Key)) { continue; }
+                    shows.Add(new LanguageChoice(language.Value + " only", language.Key, null));
+                    rules.Add(new LanguageChoice(language.Value, language.Key, null));
+                }
+                Refill(VoiceFilterBox, shows);
+                if (WordLanguageBox != null) { Refill(WordLanguageBox, rules); }
+            }
+            finally { fillingChoices = false; }
+        }
+        static void Refill(ComboBox box, List<LanguageChoice> choices)
+        {
+            string was = box.SelectedItem == null ? null : box.SelectedItem.ToString();
+            box.BeginUpdate();
+            box.Items.Clear();
+            int chosen = 0;
+            for (int i = 0; i < choices.Count; i++)
+            {
+                box.Items.Add(choices[i]);
+                if (choices[i].Text == was) { chosen = i; }
+            }
+            box.SelectedIndex = chosen;
+            box.EndUpdate();
+        }
+        // The additional languages are set (kept for next time): the lists and their choices follow.
+        public void SetLanguages(List<string> families)
+        {
+            Languages.Enabled = families;
+            LanguagesChanged();
+        }
+        void LanguagesChanged()
+        {
+            FillLanguageChoices();
+            ApplyVoiceFilter();
+            LanguageChoice rulesFor = WordLanguageBox.SelectedItem as LanguageChoice;
+            if (rulesFor != null && rulesFor.Family != wordFamily) { wordFamily = rulesFor.Family; UpdateWordList(); }
+        }
+        // The "Additional languages" window: the catalogue's other languages, each with a box. A language
+        // with a voice ticked on Add or remove voices (an installed one, say) is listed whatever is chosen
+        // here, and says so. 'list' gets its list (a row's language is 'families' at the same place).
+        public Form LanguagesDialog(out CheckedListBox list, out List<string> families)
+        {
+            Form dialog = new Form();
+            dialog.Text = "Additional languages"; dialog.Font = Font; dialog.Icon = Icon;
+            dialog.FormBorderStyle = FormBorderStyle.FixedDialog; dialog.MaximizeBox = false; dialog.MinimizeBox = false;
+            dialog.StartPosition = FormStartPosition.CenterParent; dialog.ShowInTaskbar = false;
+            dialog.ClientSize = new Size(Px(440), Px(520)); dialog.Padding = new Padding(Px(10));
+            TableLayoutPanel rows = new TableLayoutPanel();
+            rows.Dock = DockStyle.Fill; rows.ColumnCount = 1;
+            rows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            dialog.Controls.Add(rows);
+            Row(rows, Words("Tick the languages whose voices you want listed on Add or remove voices. English is always listed."));
+            BigCheckList boxes = new BigCheckList();
+            boxes.Font = listFont; boxes.BoxSize = Px(16); boxes.RowGap = Px(6);
+            boxes.CheckOnClick = true; boxes.IntegralHeight = false; boxes.Dock = DockStyle.Fill;
+            boxes.SelectedBack = palette.Selected; boxes.SelectedText = palette.Dark ? palette.Text : SystemColors.HighlightText;
+            families = new List<string>();
+            List<string> chosen = Languages.Enabled;
+            List<int> kept = new List<int>();
+            foreach (KeyValuePair<string, string> language in OtherLanguages())
+            {
+                int voices = 0;
+                bool ticked = false;
+                foreach (ListViewItem item in VoiceItems)
+                {
+                    if (((Entry)item.Tag).Family != language.Key) { continue; }
+                    voices++;
+                    if (item.Checked) { ticked = true; }
+                }
+                if (ticked) { kept.Add(families.Count); }
+                families.Add(language.Key);
+                boxes.Items.Add(language.Value + " (" + voices + (voices == 1 ? " voice" : " voices") + (ticked ? ", some ticked: stays listed)" : ")"), ticked || chosen.Contains(language.Key));
+            }
+            boxes.ItemCheck += delegate(object sender, ItemCheckEventArgs e) { if (kept.Contains(e.Index)) { e.NewValue = CheckState.Checked; } };
+            Row(rows, boxes, true);
+            Row(rows, Words("The program's own words stay in English. Each language has its own pronunciation rules (Pronunciation tab), " +
+                "empty until you add some. Other languages' voices have been tried far less than the English ones.", true));
+            FlowLayoutPanel buttons = Flow();
+            buttons.FlowDirection = FlowDirection.RightToLeft; buttons.Dock = DockStyle.Fill;
+            Button cancel = Btn("Cancel");
+            Button ok = Btn("OK");
+            ok.DialogResult = DialogResult.OK; cancel.DialogResult = DialogResult.Cancel;
+            buttons.Controls.Add(cancel); buttons.Controls.Add(ok);
+            Row(rows, buttons);
+            dialog.AcceptButton = ok; dialog.CancelButton = cancel;
+            ThemeOn(rows, palette);
+            dialog.BackColor = palette.Back; dialog.ForeColor = palette.Text;
+            list = boxes;
+            return dialog;
+        }
+        void ChooseLanguages()
+        {
+            CheckedListBox list;
+            List<string> families;
+            using (Form dialog = LanguagesDialog(out list, out families))
+            {
+                if (families.Count == 0) { StatusLabel.Text = "The voice list has no other languages (it could not be read)."; return; }
+                if (dialog.ShowDialog(this) != DialogResult.OK) { return; }
+                List<string> chosen = new List<string>();
+                for (int i = 0; i < families.Count; i++) { if (list.GetItemChecked(i)) { chosen.Add(families[i]); } }
+                SetLanguages(chosen);
+            }
         }
         // The list shows the voices the "Show" box lets through. Rows not shown keep their ticks, and the
         // voice selected stays selected if it is still shown.
         public void ApplyVoiceFilter()
         {
-            int filter = VoiceFilterBox.SelectedIndex;
+            LanguageChoice filter = VoiceFilterBox.SelectedItem as LanguageChoice;
             ListViewItem selected = AddList.SelectedItems.Count > 0 ? AddList.SelectedItems[0] : null;
             // (A row's tick is remembered apart from the list, in case Windows' list loses it on the way out or in.)
             Dictionary<ListViewItem, bool> ticks = new Dictionary<ListViewItem, bool>();
@@ -1695,7 +1953,8 @@ namespace ModernVoicesConfig
                 AddList.Items.Clear();
                 foreach (ListViewItem item in VoiceItems)
                 {
-                    if (FilterShows(filter, (Entry)item.Tag)) { AddList.Items.Add(item); }
+                    Entry voice = (Entry)item.Tag;
+                    if (FilterShows(filter, voice) && LanguageShown(voice.Family)) { AddList.Items.Add(item); }
                 }
                 foreach (ListViewItem item in VoiceItems)
                 {
@@ -2338,7 +2597,8 @@ namespace ModernVoicesConfig
             Filling = true;
             try
             {
-                wordRules = Store.GetDictionary(App.DictionaryFile);
+                wordRules = Store.GetDictionary(App.DictionaryFor(wordFamily));
+                WordListOnBox.Checked = !Store.DictionaryOff(App.DictionaryFor(wordFamily));
                 WordList.BeginUpdate();
                 WordList.Items.Clear();
                 foreach (Rule rule in wordRules) { AddWordRow(rule); }
@@ -2359,7 +2619,13 @@ namespace ModernVoicesConfig
         // Writes the rules to the dictionary file (the engine picks it up at the next thing said).
         public void SaveWords()
         {
-            try { Store.SetDictionary(App.DictionaryFile, wordRules); }
+            // (A language's list with no rules and not switched off needs no file: none is left behind.)
+            string file = App.DictionaryFor(wordFamily);
+            try
+            {
+                if (wordFamily != "en" && wordRules.Count == 0 && WordListOnBox.Checked) { if (File.Exists(file)) { File.Delete(file); } }
+                else { Store.SetDictionary(file, wordRules, !WordListOnBox.Checked); }
+            }
             catch (Exception e) { StatusLabel.Text = "Could not save the pronunciation rules: " + e.Message; }
         }
         // The boxes under the list: the selected rule's, to change it; empty for a new one.
@@ -2779,6 +3045,10 @@ namespace ModernVoicesConfig
                 }
             }
             finally { Filling = false; }
+            // (A language listed only for its installed voices goes from the lists with the last of them.)
+            int choicesBefore = VoiceFilterBox.Items.Count;
+            FillLanguageChoices();
+            if (VoiceFilterBox.Items.Count != choicesBefore) { LanguagesChanged(); }
             UsBox.Checked = UsTags;
             UpdateInstalledList();
             UpdateSummary();
@@ -3297,12 +3567,16 @@ namespace ModernVoicesConfig
         {
             Note("Modern Voices Config " + App.VersionText + ", program folder: " + App.Folder);
             string problem;
-            List<Entry> catalogue = Catalogue.Load(out problem);
-            Check(catalogue.Count > 20, "the catalogue is read: " + catalogue.Count + " English voices" + (problem == null ? "" : " (" + problem + ")"));
+            // (No additional languages to begin with, whatever the person at this PC has chosen: theirs is left alone.)
+            Languages.Override = "";
+            List<Entry> everything = Catalogue.Load(out problem);
+            List<Entry> catalogue = everything.FindAll(delegate(Entry v) { return v.Family == "en"; });
+            Check(catalogue.Count > 20 && everything.Count > catalogue.Count, "the catalogue is read: " + catalogue.Count + " English voices, " +
+                (everything.Count - catalogue.Count) + " of other languages" + (problem == null ? "" : " (" + problem + ")"));
             List<string> real = Voices.InstalledIds();
             List<string> ids = real.Count > 0 ? real : new List<string>(new string[] { "en_GB-alba-medium", "en_GB-vctk-medium#p239" });
             DateTime started = DateTime.UtcNow;
-            ConfigForm ui = new ConfigForm(catalogue, ids, Voices.UsEnglishTags);
+            ConfigForm ui = new ConfigForm(everything, ids, Voices.UsEnglishTags);
             Note("the window was built in " + (int)(DateTime.UtcNow - started).TotalMilliseconds + " ms; Windows took " + Program.Startup.BeforeMain +
                 " ms to start the program");
             ui.Show();
@@ -3483,6 +3757,99 @@ namespace ModernVoicesConfig
                     Settle(50);
                 }
                 finally { Sample.Stop(); try { File.Delete(fakeSample); } catch (Exception) { } }
+            }
+
+            // Additional languages: none to begin with (English voices only); one chosen, its voices are listed
+            // after the English ones and it has a choice in "Show" and in the Pronunciation tab's "Rules for";
+            // its rules are its own file, which can be switched off as a whole; unchosen, all as before.
+            {
+                List<KeyValuePair<string, string>> others = ui.OtherLanguages();
+                string german = null;
+                foreach (KeyValuePair<string, string> other in others) { if (other.Key == "de") { german = other.Value; } }
+                Note("other languages offered: " + others.Count + (german == null ? " (no German)" : ""));
+                Check(others.Count >= 10 && german != null, "the catalogue's other languages are offered (" + others.Count + ")");
+                bool noneBadly = true;
+                foreach (Entry v in everything) { if (v.Family == "ar" || v.Family == "fa" || v.Family == "zh" || v.Family == "he") { noneBadly = false; } }
+                Check(noneBadly, "languages written right to left or without spaces are not offered");
+                Check(ui.AddList.Items.Count == catalogue.Count && ui.VoiceFilterBox.Items.Count == 4 && ui.WordLanguageBox.Items.Count == 1,
+                    "with no additional language chosen, only English voices and choices are listed");
+                CheckedListBox languageBoxes;
+                List<string> languageFamilies;
+                using (Form languageDialog = ui.LanguagesDialog(out languageBoxes, out languageFamilies))
+                {
+                    Check(languageBoxes.Items.Count == others.Count && languageBoxes.CheckedItems.Count == 0, "the Additional languages window lists them, none ticked");
+                    if (pictures)
+                    {
+                        languageDialog.StartPosition = FormStartPosition.Manual; languageDialog.Location = new Point(40, 40);
+                        languageDialog.Show();
+                        Settle(200);
+                        try
+                        {
+                            using (Bitmap shot = new Bitmap(languageDialog.Width, languageDialog.Height))
+                            {
+                                languageDialog.DrawToBitmap(shot, new Rectangle(Point.Empty, shot.Size));
+                                shot.Save(Path.Combine(folder, "languages.png"), ImageFormat.Png);
+                            }
+                        }
+                        catch (Exception e) { Note("no picture of the languages window: " + e.Message); }
+                        languageDialog.Hide();
+                    }
+                }
+                if (german != null)
+                {
+                    int germanVoices = 0;
+                    foreach (Entry v in everything) { if (v.Family == "de") { germanVoices++; } }
+                    ui.SetLanguages(new List<string>(new string[] { "de" }));
+                    Settle(50);
+                    LanguageChoice lastShow = ui.VoiceFilterBox.Items[ui.VoiceFilterBox.Items.Count - 1] as LanguageChoice;
+                    Note("German chosen: " + ui.AddList.Items.Count + " voices listed (" + germanVoices + " German); Show has \"" + (lastShow == null ? "?" : lastShow.Text) + "\"");
+                    Check(ui.AddList.Items.Count == catalogue.Count + germanVoices && ui.VoiceFilterBox.Items.Count == 5 && lastShow != null && lastShow.Text == german + " only",
+                        "German chosen: its " + germanVoices + " voices are listed, and Show has \"" + german + " only\"");
+                    Check(((Entry)ui.AddList.Items[0].Tag).Family == "en" && ((Entry)ui.AddList.Items[ui.AddList.Items.Count - 1].Tag).Family == "de", "the English voices come first");
+                    ui.VoiceFilterBox.SelectedIndex = 4;
+                    Settle(50);
+                    Check(ui.AddList.Items.Count == germanVoices, "\"" + german + " only\" lists just those");
+                    if (pictures) { ui.ShowPage(3); Settle(100); ui.Picture(Path.Combine(folder, "german.png")); }
+                    ui.VoiceFilterBox.SelectedIndex = 0;
+                    Settle(50);
+
+                    // Its rules: its own file, apart from the English one.
+                    string germanFile = App.DictionaryFor("de");
+                    bool hadGermanFile = File.Exists(germanFile);
+                    string keptGerman = hadGermanFile ? File.ReadAllText(germanFile) : null;
+                    try
+                    {
+                        if (hadGermanFile) { File.Delete(germanFile); }
+                        int englishRules = ui.WordList.Items.Count;
+                        string englishText = File.Exists(App.DictionaryFile) ? File.ReadAllText(App.DictionaryFile) : "";
+                        Check(ui.WordLanguageBox.Items.Count == 2, "the Pronunciation tab has rules for English and " + german);
+                        ui.WordLanguageBox.SelectedIndex = 1;
+                        Settle(50);
+                        Check(ui.WordList.Items.Count == 0 && ui.WordListOnBox.Checked && !File.Exists(germanFile), german + "'s rules start empty, in use, with no file");
+                        Store.SetDictionary(germanFile, new Rule[] { new Rule { On = true, Whole = true, Case = false, From = "zB", To = "zum Beispiel" } });
+                        ui.UpdateWordList();
+                        Settle(50);
+                        Check(ui.WordList.Items.Count == 1 && Path.GetFileName(germanFile) == "dictionary-de.txt", "a " + german + " rule is listed from dictionary-de.txt");
+                        ui.WordListOnBox.Checked = false;
+                        Settle(50);
+                        Check(Store.DictionaryOff(germanFile) && Store.GetDictionary(germanFile).Count == 1, "\"Use these rules\" unticked: the list is switched off, its rule kept");
+                        ui.WordListOnBox.Checked = true;
+                        Settle(50);
+                        Check(!Store.DictionaryOff(germanFile) && Store.GetDictionary(germanFile).Count == 1, "ticked again: in use");
+                        ui.WordLanguageBox.SelectedIndex = 0;
+                        Settle(50);
+                        Check(ui.WordList.Items.Count == englishRules && (File.Exists(App.DictionaryFile) ? File.ReadAllText(App.DictionaryFile) : "") == englishText,
+                            "the English rules are listed again, untouched");
+                    }
+                    finally
+                    {
+                        try { if (keptGerman != null) { File.WriteAllText(germanFile, keptGerman); } else if (File.Exists(germanFile)) { File.Delete(germanFile); } } catch (Exception) { }
+                    }
+                    ui.SetLanguages(new List<string>());
+                    Settle(50);
+                    Check(ui.AddList.Items.Count == catalogue.Count && ui.VoiceFilterBox.Items.Count == 4 && ui.WordLanguageBox.Items.Count == 1,
+                        "German unchosen: the lists are as they were");
+                }
             }
 
             // Two qualities of one voice: the warning.

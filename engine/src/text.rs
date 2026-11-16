@@ -440,6 +440,22 @@ pub struct Dictionary {
     pub rules: Vec<Rule>,
 }
 
+/// A voice's language, from its model folder (named as Piper names voices: `en_GB-alba-medium`, or a
+/// path ending in that): the letters before the first `_` or `-`, in small letters ("en", "de").
+/// "en" when the name does not start with two or three letters and one of those marks.
+pub fn language_of(model_dir: &str) -> String {
+    let name = model_dir.trim_end_matches(['\\', '/']).rsplit(['\\', '/']).next().unwrap_or("");
+    let letters: String = name.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    let marked = name[letters.len()..].starts_with(['_', '-']);
+    if marked && (2..=3).contains(&letters.len()) { letters.to_ascii_lowercase() } else { "en".to_string() }
+}
+
+/// The file of a language's pronunciation rules: `dictionary.txt` for English (as before there were
+/// other languages), `dictionary-de.txt` for German.
+pub fn dictionary_file(language: &str) -> String {
+    if language == "en" { "dictionary.txt".to_string() } else { format!("dictionary-{language}.txt") }
+}
+
 /// A character that is part of a word (for "whole words only").
 fn in_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
@@ -455,6 +471,10 @@ impl Dictionary {
         let mut rules = Vec::new();
         for line in text.lines() {
             let line = line.trim_start_matches('\u{feff}').trim_end_matches('\r');
+            // A line `#off`: the whole list is switched off (its rules kept in the file).
+            if line.trim() == "#off" {
+                return Dictionary::default();
+            }
             let parts: Vec<&str> = line.split('\t').collect();
             if parts.len() < 5 || parts[0] != "1" {
                 continue;
@@ -758,6 +778,22 @@ mod tests {
         // Rules that end in symbols; names.
         assert_eq!(d.apply("C++ and c++14, Niamh's."), "C plus plus and C plus plus14, Neev's.");
         assert_eq!(Dictionary::read("").apply("unchanged"), "unchanged");
+        // A list switched off: none of its rules, wherever the line is.
+        assert!(Dictionary::read("# comment\n#off\n1\tw\ti\tcat\tfeline\n").rules.is_empty());
+        assert!(Dictionary::read("1\tw\ti\tcat\tfeline\n#off\n").rules.is_empty());
+        assert_eq!(Dictionary::read("# off\n1\tw\ti\tcat\tfeline\n").rules.len(), 1);
+    }
+
+    #[test]
+    fn languages_of_voices() {
+        assert_eq!(language_of(r"C:\Program Files\Modern Voices for Windows\voices\en_GB-alba-medium"), "en");
+        assert_eq!(language_of(r"C:\voices\de_DE-thorsten-medium\"), "de");
+        assert_eq!(language_of("es_MX-claude-high"), "es");
+        assert_eq!(language_of("PT_br-faber-medium"), "pt");
+        assert_eq!(language_of("voices/something"), "en");
+        assert_eq!(language_of(""), "en");
+        assert_eq!(dictionary_file("en"), "dictionary.txt");
+        assert_eq!(dictionary_file("de"), "dictionary-de.txt");
         assert!(Dictionary::read("not a rule\n1\tw\ti\t\tx\n").rules.is_empty());
     }
 }

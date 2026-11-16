@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.12.7
+Modern Voices for Windows 0.13.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -30,6 +30,9 @@ Install
    the ticked speakers of the voice selected, to find the ones installed.
    "Show" above the list narrows it (All voices, English only, American only, British only);
    voices not shown keep their ticks.
+   "Additional languages..." beside it lists the other languages there are voices for (German,
+   Spanish, French...: European languages written left to right). Tick a language and its voices
+   join the list, with a choice of their own in "Show". The program's own words stay in English.
 4. Press Apply changes. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices,
    version 1.0.0), prepares them, and tests each one through Windows' speech API, with the progress
    shown at the bottom of the window. Done goes back to the Voice manager.
@@ -152,6 +155,9 @@ Pronunciation
 On the Pronunciation tab: words and names said your way, by every voice, in every program that uses
 these voices (the Reader, World of Warcraft, a screen reader...).
 
+  * Each language has its own rules ("Rules for", at the top: English, and each additional
+    language chosen). A voice uses the rules of its own language only. "Use these rules" unticked
+    switches the whole list off without removing anything. Other languages' lists start empty.
   * Type the word or phrase and how to say it, spelt as it sounds (Niamh as Neev; GIF as jif), then
     Add rule. Hear it says the "Say it as" text with the voice selected on the Voice manager, to try
     a spelling before saving.

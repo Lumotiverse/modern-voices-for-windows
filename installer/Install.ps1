@@ -82,7 +82,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.12.7'
+$Version = '0.13.0'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -144,7 +144,15 @@ $Genders = @{ alba = 'Female'; alan = 'Male'; cori = 'Female'; jenny_dioco = 'Fe
     hfc_male = 'Male'; joe = 'Male'; john = 'Male'; kathleen = 'Female'; kristin = 'Female'; kusal = 'Male'
     lessac = 'Female'; ljspeech = 'Female'; norman = 'Male'; reza_ibrahim = 'Male'; ryan = 'Male' }
 $Accents = @{ en_GB = 'British'; en_US = 'American' }
-$Lcids = @{ en_GB = '809'; en_US = '409' }
+# Windows' number for each language Piper has voices in (SAPI's Language attribute, in hex): programs
+# that choose voices by language go by it. A voice of a language not here is registered as English (US).
+$Lcids = @{ en_GB = '809'; en_US = '409'
+    ar_JO = '2C01'; bg_BG = '402'; ca_ES = '403'; cs_CZ = '405'; cy_GB = '452'; da_DK = '406'; de_DE = '407'; el_GR = '408'
+    es_AR = '2C0A'; es_ES = 'C0A'; es_MX = '80A'; eu_ES = '42D'; fa_IR = '429'; fi_FI = '40B'; fr_FR = '40C'; gl_ES = '456'
+    he_IL = '40D'; hi_IN = '439'; hu_HU = '40E'; id_ID = '421'; is_IS = '40F'; it_IT = '410'; ka_GE = '437'; kk_KZ = '43F'
+    lb_LU = '46E'; lv_LV = '426'; ml_IN = '44C'; ne_NP = '461'; nl_BE = '813'; nl_NL = '413'; no_NO = '414'; pl_PL = '415'
+    pt_BR = '416'; pt_PT = '816'; ro_RO = '418'; ru_RU = '419'; sk_SK = '41B'; sl_SI = '424'; sr_RS = '241A'; sv_SE = '41D'
+    sw_CD = '441'; te_IN = '44A'; tr_TR = '41F'; uk_UA = '422'; vi_VN = '42A'; zh_CN = '804' }
 
 function Stop-Here([string]$Message) {
     Write-Host ''
@@ -211,8 +219,13 @@ function Get-PrettyName([string]$Name) {
     return (($Name -split '_') | ForEach-Object { if ($_) { $_.Substring(0, 1).ToUpper() + $_.Substring(1) } }) -join ' '
 }
 
-# The English voices of medium or high quality, as objects: Key, Name, Display, Code, Accent, Quality,
-# Speakers (name -> id, in id order), the model's and config's paths, sizes and MD5s.
+# The voices of medium or high quality, of every language, as objects: Key, Name, Display, Code, Family
+# (the language: "en", "de"), Accent, Quality, Speakers (name -> id, in id order), the model's and
+# config's paths, sizes and MD5s. (Which languages are offered is Modern Voices Config's business; a
+# fresh install's own voices are English.)
+# Accent, the word in brackets after a voice's name: British or American for English; else the
+# language ("German"), with its country where the catalogue has that language from several
+# ("Spanish, Mexico"). Modern Voices Config works it out the same way (Catalogue.Parse).
 function Get-Catalogue {
     $cache = if ($isAdmin) { Join-Path $App 'catalogue.json' } else { Join-Path $env:TEMP 'modernvoices_catalogue.json' }
     New-Item (Split-Path $cache -Parent) -ItemType Directory -Force | Out-Null
@@ -224,10 +237,18 @@ function Get-Catalogue {
     }
     $all = Read-Json ([System.IO.File]::ReadAllText($cache, (New-Object System.Text.UTF8Encoding $false)))
     $list = New-Object System.Collections.Generic.List[object]
+    $codesOf = @{}
+    foreach ($key in $all.Keys) {
+        $language = Get-Value $all[$key] 'language'
+        $family = [string](Get-Value $language 'family'); $code = [string](Get-Value $language 'code')
+        if (-not $codesOf.ContainsKey($family)) { $codesOf[$family] = @{} }
+        $codesOf[$family][$code] = $true
+    }
     foreach ($key in $all.Keys) {
         $entry = $all[$key]
         $language = Get-Value $entry 'language'
-        if ((Get-Value $language 'family') -ne 'en') { continue }
+        $family = [string](Get-Value $language 'family')
+        if (-not $family) { continue }
         $quality = [string](Get-Value $entry 'quality')
         if ($quality -ne 'medium' -and $quality -ne 'high') { continue }
         $code = [string](Get-Value $language 'code')
@@ -247,11 +268,14 @@ function Get-Catalogue {
         $name = [string](Get-Value $entry 'name')
         $pretty = Get-PrettyName $name
         if ($quality -eq 'high') { $pretty += ' HQ' }
-        $accent = if ($Accents.ContainsKey($code)) { $Accents[$code] } else { $code }
+        $accent = if ($Accents.ContainsKey($code)) { $Accents[$code] } else {
+            $languageName = [string](Get-Value $language 'name_english'); $country = [string](Get-Value $language 'country_english')
+            if (-not $languageName) { $code } elseif ($codesOf[$family].Count -gt 1 -and $country) { "$languageName, $country" } else { $languageName }
+        }
         $onnxInfo = Get-Value $files $onnx
         $configInfo = Get-Value $files $config
         $list.Add([pscustomobject]@{
-            Key = [string]$key; Name = $name; Display = $pretty; Code = $code; Accent = $accent; Quality = $quality
+            Key = [string]$key; Name = $name; Display = $pretty; Code = $code; Family = $family; Accent = $accent; Quality = $quality
             Speakers = $speakers; Onnx = $onnx; Config = $config
             OnnxMd5 = [string](Get-Value $onnxInfo 'md5_digest'); ConfigMd5 = [string](Get-Value $configInfo 'md5_digest')
             SizeMb = [math]::Round([double](Get-Value $onnxInfo 'size_bytes') / 1MB)
@@ -493,7 +517,7 @@ function Add-DefaultRules {
             $added++
         }
     }
-    if ($added -gt 0) { Set-Dictionary $DictionaryFile $rules }
+    if ($added -gt 0) { Set-Dictionary $DictionaryFile $rules (Test-DictionaryOff $DictionaryFile) }
     Set-ItemProperty $Settings -Name 'RuleSets' -Value (@($done + $new) -join ',')
     if ($added -gt 0) { Write-Host "  $added pronunciation rules added (the Pronunciation tab lists them)" }
 }
@@ -627,7 +651,8 @@ function Register-Class([string]$ClassKey, [string]$DllPath) {
 function Register-Voice([string]$TokenRoot, [string]$Id, $Entry, [string]$SpeakerName, [int]$SpeakerId, [bool]$UsTags) {
     $token = Join-Path $TokenRoot (Get-TokenName $Id)
     $display = Get-DisplayName $Entry $SpeakerName
-    $lcid = if ($UsTags) { '409' } elseif ($Lcids.ContainsKey($Entry.Code)) { $Lcids[$Entry.Code] } else { '409' }
+    # ("Also list British voices as US English" is for the English voices only.)
+    $lcid = if ($UsTags -and $Entry.Family -eq 'en') { '409' } elseif ($Lcids.ContainsKey($Entry.Code)) { $Lcids[$Entry.Code] } else { '409' }
     if (Test-Path $token) { Remove-Item $token -Recurse -Force }
     New-Item "$token\Attributes" -Force | Out-Null
     Set-ItemProperty $token -Name '(default)' -Value $display
@@ -771,7 +796,7 @@ function Install-AndRegisterEngine {
 function Set-InstalledVoices([string[]]$Wanted, [bool]$UsTags, $ByKey) {
     foreach ($id in $Wanted) {
         $idParts = Split-VoiceId $id
-        if (-not $ByKey.ContainsKey($idParts[0])) { throw "Unknown voice '$id' (not an English medium or high voice in the catalogue)." }
+        if (-not $ByKey.ContainsKey($idParts[0])) { throw "Unknown voice '$id' (not a medium or high voice in the catalogue)." }
         $entry = $ByKey[$idParts[0]]
         if ($null -ne $idParts[1] -and -not $entry.Speakers.Contains($idParts[1])) { throw "Voice '$($idParts[0])' has no speaker '$($idParts[1])'." }
         if ($null -eq $idParts[1] -and $entry.Speakers.Count -gt 1) { throw "Voice '$id' has several speakers: give one as $id#name." }
@@ -892,7 +917,7 @@ try {
 
     Write-Host "`nVoice list"
     $catalogue = Get-Catalogue
-    Write-Host "  $($catalogue.Count) English voices"
+    Write-Host "  $($catalogue.Count) voices ($(@($catalogue | Where-Object { $_.Family -eq 'en' }).Count) English)"
     $byKey = @{}
     foreach ($v in $catalogue) { $byKey[$v.Key] = $v }
 
