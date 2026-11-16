@@ -444,6 +444,12 @@ Set-Dictionary $germanRules @($trolle) $true
 $germanOff = Measure-Speech $germanName $germanText
 Check ([math]::Abs($germanOff.Seconds - $germanBase.Seconds) -lt 0.6) ("the German list switched off as a whole: as without it ({0:N2} s)" -f $germanOff.Seconds)
 Remove-Item $germanRules -ErrorAction SilentlyContinue
+# Voice variation (settings.json's variation_percent): at 0 a voice says a sentence the same way each time.
+Set-GlobalNumber $settingsFile 'variation_percent' 0
+$steadyOne = Measure-Speech $germanName $germanText
+$steadyTwo = Measure-Speech $germanName $germanText
+Check ([math]::Abs($steadyOne.Seconds - $steadyTwo.Seconds) -lt 0.03) ("voice variation 0%: the same sentence comes out the same length twice ({0:N3} s, {1:N3} s)" -f $steadyOne.Seconds, $steadyTwo.Seconds)
+Set-GlobalNumber $settingsFile 'variation_percent' 75
 
 Step 'Change voices: Alba only'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium', '-Unattended', '-NoPause')

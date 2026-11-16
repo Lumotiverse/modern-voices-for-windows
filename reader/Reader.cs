@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.13.2.0")]
+[assembly: System.Reflection.AssemblyVersion("0.13.3.0")]
 
 namespace ModernVoicesReader
 {
@@ -246,6 +246,22 @@ namespace ModernVoicesReader
             p.Text = made.ToString();
             p.Map = map.ToArray();
             return p;
+        }
+
+        // Where the word at a place starts (reading goes from the word clicked): the place itself at a
+        // word's start or in a gap before one (the next word's start then), else back to the word's start.
+        public static int WordStart(string text, int position)
+        {
+            if (position >= text.Length) { return text.Length; }
+            if (position < 0) { position = 0; }
+            int at = position;
+            if (char.IsWhiteSpace(text[at]))
+            {
+                while (at < text.Length && char.IsWhiteSpace(text[at])) { at++; }
+                return at;
+            }
+            while (at > 0 && !char.IsWhiteSpace(text[at - 1])) { at--; }
+            return at;
         }
 
         // Where the sentence around a place starts (reading goes on from the start of a sentence).
@@ -1492,7 +1508,19 @@ namespace ModernVoicesReader
             box.UndoAsked = Undo; box.RedoAsked = Redo;
             box.CanUndoAsked = delegate { return before.Count > 0; };
             box.TextChanged += delegate { if (!loading) { NoteChange(false); TextEdited(); } };
-            box.MouseUp += delegate { heldCaret = box.SelectionStart; CaretMoved(); };
+            // (A click is a press and release at the same character; a drag selects text, as ever.)
+            box.MouseDown += delegate(object sender, MouseEventArgs e) { pressedAt = e.Button == MouseButtons.Left ? box.GetCharIndexFromPosition(e.Location) : -1; };
+            box.MouseUp += delegate(object sender, MouseEventArgs e)
+            {
+                if (mode != Mode.Stopped)
+                {
+                    int releasedAt = box.GetCharIndexFromPosition(e.Location);
+                    if (e.Button == MouseButtons.Left && pressedAt >= 0 && releasedAt == pressedAt) { ClickedWhileReading(releasedAt); }
+                    pressedAt = -1;
+                    return;
+                }
+                heldCaret = box.SelectionStart; CaretMoved(e.Button == MouseButtons.Left);
+            };
             box.KeyUp += delegate { heldCaret = box.SelectionStart; CaretMoved(); };
             // A file dropped on the text is opened.
             box.AllowDrop = true;
@@ -1815,15 +1843,20 @@ namespace ModernVoicesReader
             if (mode == Mode.Playing) { return; }
             if (box.TextLength == 0) { Status("Nothing to read: paste some text, or press Paste and read."); return; }
             if (CurrentVoice == null) { Status("Choose a voice first."); return; }
-            if (finished || position >= box.TextLength) { position = 0; }
-            StartAt(position);
+            if (finished || position >= box.TextLength) { position = 0; placeClicked = false; }
+            StartAt(position, placeClicked);
         }
 
-        void StartAt(int from)
+        // Whether the place is one clicked in the text: reading starts at that very word. (A place the
+        // reading stopped at, or kept for a file, starts at its sentence.)
+        bool placeClicked;
+
+        void StartAt(int from, bool atWord = false)
         {
             string text = box.Text;
+            placeClicked = false;
             prepared = Cleaner.Prepare(text, tidyBox.Checked);
-            int start = prepared.FromOriginal(Cleaner.SentenceStart(text, from));
+            int start = prepared.FromOriginal(atWord ? Cleaner.WordStart(text, from) : Cleaner.SentenceStart(text, from));
             if (start >= prepared.Text.Length || prepared.Text.Substring(start).Trim().Length == 0)
             {
                 // Nothing left to read from here (the end, or only blank lines after it): from the start again.
@@ -1887,7 +1920,7 @@ namespace ModernVoicesReader
             if (mode == Mode.Stopped) { return; }
             Halt();
             Remember();
-            Status("Stopped. Play goes on from here; click in the text to read from somewhere else.");
+            Status("Stopped. Play goes on from here; click a word to read from there.");
         }
 
         void Halt()
@@ -1994,15 +2027,32 @@ namespace ModernVoicesReader
         }
 
         // Clicking (or moving) in the text while nothing is being read: Play starts from there.
-        void CaretMoved()
+        void CaretMoved(bool clicked = false)
         {
             if (mode != Mode.Stopped || loading) { return; }
-            if (box.SelectionLength == 0 && box.SelectionStart != position)
+            // (A click on the very place it stopped at counts too: from that word, not its sentence.)
+            if (box.SelectionLength == 0 && (box.SelectionStart != position || clicked))
             {
                 finished = false;
                 position = box.SelectionStart;
+                placeClicked = true;
                 UpdateTime();
             }
+        }
+
+        // A click in the text while it is being read (or paused): reading goes on from the word clicked.
+        public void ClickedWhileReading(int at)
+        {
+            if (mode == Mode.Stopped || loading || at < 0 || at >= box.TextLength) { return; }
+            Halt();
+            finished = false;
+            position = at;
+            StartAt(at, true);
+        }
+        int pressedAt = -1;
+        public void TestClick(int at)
+        {
+            if (mode == Mode.Stopped) { box.Select(at, 0); CaretMoved(true); } else { ClickedWhileReading(at); }
         }
 
         void TextEdited()
@@ -2749,6 +2799,19 @@ namespace ModernVoicesReader
                     form.Play();
                     WaitWhile(delegate { return form.FirstWord == "" && form.Reading; }, 60);
                     Check(form.FirstWord == "Then", "Play from a place goes on from the start of its sentence (first word '" + form.FirstWord + "')");
+                    // A click on a word while it reads: it goes on from that very word. And clicked while stopped, Play does.
+                    form.TestClick(text.IndexOf("second", StringComparison.Ordinal) + 2);
+                    WaitWhile(delegate { return form.FirstWord == "" && form.Reading; }, 60);
+                    Check(form.Reading && form.FirstWord == "second", "a click in the text while it reads goes on from the word clicked (first word '" + form.FirstWord + "')");
+                    form.Stop();
+                    form.TestClick(text.IndexOf("second", StringComparison.Ordinal));
+                    form.Play();
+                    WaitWhile(delegate { return form.FirstWord == "" && form.Reading; }, 60);
+                    Check(form.FirstWord == "second", "a click while stopped: Play reads from the word clicked (first word '" + form.FirstWord + "')");
+                    form.Stop();
+                    form.TestLoad(text, text.IndexOf("second", StringComparison.Ordinal));
+                    form.Play();
+                    WaitWhile(delegate { return form.FirstWord == "" && form.Reading; }, 60);
                     form.PauseOrResume();
                     int paused = form.Position;
                     Check(form.Reading, "Pause keeps the reading");

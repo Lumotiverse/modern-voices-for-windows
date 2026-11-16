@@ -50,7 +50,8 @@ Windows Server machine (see [Open and transparent](#open-and-transparent)).
 **Other programs:** the voices work in any program that uses Windows' speech voices (SAPI 5). The
 program has its own Reader, but the voices also show up automatically in programs such as
 [Balabolka](https://www.cross-plus-a.com/balabolka.htm). That is largely untested and may run into
-issues, though the little testing done in Balabolka has worked exactly as intended.
+issues, though the little testing done in Balabolka has worked exactly as intended, including
+Balabolka's own pitch control.
 
 ## Standing on other people's work
 
@@ -77,6 +78,10 @@ The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES
 | **Modern Voices Reader** | Reads text aloud: pasted or copied text, documents, web pages you copy, and text on the screen. It can save the reading as a sound file. |
 | **Modern Voices Repair** | Registers the voices with Windows again, if a large Windows update makes them vanish from programs. |
 | **Modern Voices Test** | Speaks with each voice and shows what the engine reports, to find out whether a problem is with the voices or with the program using them. |
+
+**It is a simple install.** There are no registry values to edit and nothing to download or set up by
+hand: run the installer, and pick any further voices from a list inside the program, which downloads
+and registers them for you.
 
 To install, download `ModernVoicesForWindows<version>.zip` from
 [Releases](../../releases), unzip it and run `Install.cmd`. To update, do the same with the new

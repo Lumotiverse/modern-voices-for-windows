@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.13.2.0")]
+[assembly: System.Reflection.AssemblyVersion("0.13.3.0")]
 
 namespace ModernVoicesConfig
 {
@@ -710,6 +710,21 @@ namespace ModernVoicesConfig
             SetGlobalNumber(path, "speed_percent", percent);
         }
 
+        // How much of Piper's own variation the voices use, in % (settings.json's variation_percent: 100 is
+        // Piper's own; 75 unless set). The engine loads a voice with it.
+        public const int VariationDefault = 75, VariationLimit = 150;
+        public static double GetVariation(string path)
+        {
+            double? found = Read(ReadAll(path), "variation_percent");
+            if (!found.HasValue) { return VariationDefault; }
+            return Math.Max(0, Math.Min(VariationLimit, found.Value));
+        }
+        public static void SetVariation(string path, double percent)
+        {
+            if (percent < 0 || percent > VariationLimit) { throw new ArgumentException("variation must be 0 to " + VariationLimit + "% (got " + Format(percent) + ")"); }
+            SetGlobalNumber(path, "variation_percent", percent);
+        }
+
         // The output volume: how loud every voice comes out, of what its own settings make, in %
         // (settings.json's output_percent: 100 unless turned down, 0 for silence). The engine looks at it
         // as speech goes out, so it is heard while a voice is speaking.
@@ -1154,6 +1169,7 @@ namespace ModernVoicesConfig
         public Button DoneButton;
         public ComboBox PreviewVoiceBox;
         public TrackBar SpeedBar;
+        public TrackBar VariationBar;       // Speed and pauses, Advanced: how much Piper varies each saying
         public Dictionary<string, Slider> Sliders = new Dictionary<string, Slider>();
         public Dictionary<string, Slider> GlobalBars = new Dictionary<string, Slider>();
         Timer saveTimer, globalTimer, applyTimer, outputTimer;
@@ -1734,8 +1750,38 @@ namespace ModernVoicesConfig
             resetLine.Margin = new Padding(resetLine.Margin.Left, Px(18), resetLine.Margin.Right, resetLine.Margin.Bottom);
             Button pausesReset = Btn("Reset to defaults");
             resetLine.Controls.Add(pausesReset, 0, 0);
-            resetLine.Controls.Add(Words("Defaults: speed 100%, sentence 500 ms, comma 60 ms, paragraph 1200 ms. Changes are saved straight away.", true), 1, 0);
+            resetLine.Controls.Add(Words("Defaults: speed 100%, sentence 500 ms, comma 60 ms, paragraph 1200 ms, variation 75%. Changes are saved straight away.", true), 1, 0);
             Row(page, resetLine);
+
+            // Advanced: how much the voices vary from one saying to the next.
+            Label advanced = Words("Advanced setting", false, true);
+            advanced.Margin = new Padding(advanced.Margin.Left, Px(22), advanced.Margin.Right, advanced.Margin.Bottom);
+            Row(page, advanced);
+            TableLayoutPanel advancedGrid = Line("auto", "fill", "auto");
+            Slider variation = AddSlider(advancedGrid, "Voice variation", 0, Store.VariationLimit, 5, 25, 25, true);
+            VariationBar = variation.Bar;
+            variation.Value.Font = boldFont;
+            AddNote(advancedGrid, Words("How much a voice changes its tone and rhythm each time it speaks. Lower is steadier and more even, higher is " +
+                "livelier but less predictable. 100% is how the voices were made; 75% is this program's default.", true));
+            AddNote(advancedGrid, Words("Preview uses the new value straight away. Programs that are already open use it after you restart them.", true));
+            Row(page, advancedGrid);
+            EventHandler variationShown = delegate
+            {
+                int percent = VariationBar.Value;
+                variation.Value.Text = percent + "%" + (percent == Store.VariationDefault ? " (default)" : percent == 100 ? " (as made)" : percent == 0 ? " (none)" : "");
+            };
+            Filling = true;
+            try { VariationBar.Value = Clamp(Math.Round(Store.GetVariation(App.SettingsFile) / 5.0) * 5, 0, Store.VariationLimit); }
+            catch (Exception) { VariationBar.Value = Store.VariationDefault; }
+            finally { Filling = false; }
+            variationShown(null, EventArgs.Empty);
+            VariationBar.ValueChanged += delegate
+            {
+                int snapped = (int)(Math.Round(VariationBar.Value / 5.0, MidpointRounding.AwayFromZero) * 5);
+                if (VariationBar.Value != snapped) { VariationBar.Value = snapped; return; }
+                variationShown(null, EventArgs.Empty);
+                if (!Filling) { globalTimer.Stop(); globalTimer.Start(); }
+            };
 
             GlobalPreview.Click += delegate { string chosen = PreviewVoiceBox.SelectedItem as string; if (!string.IsNullOrEmpty(chosen)) { TogglePreview(chosen, chosen, null); } };
             PreviewVoiceBox.SelectedIndexChanged += delegate { UpdatePreviewButtons(); };
@@ -2384,6 +2430,8 @@ namespace ModernVoicesConfig
             try
             {
                 Store.SetGlobalSpeed(App.SettingsFile, SpeedBar.Value);
+                // (Written only once it differs from what is there: an untouched file keeps the default.)
+                if (Math.Abs(Store.GetVariation(App.SettingsFile) - VariationBar.Value) > 0.01) { Store.SetVariation(App.SettingsFile, VariationBar.Value); }
                 Store.SetGlobalPauses(App.SettingsFile, RoundedMs(GlobalBars["Sentence gap"].Bar.Value), RoundedMs(GlobalBars["Comma gap"].Bar.Value),
                     RoundedMs(GlobalBars["Paragraph gap"].Bar.Value));
             }
@@ -2393,6 +2441,7 @@ namespace ModernVoicesConfig
         void ResetGlobalPauses()
         {
             SpeedBar.Value = Store.SpeedDefault;
+            VariationBar.Value = Store.VariationDefault;
             GlobalBars["Sentence gap"].Bar.Value = Store.SentenceDefault;
             GlobalBars["Comma gap"].Bar.Value = Store.CommaDefault;
             GlobalBars["Paragraph gap"].Bar.Value = Store.ParagraphDefault;
@@ -4066,6 +4115,21 @@ namespace ModernVoicesConfig
                 Check(PreviewTexts.For("de").StartsWith("Hier", StringComparison.Ordinal) && PreviewTexts.For("xx") == App.PreviewText &&
                     PreviewTexts.LanguageOfKey("de_DE-thorsten-medium") == "de" && PreviewTexts.IsOneOfThem(PreviewTexts.For("fr")) &&
                     PreviewTexts.IsOneOfThem(App.OldPreviewText) && !PreviewTexts.IsOneOfThem("my own words"), "a voice's language picks its preview text; typed text is kept");
+            }
+
+            // Voice variation (Speed and pauses, Advanced): 75% unless set; moved, it is saved for the engine.
+            {
+                bool hadSettings = File.Exists(App.SettingsFile);
+                string settingsWere = hadSettings ? File.ReadAllText(App.SettingsFile) : null;
+                double variationWas = Store.GetVariation(App.SettingsFile);
+                ui.VariationBar.Value = 120;
+                ui.StopTimers(); ui.SaveGlobalSettings();
+                double variationNow = Store.GetVariation(App.SettingsFile);
+                Note("voice variation: " + variationWas + "% -> " + variationNow + "%");
+                Check(variationNow == 120 && File.ReadAllText(App.SettingsFile).Contains("\"variation_percent\""), "Voice variation is saved as it is moved (variation_percent)");
+                ui.VariationBar.Value = (int)variationWas;
+                ui.StopTimers();
+                if (hadSettings) { File.WriteAllText(App.SettingsFile, settingsWere); } else if (File.Exists(App.SettingsFile)) { File.Delete(App.SettingsFile); }
             }
 
             // Two qualities of one voice: the warning.

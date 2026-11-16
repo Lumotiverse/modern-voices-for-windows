@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.13.2
+Modern Voices for Windows 0.13.3
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -182,7 +182,8 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
 
   * Paste text into the box (or press Paste and read) and press the play button. While it reads,
     that button is pause. Stop keeps the place, and play goes on from the start of the sentence it
-    was in. Click in the text to read from somewhere else; the first button reads from the start.
+    was in. Click a word to read from that word, also while it is reading; the first button reads
+    from the start.
     Once it has read to the end, play reads the whole text again from the start.
     The word being read is marked.
   * What is pasted (or read from the clipboard) is laid out as it was where it was copied: an empty

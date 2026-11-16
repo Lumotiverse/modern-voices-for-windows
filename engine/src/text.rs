@@ -261,6 +261,14 @@ pub fn global_speed(info: &str) -> f32 {
     number(info, "speed_percent", DEFAULT_SPEED_PERCENT).clamp(25.0, 200.0) / 100.0
 }
 
+/// How much of Piper's own variation the voices use (the settings file's `variation_percent`, 0 to 150:
+/// 100 is Piper's own), as a factor. Without one, 0.75: Piper's own is a little strong, each saying of
+/// a sentence wandering further in tone and timing than sounds natural.
+pub const DEFAULT_VARIATION_PERCENT: f32 = 75.0;
+pub fn variation(info: &str) -> f32 {
+    number(info, "variation_percent", DEFAULT_VARIATION_PERCENT).clamp(0.0, 150.0) / 100.0
+}
+
 /// Samples of silence for a pause of `ms` (at normal speed) when speaking `speed` times as fast:
 /// faster speech, shorter pauses, in proportion.
 pub fn gap_samples(ms: f32, speed: f32, sample_rate: u32) -> usize {
@@ -782,6 +790,14 @@ mod tests {
         assert!(Dictionary::read("# comment\n#off\n1\tw\ti\tcat\tfeline\n").rules.is_empty());
         assert!(Dictionary::read("1\tw\ti\tcat\tfeline\n#off\n").rules.is_empty());
         assert_eq!(Dictionary::read("# off\n1\tw\ti\tcat\tfeline\n").rules.len(), 1);
+    }
+
+    #[test]
+    fn variation_setting() {
+        assert_eq!(variation(""), 0.75);
+        assert_eq!(variation(r#"{ "speed_percent": 100, "variation_percent": 100 }"#), 1.0);
+        assert_eq!(variation(r#"{ "variation_percent": 0 }"#), 0.0);
+        assert_eq!(variation(r#"{ "variation_percent": 400 }"#), 1.5);
     }
 
     #[test]
