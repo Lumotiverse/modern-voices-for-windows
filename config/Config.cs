@@ -4423,8 +4423,10 @@ namespace ModernVoicesConfig
                     bool allNamed = poweredText.Contains("MODERN VOICES") && poweredText.Contains("Powered By...") && poweredText.Contains(Credit.Thanks);
                     foreach (Credit credit in Credit.All) { if (!poweredText.Contains(credit.Name) || !poweredText.Contains(credit.By)) { allNamed = false; } }
                     Check(allNamed, "\"Powered by\" names the program and each project with its author, and thanks the voices");
-                    Control corner = powered.GetChildAtPoint(new Point(powered.ClientSize.Width - 16, 16));
-                    Check(corner != null && corner.Name == "close" && corner.Text.Length == 1, "its X is in the top right corner, over the rest");
+                    // (In front of the rest: first of the window's controls; and where the top right corner is.)
+                    Control corner = powered.Controls[0];
+                    Check(corner.Name == "close" && corner.Text.Length == 1 && corner.Bounds.Contains(new Point(powered.ClientSize.Width - 16, 16)),
+                        "its X is in the top right corner, over the rest");
                     if (pictures) { SavePicture(powered, Path.Combine(folder, "powered-by.png")); }
                 }
                 Check(ui.AboutButton.Visible && ui.AboutButton.PointToScreen(Point.Empty).X < ui.ThemeButton.PointToScreen(Point.Empty).X, "About is in the header, left of the moon");
