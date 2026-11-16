@@ -7,7 +7,10 @@ Windows has had a standard way for programs to speak since the early 2000s (call
 readers, e-book readers, games and many other programs use it. The voices Windows supplies for it
 are old and robotic, and the newer "natural" voices in Narrator can't be used by those programs.
 Modern Voices for Windows adds modern neural voices that they can use: 64-bit and 32-bit programs
-alike. English voices for now.
+alike. English voices are installed by default, and voices in over 25 other European languages can be
+added (see [Other languages](#other-languages)).
+
+Modern Voices for Windows is free to use and open source.
 
 ## Who wrote the code
 
@@ -18,7 +21,7 @@ To be plain about it: every line of code in this repository beyond the engine it
 written by Claude, Anthropic's AI model, which is why Claude appears as the main contributor. The
 person behind the project (Lumoti) is not a programmer. He decided what the program should do, tried
 every build on his own computer, and said what was wrong with it; Claude wrote, built and tested
-the code. (Currently tested on Windows 10 only)
+the code.
 
 The user experience was largely directed by Lumoti, a graphic designer with some experience of UX and
 UI design: what each program does, how its windows are laid out, what the buttons and icons are and
@@ -30,6 +33,25 @@ people wrote the engines, the tools, the documentation and the answers it learne
 due to them. If you are one of them and see something here done badly, issues and pull requests
 are welcome.
 
+## How it was made, and what to expect
+
+Lumoti paid £18 for one month of Claude Pro, and used all of the Fable model's allowance he could within
+that month to make the program and get it to this point. He can't afford to keep paying for a Claude
+subscription, so the project can't be maintained continuously.
+
+It appears to be stable and working, and hopefully that will stay the case. The only real bug found
+so far: sometimes the first start of a program after installing hangs for a while before its window
+appears (Windows checking a new program; later starts are quick).
+
+**Testing:** all testing was done on Windows 10, apart from one older version that was tried on
+Windows 11, where everything worked as normal. Each build is also tested automatically on a clean
+Windows Server machine (see [Open and transparent](#open-and-transparent)).
+
+**Other programs:** the voices work in any program that uses Windows' speech voices (SAPI 5). The
+program has its own Reader, but the voices also show up automatically in programs such as
+[Balabolka](https://www.cross-plus-a.com/balabolka.htm). That is largely untested and may run into
+issues, though the little testing done in Balabolka has worked exactly as intended.
+
 ## Standing on other people's work
 
 This program is a thin layer over years of work by people who actually know how to do this.
@@ -38,8 +60,8 @@ This program is a thin layer over years of work by people who actually know how 
   [Spoken Players voicepack](https://github.com/f-rolf/spoken-players-voicepack) by f-rolf.** That
   project solved the hard problem: a real Windows speech engine, in Rust, that runs Piper voices
   and reports words and bookmarks as Windows expects. Modern Voices for Windows exists because that
-  work was published under a free licence. If you find this program useful, that repository
-  deserves the star.
+  work was published under a free licence. If you give this repository a star, please give that one
+  a star as well: it is where the hard part was done.
 - **Piper** (Michael Hansen and contributors) for the voices and the way of making them.
 - **eSpeak NG** (Jonathan Duddington, Reece H. Dunn and contributors) for pronunciation.
 - **sherpa-onnx** (the k2-fsa project) and **ONNX Runtime** (Microsoft) for running the voices.
@@ -59,6 +81,43 @@ The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES
 To install, download `ModernVoicesForWindows<version>.zip` from
 [Releases](../../releases), unzip it and run `Install.cmd`. To update, do the same with the new
 version: your voices and settings stay. `README.txt` in the zip is the user's guide.
+
+## Other languages
+
+Voices in over 25 European languages (German, French, Spanish, Italian, Dutch, Polish, Russian and
+more) can be added from **Modern Voices Config > Add or remove voices > Additional languages**. Tick a
+language and its voices appear in the list to install, like the English ones. Windows is told each
+voice's language, so programs that choose voices by language find them.
+
+Some things to know:
+
+- **The program itself is in English.** Its windows, buttons and help stay in English whatever voices
+  you install.
+- **There may be mistakes in the other languages.** Lumoti only speaks English, so the parts written
+  in other languages (the preview text each voice reads in Config) were translated by Claude and
+  haven't been checked by a native speaker. Corrections are welcome as issues or pull requests.
+- **Other languages have been tested far less** than English: a German voice is installed, spoken and
+  checked by the automatic test, and the rest are trusted to work the same way.
+- **No ready-made pronunciation rules for other languages.** English comes with a list (chat
+  abbreviations, smileys); each other language starts with an empty list of its own, which you can
+  fill in on the Pronunciation tab. A voice only uses the rules for its own language.
+- **Languages written right to left or without spaces between words** (Arabic, Persian, Hebrew,
+  Chinese) are not offered, as the engine's handling of sentences and pauses doesn't fit them.
+
+### Sharing your pronunciation rules
+
+Your rules are kept in plain text files, one per language, in:
+
+```
+C:\ProgramData\Modern Voices for Windows\
+```
+
+`dictionary.txt` holds the English rules, and `dictionary-de.txt` (German), `dictionary-fr.txt`
+(French) and so on hold each other language's. To open the folder, paste the path above into File
+Explorer's address bar (the ProgramData folder is hidden, so you won't see it by browsing). You can copy
+a file to share it, for example by attaching it to an issue here, so a list for a language can be
+added to the program for everyone. To use someone else's list, close Modern Voices Config, put their
+file in that folder (keep a copy of yours first), and open Config again.
 
 ## How it works
 
