@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.12.6.0")]
+[assembly: System.Reflection.AssemblyVersion("0.12.7.0")]
 
 namespace ModernVoicesConfig
 {
@@ -735,7 +735,7 @@ namespace ModernVoicesConfig
         public Color Back, Raised, Input, Text, Muted, Warn, Border, Tab, Selected;
         // The tabs' buttons: one not selected (its fill is Tab) has TabEdge around it and TabText on it;
         // the selected one (filled as the lists are) has TabOn around it. Line: under the header.
-        public Color TabEdge, TabText, TabOn, Line;
+        public Color TabEdge, TabText, TabOn;
     }
 
     // Light or dark: as last chosen with the moon (kept for the Windows user and shared with the Reader);
@@ -785,7 +785,6 @@ namespace ModernVoicesConfig
                 p.Text = Color.FromArgb(240, 240, 240); p.Muted = Color.FromArgb(160, 160, 160); p.Warn = Color.FromArgb(255, 128, 128);
                 p.Border = Color.FromArgb(90, 90, 90); p.Tab = Color.FromArgb(64, 64, 64); p.Selected = Color.FromArgb(0, 84, 153);
                 p.TabEdge = Color.FromArgb(112, 112, 112); p.TabText = Color.FromArgb(205, 205, 205); p.TabOn = Color.FromArgb(240, 240, 240);
-                p.Line = Color.Black;
             }
             else
             {
@@ -793,7 +792,6 @@ namespace ModernVoicesConfig
                 p.Text = SystemColors.ControlText; p.Muted = Color.DimGray; p.Warn = Color.Firebrick;
                 p.Border = SystemColors.ControlDark; p.Tab = Color.FromArgb(222, 222, 222); p.Selected = SystemColors.Highlight;
                 p.TabEdge = Color.FromArgb(172, 172, 172); p.TabText = Color.FromArgb(64, 64, 64); p.TabOn = Color.FromArgb(96, 96, 96);
-                p.Line = Color.Black;
             }
             return p;
         }
@@ -898,7 +896,7 @@ namespace ModernVoicesConfig
         float scale = 1f;
         Font boldFont, listFont, listBold, speakerFont;
         Panel headerLine;
-        public Button ReaderButton;
+        public Button ReaderButton, PlayButton;
         Palette palette;
         bool? shownDark;
         public int PageIndex;
@@ -1050,7 +1048,7 @@ namespace ModernVoicesConfig
         // and the words stay where they were, with the slider's line level with their middle.
         void Lower(TrackBar bar)
         {
-            int drop = Px(10);
+            int drop = Px(13);
             bar.AutoSize = false;
             bar.Height = Math.Max(Px(24), bar.PreferredSize.Height - drop);
             bar.Margin = new Padding(0, drop, 0, 0);
@@ -1151,10 +1149,10 @@ namespace ModernVoicesConfig
             pageHost.Dock = DockStyle.Fill;
             Controls.Add(pageHost);
             // The strip across the top: the tabs' buttons at the left and, at the far right, the moon.
-            // Under it, a gap (as there was between the tabs and the first list) and then a line: together a
-            // header. The pages, and their scroll bars, start below the line.
+            // Under it, a gap (as there was between the tabs and the first list): together a header. The
+            // pages, and their scroll bars, start below it. (0.12.6 drew a line at its foot; taken out in 0.12.7.)
             headerLine = new Panel();
-            headerLine.Dock = DockStyle.Top; headerLine.Height = Math.Max(1, Px(1)); headerLine.Tag = "line";
+            headerLine.Dock = DockStyle.Top; headerLine.Height = Math.Max(1, Px(1));     // (no longer drawn: it keeps the header's spacing)
             Controls.Add(headerLine);
             tabStrip = Line("auto", "fill", "auto", "auto");
             tabStrip.Dock = DockStyle.Top;
@@ -1462,7 +1460,7 @@ namespace ModernVoicesConfig
             Row(page, hearLine);
             KeepWidth(GlobalPreview);
             TableLayoutPanel globalGrid = Line("auto", "fill", "auto");
-            Slider speed = AddSlider(globalGrid, "Dictation speed", 25, 200, 5, 25, 25);
+            Slider speed = AddSlider(globalGrid, "Dictation speed", 25, 200, 5, 25, 25, true);
             SpeedBar = speed.Bar; SpeedValue = speed.Value;
             SpeedValue.Font = boldFont;
             AddNote(globalGrid, Words("how fast every voice speaks before a program's own rate: 100% by default, the voices' own pace (rate +2 is about 125%) " +
@@ -1480,7 +1478,7 @@ namespace ModernVoicesConfig
             int[] limits = { Store.SentenceLimit, Store.CommaLimit, Store.ParagraphLimit };
             for (int i = 0; i < specs.Length; i++)
             {
-                Slider gap = AddSlider(globalGrid, specs[i][1], 0, limits[i], 50, 250, 250);
+                Slider gap = AddSlider(globalGrid, specs[i][1], 0, limits[i], 50, 250, 250, true);
                 gap.Value.Font = boldFont;
                 AddNote(globalGrid, Words(specs[i][2], true));
                 gap.Example = Words("");
@@ -1570,9 +1568,9 @@ namespace ModernVoicesConfig
             Row(addGrid, filterLine);
             AddList = NewList(true);
             AddList.Columns.Add("Voice", Px(220));
+            AddList.Columns.Add("Speakers", Px(105));
             AddList.Columns.Add("Accent", Px(90));
             AddList.Columns.Add("Quality", Px(75));
-            AddList.Columns.Add("Speakers", Px(105));
             AddList.Columns.Add("Download", Px(90));
             AddList.Columns.Add("Catalogue key", Px(220));
             Dictionary<string, List<string>> speakersOf = SpeakersInstalled(null);
@@ -1583,9 +1581,9 @@ namespace ModernVoicesConfig
             foreach (Entry v in CatalogueList)
             {
                 ListViewItem item = new ListViewItem(v.Display);
+                item.SubItems.Add(v.Several ? v.SpeakerNames.Count + " speakers" : "1");
                 item.SubItems.Add(v.Accent);
                 item.SubItems.Add(v.Quality);
-                item.SubItems.Add(v.Several ? v.SpeakerNames.Count + " speakers" : "1");
                 item.SubItems.Add(v.SizeMb + " MB");
                 item.SubItems.Add(v.Key);
                 item.Tag = v;
@@ -1599,6 +1597,7 @@ namespace ModernVoicesConfig
             addGrid.RowStyles[addGrid.RowCount - 1] = new RowStyle(SizeType.Percent, 42f);
             TableLayoutPanel playLine = Line("auto", "auto", "fill");
             Button play = Btn("Play sample");
+            play.MinimumSize = new Size(Math.Max(play.PreferredSize.Width, TextRenderer.MeasureText("Stop sample", play.Font).Width + Px(24)), 0);
             // Off at every start (not remembered): lists only the ticked speakers, to find the installed ones.
             OnlyTickedBox = new CheckBox();
             OnlyTickedBox.Text = "Only show selected speakers";
@@ -1649,7 +1648,18 @@ namespace ModernVoicesConfig
             SpeakerList.MouseDown += SpeakerMouseDown;
             SpeakerList.MouseUp += delegate { nameClick = false; };
             SpeakerList.ItemCheck += SpeakerTicking;
-            play.Click += delegate { PlaySample(); };
+            // Play sample stops a sample still playing (its words say so meanwhile); else it plays one.
+            play.Click += delegate { if (Sample.Playing) { Sample.Stop(); } else { PlaySample(); } };
+            PlayButton = play;
+            Timer sampleWatch = new Timer();
+            sampleWatch.Interval = 200;
+            sampleWatch.Tick += delegate
+            {
+                Sample.Check();
+                string words = Sample.Playing ? "Stop sample" : "Play sample";
+                if (play.Text != words) { play.Text = words; }
+            };
+            sampleWatch.Start();
             // Selecting a speaker plays its sample (Play sample plays it again, or a voice with one speaker).
             SpeakerList.SelectedIndexChanged += delegate { if (!Filling && SpeakerList.SelectedIndex >= 0) { PlaySample(); } };
             tab.Resize += delegate { UpdateAddLayout(); };
@@ -1786,7 +1796,6 @@ namespace ModernVoicesConfig
             else if (c is CheckBox) { c.ForeColor = p.Text; }
             else if (c is TrackBar) { c.BackColor = p.Back; }
             else if (c is ProgressBar) { }
-            else if ((c.Tag as string) == "line") { c.BackColor = p.Line; }
             else
             {
                 c.BackColor = (c.Tag as string) == "box" ? p.Input : p.Back;
@@ -2819,6 +2828,19 @@ namespace ModernVoicesConfig
     static class Sample
     {
         static object player;
+        // Whether a sample is playing (until it ends, or is stopped).
+        public static bool Playing { get { return player != null; } }
+        // A sample that has played to its end is let go (the Play sample button says "Play sample" again).
+        public static void Check()
+        {
+            if (player == null) { return; }
+            try { if (Ended()) { Stop(); } } catch (Exception) { }
+        }
+        static bool Ended()
+        {
+            System.Windows.Media.MediaPlayer p = (System.Windows.Media.MediaPlayer)player;
+            return p.NaturalDuration.HasTimeSpan && p.Position >= p.NaturalDuration.TimeSpan;
+        }
 
         public static void Play(string file)
         {
@@ -3427,6 +3449,32 @@ namespace ModernVoicesConfig
                 Check(lineBottom == pageTop && listTop == pageTop, "the Voice manager's list starts right under the header's line, where its scroll bar does");
                 ui.ShowPage(headerPage);
                 Settle(50);
+            }
+
+            // Add or remove voices: Speakers is the second column; Play sample stops a sample playing.
+            Check(ui.AddList.Columns[1].Text == "Speakers" && ui.AddList.Columns[2].Text == "Accent", "Speakers is the second column, before Accent");
+            {
+                string fakeSample = Path.Combine(Path.GetTempPath(), "modernvoices_selftest_silence.wav");
+                try
+                {
+                    // Two seconds of silence, as a sample to play.
+                    using (FileStream wav = File.Create(fakeSample))
+                    using (BinaryWriter w = new BinaryWriter(wav))
+                    {
+                        int bytes = 22050 * 2 * 2;
+                        w.Write(Encoding.ASCII.GetBytes("RIFF")); w.Write(36 + bytes); w.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
+                        w.Write(16); w.Write((short)1); w.Write((short)1); w.Write(22050); w.Write(44100); w.Write((short)2); w.Write((short)16);
+                        w.Write(Encoding.ASCII.GetBytes("data")); w.Write(bytes); w.Write(new byte[bytes]);
+                    }
+                    Sample.Play(fakeSample);
+                    Settle(300);
+                    bool saysStop = ui.PlayButton.Text == "Stop sample";
+                    ui.PlayButton.PerformClick();
+                    Settle(300);
+                    Note("Play sample: said \"" + (saysStop ? "Stop sample" : "Play sample") + "\" while playing; now \"" + ui.PlayButton.Text + "\"");
+                    Check(saysStop && !Sample.Playing && ui.PlayButton.Text == "Play sample", "Play sample says Stop sample while one plays, and pressed then, stops it");
+                }
+                finally { Sample.Stop(); try { File.Delete(fakeSample); } catch (Exception) { } }
             }
 
             // Two qualities of one voice: the warning.
