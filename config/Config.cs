@@ -1523,8 +1523,10 @@ namespace ModernVoicesConfig
                     previewLine.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, wanted);
                 }
             };
-            soundGrid.Layout += delegate { BeginInvoke(alignPreview); };
-            soundGrid.HandleCreated += delegate { BeginInvoke(alignPreview); };
+            // (After the layout under way, once there is a window to queue it on.)
+            LayoutEventHandler alignLater = delegate { if (IsHandleCreated) { BeginInvoke(alignPreview); } };
+            soundGrid.Layout += alignLater;
+            HandleCreated += delegate { BeginInvoke(alignPreview); };
             OwnBox = new CheckBox();
             OwnBox.Text = "Override pause duration for the selected voice";
             OwnBox.AutoSize = true; OwnBox.Enabled = false; OwnBox.Checked = false;
