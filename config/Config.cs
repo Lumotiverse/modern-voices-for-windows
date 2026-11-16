@@ -1649,7 +1649,11 @@ namespace ModernVoicesConfig
             SpeakerList.MouseUp += delegate { nameClick = false; };
             SpeakerList.ItemCheck += SpeakerTicking;
             // Play sample stops a sample still playing (its words say so meanwhile); else it plays one.
-            play.Click += delegate { if (Sample.Playing) { Sample.Stop(); } else { PlaySample(); } };
+            play.Click += delegate
+            {
+                if (Sample.Playing) { Sample.Stop(); } else { PlaySample(); }
+                play.Text = Sample.Playing ? "Stop sample" : "Play sample";
+            };
             PlayButton = play;
             Timer sampleWatch = new Timer();
             sampleWatch.Interval = 200;
@@ -3466,6 +3470,8 @@ namespace ModernVoicesConfig
                         w.Write(16); w.Write((short)1); w.Write((short)1); w.Write(22050); w.Write(44100); w.Write((short)2); w.Write((short)16);
                         w.Write(Encoding.ASCII.GetBytes("data")); w.Write(bytes); w.Write(new byte[bytes]);
                     }
+                    int samplePage = ui.PageIndex;
+                    ui.ShowPage(3);       // (a button clicks only while it is shown)
                     Sample.Play(fakeSample);
                     Settle(300);
                     bool saysStop = ui.PlayButton.Text == "Stop sample";
@@ -3473,6 +3479,8 @@ namespace ModernVoicesConfig
                     Settle(300);
                     Note("Play sample: said \"" + (saysStop ? "Stop sample" : "Play sample") + "\" while playing; now \"" + ui.PlayButton.Text + "\"");
                     Check(saysStop && !Sample.Playing && ui.PlayButton.Text == "Play sample", "Play sample says Stop sample while one plays, and pressed then, stops it");
+                    ui.ShowPage(samplePage);
+                    Settle(50);
                 }
                 finally { Sample.Stop(); try { File.Delete(fakeSample); } catch (Exception) { } }
             }
