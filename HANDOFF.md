@@ -62,6 +62,9 @@ pronunciation lists per language, used by that language's voices; a way to switc
 - **Tests:** engine unit tests (language_of, #off); Config self-test (German chosen/unchosen, its rules
   file, pictures languages.png and german.png); Test-Kit installs de_DE-thorsten-medium, checks Language
   407, that it speaks, and that a German rule changes German speech only.
+- **A flaky Reader test:** run #102 failed "Pause keeps the reading" / "Stop keeps the place (0)" with no
+  Reader change; the next run passed. If it recurs, look at the timing around `PauseOrResume` in the
+  Reader's self-test before suspecting the engine.
 - **Not done / ideas:** Preview text and "Hear it" are English whatever the voice; Reader untouched; no
   default rules for other languages; sentence/pause handling untested by ear in any other language.
 
