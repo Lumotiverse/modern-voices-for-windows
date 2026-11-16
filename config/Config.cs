@@ -3691,8 +3691,9 @@ namespace ModernVoicesConfig
                 Check(ui.AddList.Items.Count == catalogue.Count, "English only: every voice (all are English for now)");
                 ui.VoiceFilterBox.SelectedIndex = 0;
                 Settle(50);
-                bool showSameOrder = ui.AddList.Items.Count == ui.VoiceItems.Count;
-                for (int i = 0; showSameOrder && i < ui.VoiceItems.Count; i++) { if (ui.AddList.Items[i] != ui.VoiceItems[i]) { showSameOrder = false; } }
+                // (The voices listed: the English ones, which come first of them all.)
+                bool showSameOrder = ui.AddList.Items.Count == catalogue.Count;
+                for (int i = 0; showSameOrder && i < catalogue.Count; i++) { if (ui.AddList.Items[i] != ui.VoiceItems[i]) { showSameOrder = false; } }
                 Check(showSameOrder && string.Join(" ", ui.PickedIds().ToArray()) == showBefore, "All voices again: the whole list in its order, ticked as before");
                 if (showGb != null) { showGb.Checked = false; Settle(50); }
 
@@ -3730,7 +3731,7 @@ namespace ModernVoicesConfig
             }
 
             // Add or remove voices: Speakers is the second column; Play sample stops a sample playing.
-            Check(ui.AddList.Columns[1].Text == "Speakers" && ui.AddList.Columns[2].Text == "Accent", "Speakers is the second column, before Accent");
+            Check(ui.AddList.Columns[1].Text == "Speakers" && ui.AddList.Columns[2].Text == "Accent or language", "Speakers is the second column, before the accent");
             {
                 string fakeSample = Path.Combine(Path.GetTempPath(), "modernvoices_selftest_silence.wav");
                 try
