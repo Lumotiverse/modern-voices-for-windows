@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.13.0
+Modern Voices for Windows 0.13.1
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -8,7 +8,7 @@ sent anywhere.
 
 They show up in Windows' Speech settings (Control Panel > Speech) and in programs that use
 Windows' installed voices: text readers like Balabolka, screen readers in their SAPI 5 mode (NVDA,
-JAWS), games and apps with text to speech (World of Warcraft among them), Chromium-based browsers'
+JAWS), games and apps with text to speech, Chromium-based browsers'
 speech, and anything built on System.Speech or SAPI. 64-bit and 32-bit programs both.
 
 They do not appear in Narrator, Edge's Read Aloud or other apps that use Windows' newer voice system,
@@ -81,7 +81,8 @@ In the Modern Voices Config window, on "Voice manager", select a voice:
 
 Output volume (the slider with the speaker, beside Windows' default voice) is for every voice, in
 every program: how loud they come out, of what each voice's own Volume makes. 100% unless you turn it
-down; 0 = silent (the speech still runs, without sound). Unlike the other settings it works while a
+down; 0 = silent (the speech still runs, without sound). Click the speaker to mute, and again to
+unmute. Unlike the other settings it works while a
 voice is speaking, within a moment. It turns down what the voices hand to a program: a program's own
 volume control still works on top. (settings.json's "output_percent", 0 to 100, in the settings folder:
 anything allowed to write that file can set it.)
@@ -119,7 +120,7 @@ On the Speed and pauses tab, for every voice:
   Sentence pause  added after a sentence when another follows (never after the last, so short bits
                   of speech, such as a screen reader's, don't gain dead air). Default 500 ms.
   Paragraph gap   at a line break, in place of the sentence pause. Default 1200 ms.
-  Comma pause     at each , ; or : (default 0: commas as the voice says them). Above 0 the voice says
+  Comma pause     at each , ; or : (default 60 ms; 0: commas as the voice says them). Above 0 the voice says
                   each part of a sentence separately so the pause can go between them, which can make
                   the intonation a little more broken up.
 
@@ -129,12 +130,12 @@ speech: at the default 100%, a 500 ms pause is 500 ms, 401 ms if a program also 
 623 ms at -2. The tab shows each pause's result at the speed set.
 
 Speed is applied inside the engine, so it works in every program, also those that set their own
-rate (World of Warcraft, Balabolka, NVDA): theirs adds to it. So does Windows' own speech speed (its
+rate (Balabolka, NVDA): theirs adds to it. So does Windows' own speech speed (its
 Speech settings, sapi.cpl), for programs that leave the speed to Windows: when that isn't 0, the tab
 says so, with a button to set it to 0. Set the speed here instead, and leave Windows' and the
-program's at 0 (TTS Enhanced in World of Warcraft: its speed 0) unless you want faster still.
+program's at 0 unless you want faster still.
 
-A voice can have its own: in the Voice manager, tick "Modify pause duration for the selected voice" and
+A voice can have its own: in the Voice manager, tick "Override pause duration for the selected voice" and
 set its three pauses. Changes apply straight away, like volume. Preview on this tab says the Voice
 manager's line with the voice chosen beside it.
 
@@ -153,7 +154,7 @@ install folder has it. (Before 0.12.0 all of these were in the install folder: u
 Pronunciation
 -------------
 On the Pronunciation tab: words and names said your way, by every voice, in every program that uses
-these voices (the Reader, World of Warcraft, a screen reader...).
+these voices (the Reader, a screen reader...).
 
   * Each language has its own rules ("Rules for", at the top: English, and each additional
     language chosen). A voice uses the rules of its own language only. "Use these rules" unticked
@@ -267,10 +268,9 @@ Good to know
 * Language: British voices are listed as British English, American as US English. A program that
   only shows US English voices won't list the British ones; tick "Also list British voices as US
   English" on the window's "Add or remove voices" tab for it.
-* Some programs take longer to start the more voices Windows has (World of Warcraft looks at every
-  voice several times over when it loads). Install the ones you use.
+* Some programs take longer to start the more voices Windows has. Install the ones you use.
 * The engine is signed by the build that made it, and the installer has Windows trust that signature:
-  programs that only load signed speech engines (World of Warcraft) need that. It can sign nothing
+  programs that only load signed speech engines need that. It can sign nothing
   else: its private key was deleted straight after signing. Uninstall removes the trust.
 * Memory: each voice in use takes about 110 MB in the program using it, loaded on its first line.
 * Something not working: %LOCALAPPDATA%\ModernVoices\engine.log. With a file named verbose in

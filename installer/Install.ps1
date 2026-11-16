@@ -82,7 +82,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 
 . (Join-Path $Here 'VoiceConvert.ps1')
 
-$Version = '0.13.0'
+$Version = '0.13.1'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -785,7 +785,7 @@ function Install-AndRegisterEngine {
     Install-Engine
     Register-Class $Class64 $Dll64
     if (Test-Path $Dll32) { Register-Class $Class32 $Dll32 } elseif (Test-Path $Class32) { Remove-Item $Class32 -Recurse -Force }
-    # Programs that only load signed engines (World of Warcraft, for one) need the build's certificate trusted.
+    # Programs that only load signed speech engines need the build's certificate trusted.
     foreach ($store in 'Root', 'TrustedPublisher') {
         & "$env:SystemRoot\System32\certutil.exe" -f -addstore $store $Cer | Out-Null
     }
@@ -962,7 +962,7 @@ try {
         Write-Host 'Start menu > Modern Voices for Windows: Modern Voices Config, Reader, Repair and Test, and Uninstall.'
         $signature = (Get-AuthenticodeSignature $Dll64).Status
         if ($signature -ne 'Valid') {
-            Write-Host "Note: the engine's signature is '$signature': programs that insist on signed engines (WoW) will not use it." -ForegroundColor Yellow
+            Write-Host "Note: the engine's signature is '$signature': programs that only load signed speech engines will not use it." -ForegroundColor Yellow
         }
     }
 } catch {

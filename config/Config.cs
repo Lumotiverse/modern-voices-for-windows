@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.13.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.13.1.0")]
 
 namespace ModernVoicesConfig
 {
@@ -544,7 +544,7 @@ namespace ModernVoicesConfig
         static readonly UTF8Encoding Utf8 = new UTF8Encoding(false);
         const string Number = @"(-?\d+(?:\.\d+)?)";
         public const int SentenceLimit = 2000, CommaLimit = 1000, ParagraphLimit = 3000;
-        public const int SentenceDefault = 500, CommaDefault = 0, ParagraphDefault = 1200;
+        public const int SentenceDefault = 500, CommaDefault = 60, ParagraphDefault = 1200;
         public const int SpeedDefault = 100;
         public const double MaxPeak = 1;
 
@@ -986,6 +986,8 @@ namespace ModernVoicesConfig
         Font boldFont, listFont, listBold, speakerFont;
         Panel headerLine;
         public Button ReaderButton, PlayButton;
+        public Label MuteIcon;
+        int unmutedVolume = 100;            // the output volume to go back to when unmuted
         Palette palette;
         bool? shownDark;
         public int PageIndex;
@@ -1280,15 +1282,9 @@ namespace ModernVoicesConfig
             tips.SetToolTip(ThemeButton, "Dark or light (here and in the Reader)");
             ThemeButton.Click += delegate { Theme.Choice = Theme.IsDark() ? "light" : "dark"; ApplyTheme(); };
             tabStrip.Controls.Add(ThemeButton, 3, 0);
-            // Open Reader, left of the moon (the stretch of strip between it and the tabs is never less than a gap).
-            ReaderButton = Btn("Open Reader");
-            ReaderButton.Anchor = AnchorStyles.Right; ReaderButton.TabStop = false;
-            ReaderButton.Margin = new Padding(Px(24), 0, Px(6), 0);
-            tips.SetToolTip(ReaderButton, "Opens Modern Voices: Reader");
-            ReaderButton.Click += delegate { OpenReader(); };
-            tabStrip.Controls.Add(ReaderButton, 2, 0);
-            // (The window is never narrower than its header needs, the selected tab's bold words included.)
-            int headerNeeds = ReaderButton.PreferredSize.Width + ReaderButton.Margin.Horizontal + ThemeButton.PreferredSize.Width + ThemeButton.Margin.Horizontal;
+            // (The window is never narrower than its header needs, the selected tab's bold words included, and
+            // a gap before the moon.)
+            int headerNeeds = Px(24) + ThemeButton.PreferredSize.Width + ThemeButton.Margin.Horizontal;
             foreach (Button tabButton in TabButtons)
             {
                 Font plain = tabButton.Font;
@@ -1299,8 +1295,9 @@ namespace ModernVoicesConfig
             headerNeeds += Padding.Horizontal + (Width - ClientSize.Width) + Px(4);
             MinimumSize = new Size(Math.Min(Math.Max(MinimumSize.Width, headerNeeds), area.Width), MinimumSize.Height);
 
-            // The bottom of the window: progress while applying changes, what is happening, Apply and Close.
-            TableLayoutPanel bottom = Line("fill", "auto", "auto", "auto");
+            // The bottom of the window: progress while applying changes, what is happening; Apply changes and
+            // Done (on Add or remove voices only), Open Reader and Close.
+            TableLayoutPanel bottom = Line("fill", "auto", "auto", "auto", "auto");
             bottom.Dock = DockStyle.Bottom;
             bottom.RowStyles.Clear();
             bottom.RowStyles.Add(new RowStyle(SizeType.Absolute, Px(20)));
@@ -1310,7 +1307,7 @@ namespace ModernVoicesConfig
             Progress.Dock = DockStyle.Fill; Progress.Visible = false;
             Progress.Margin = new Padding(3, Px(6), 3, 0);
             bottom.Controls.Add(Progress, 0, 0);
-            bottom.SetColumnSpan(Progress, 4);
+            bottom.SetColumnSpan(Progress, 5);
             StatusLabel = Words("", true);
             StatusLabel.MinimumSize = new Size(0, Px(34));
             ApplyButton = Btn("Apply changes");
@@ -1320,7 +1317,11 @@ namespace ModernVoicesConfig
             DoneButton.Visible = false;
             DoneButton.Click += delegate { if (!Busy) { ShowPage(0); } };
             bottom.Controls.Add(StatusLabel, 0, 1); bottom.Controls.Add(ApplyButton, 1, 1); bottom.Controls.Add(DoneButton, 2, 1);
-            bottom.Controls.Add(CloseButton, 3, 1);
+            ReaderButton = Btn("Open Reader");
+            tips.SetToolTip(ReaderButton, "Opens Modern Voices: Reader");
+            ReaderButton.Click += delegate { OpenReader(); };
+            bottom.Controls.Add(ReaderButton, 3, 1);
+            bottom.Controls.Add(CloseButton, 4, 1);
             Controls.Add(bottom);
             CancelButton = CloseButton;
             CloseButton.Click += delegate { Close(); };
@@ -1426,11 +1427,10 @@ namespace ModernVoicesConfig
             voiceLine.Controls.Add(voiceTools, 0, 0); voiceLine.Controls.Add(sapiButton, 1, 0);
             Row(page, voiceLine);
             KeepWidth(PreviewButton);
-            string nickTip = "A name of your own for the selected voice, shown in brackets in place of its accent:\r\n" +
+            string nickTip = "Give the selected voice a name of your own, shown in brackets instead of its accent:\r\n" +
                 "VCTK p262 (British) becomes VCTK p262 (Irish Female).\r\n" +
-                "Type it in the box and press Set nickname; with the box empty, the accent is put back.\r\n" +
-                "Windows asks for permission the first time (a voice's name is Windows' to keep).\r\n" +
-                "Programs that were open show the new name after a restart.";
+                "Leave the box empty and press Set nickname to remove it.\r\n" +
+                "Windows asks for permission. Programs that were open show the new name after a restart.";
             tips.SetToolTip(NickButton, nickTip);
             tips.SetToolTip(NickBox, nickTip);
             tips.SetToolTip(PreviewButton, "Says the text below with the selected voice.\r\nPressed while that voice is speaking, it stops it.");
@@ -1446,6 +1446,8 @@ namespace ModernVoicesConfig
             PreviewBox.MinimumSize = new Size(0, threeLines);
             PreviewBox.Height = threeLines;
             previewLine.Controls.Add(previewLabel, 0, 0); previewLine.Controls.Add(PreviewBox, 1, 0);
+            // Twice the gap there was between it and the buttons above.
+            previewLine.Margin = new Padding(previewLine.Margin.Left, previewLine.Margin.Top + Px(9), previewLine.Margin.Right, previewLine.Margin.Bottom);
             Row(page, previewLine);
 
             // Windows' default voice, in a box of its own; beside it the output volume, for every voice.
@@ -1468,7 +1470,12 @@ namespace ModernVoicesConfig
             defaultBox.Controls.Add(defaultCaption); defaultBox.Controls.Add(DefaultLabel);
             Label outputIcon = Beside("Output volume");
             Font symbols = new Font("Segoe MDL2 Assets", 13f);
-            if (symbols.Name == "Segoe MDL2 Assets") { outputIcon.Font = symbols; outputIcon.Text = "\uE767"; }      // a speaker
+            bool hasSymbols = symbols.Name == "Segoe MDL2 Assets";
+            if (hasSymbols) { outputIcon.Font = symbols; outputIcon.Text = "\uE767"; }      // a speaker
+            // The speaker mutes the output volume, and clicked again puts it back as it was.
+            outputIcon.Cursor = Cursors.Hand;
+            MuteIcon = outputIcon;
+            outputIcon.Click += delegate { ToggleMute(); };
             OutputBar = new TrackBar();
             OutputBar.Maximum = 100; OutputBar.Minimum = 0; OutputBar.SmallChange = 5; OutputBar.LargeChange = 10; OutputBar.TickFrequency = 10;
             OutputBar.Value = 100;
@@ -1478,15 +1485,15 @@ namespace ModernVoicesConfig
             OutputBar.MouseWheel += SliderWheel;
             OutputValue = Beside("100%");
             OutputValue.MinimumSize = new Size(Px(90), 0);
-            string outputTip = "Output volume, for every voice in every program: how loud they come out, of what each voice's own Volume makes.\r\n" +
-                "It works while a voice is speaking. 0 = silent.";
-            tips.SetToolTip(outputIcon, outputTip);
+            string outputTip = "The volume of all these voices, in every program. It changes straight away, even mid-sentence.";
+            tips.SetToolTip(outputIcon, "Mute or unmute all these voices");
             tips.SetToolTip(OutputBar, outputTip);
             outLine.Controls.Add(defaultBox, 0, 0); outLine.Controls.Add(outputIcon, 1, 0); outLine.Controls.Add(OutputBar, 2, 0); outLine.Controls.Add(OutputValue, 3, 0);
             Row(page, outLine);
             OutputBar.ValueChanged += delegate
             {
-                OutputValue.Text = OutputBar.Value == 0 ? "0% (silent)" : OutputBar.Value + "%";
+                OutputValue.Text = OutputBar.Value == 0 ? "0% (muted)" : OutputBar.Value + "%";
+                ShowMute();
                 if (!Filling) { outputTimer.Stop(); outputTimer.Start(); }
             };
 
@@ -1503,8 +1510,23 @@ namespace ModernVoicesConfig
             Sliders["Boost"] = AddSlider(soundGrid, "Boost", 10, 40, 1, 5, 5, true);
             Sliders["Speed"] = AddSlider(soundGrid, "Dictation speed", 25, 200, 1, 5, 25, true);
             Row(page, soundGrid);
+            // The preview box's left edge lines up with the sliders' (its label's column as wide as theirs).
+            EventHandler alignPreview = delegate
+            {
+                TrackBar first = Sliders["Volume"].Bar;
+                if (!first.IsHandleCreated || !previewLine.IsHandleCreated) { return; }
+                int wanted = first.PointToScreen(Point.Empty).X - previewLine.PointToScreen(Point.Empty).X - PreviewBox.Margin.Left;
+                wanted = Math.Max(wanted, previewLabel.PreferredSize.Width + previewLabel.Margin.Horizontal);
+                ColumnStyle column = previewLine.ColumnStyles[0];
+                if (column.SizeType != SizeType.Absolute || Math.Abs(column.Width - wanted) > 0.5f)
+                {
+                    previewLine.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, wanted);
+                }
+            };
+            soundGrid.Layout += delegate { BeginInvoke(alignPreview); };
+            soundGrid.HandleCreated += delegate { BeginInvoke(alignPreview); };
             OwnBox = new CheckBox();
-            OwnBox.Text = "Modify pause duration for the selected voice";
+            OwnBox.Text = "Override pause duration for the selected voice";
             OwnBox.AutoSize = true; OwnBox.Enabled = false; OwnBox.Checked = false;
             Row(page, OwnBox);
             gapGrid = Line("auto", "fill", "auto");
@@ -1520,12 +1542,9 @@ namespace ModernVoicesConfig
                 int snapped = (int)(Math.Round(volume.Value / 10.0, MidpointRounding.AwayFromZero) * 10);
                 if (volume.Value != snapped) { volume.Value = snapped; }
             };
-            Row(page, Words("Volume: how loud the voice is, every line the same (0 = as Piper made it; 100% = as loud as speech goes). " +
-                "Boost: lifts quiet parts more than loud ones " +
-                "(higher sounds more compressed). Dictation speed: 100% = the speed for every voice (Speed and pauses tab). Unticked, the voice uses the pauses " +
-                "for every voice; ticked, its own.", true));
-            Row(page, Words("Changes are saved as you move a slider and take effect straight away, also in programs already using the " +
-                "voice (from the next thing they say): press Preview to hear them. A voice's speakers share its settings.", true));
+            Row(page, Words("Volume sets how loud this voice is. Boost makes its quieter parts louder. Dictation speed makes this voice faster " +
+                "or slower than the others (the speed for all voices is on the Speed and pauses tab). Changes are saved straight away: " +
+                "press Preview to hear them.", true));
 
             InstalledList.SelectedIndexChanged += delegate { UpdateInstalled(); };
             PreviewButton.Click += delegate { CurrentVoice voice = GetCurrentVoice(); if (voice != null) { TogglePreview(voice.Voice, voice.Voice, null); } };
@@ -1543,7 +1562,7 @@ namespace ModernVoicesConfig
         void BuildSpeedAndPauses(Panel tab)
         {
             TableLayoutPanel page = Rows(tab);
-            Row(page, Words("Speed and pauses for every voice (a voice can adjust its speed and have its own pauses: Voice manager)", false, true));
+            Row(page, Words("Speed and pauses for all voices", false, true));
             FlowLayoutPanel hearLine = Flow();
             PreviewVoiceBox = new ComboBox();
             PreviewVoiceBox.DropDownStyle = ComboBoxStyle.DropDownList; PreviewVoiceBox.Width = Px(280); PreviewVoiceBox.Anchor = AnchorStyles.Left;
@@ -1556,8 +1575,7 @@ namespace ModernVoicesConfig
             Slider speed = AddSlider(globalGrid, "Dictation speed", 25, 200, 5, 25, 25, true);
             SpeedBar = speed.Bar; SpeedValue = speed.Value;
             SpeedValue.Font = boldFont;
-            AddNote(globalGrid, Words("how fast every voice speaks before a program's own rate: 100% by default, the voices' own pace (rate +2 is about 125%) " +
-                "(each voice's own Dictation speed, on the Voice manager, adjusts from here)", true));
+            AddNote(globalGrid, Words("Change how fast all voices speak. You can then adjust each voice individually in voice manager, to account for any differences", true));
             RateWarn = Words("");
             RateWarn.ForeColor = Color.Firebrick; RateWarn.Tag = "warn";
             AddNote(globalGrid, RateWarn);
@@ -1565,9 +1583,9 @@ namespace ModernVoicesConfig
             RateReset.Visible = false;
             globalGrid.Controls.Add(RateReset, 2, globalGrid.RowCount - 1);
             string[][] specs = {
-                new string[] { "Sentence gap", "Sentence pause", "after each sentence, when another follows (none after the last)" },
-                new string[] { "Comma gap", "Comma pause", "at each , ; or : (0 = commas left as the voice says them)" },
-                new string[] { "Paragraph gap", "Paragraph gap", "at a line break, in place of the sentence pause (Enter in Preview says starts a new line)" } };
+                new string[] { "Sentence gap", "Sentence pause", "Extra silence after each sentence." },
+                new string[] { "Comma gap", "Comma pause", "Extra silence at each comma, semicolon and colon." },
+                new string[] { "Paragraph gap", "Paragraph gap", "Extra silence when a new line or paragraph starts." } };
             int[] limits = { Store.SentenceLimit, Store.CommaLimit, Store.ParagraphLimit };
             for (int i = 0; i < specs.Length; i++)
             {
@@ -1579,13 +1597,12 @@ namespace ModernVoicesConfig
                 GlobalBars[specs[i][0]] = gap;
             }
             Row(page, globalGrid);
-            Row(page, Words("Each pause is silence added to the voice's own, in milliseconds at 100% dictation speed and a program's rate 0. " +
-                "Faster speech uses a smaller share of it and slower a larger share, in step with the speech (the line under each shows what you get). " +
-                "A comma pause above 0 has the voice say each part of a sentence separately, so the intonation can sound a little more broken up.", true));
+            Row(page, Words("Pauses get shorter when speech is faster and longer when it is slower. A long comma pause can make sentences " +
+                "sound a little less smooth.", true));
             TableLayoutPanel resetLine = Line("auto", "fill");
             Button pausesReset = Btn("Reset to defaults");
             resetLine.Controls.Add(pausesReset, 0, 0);
-            resetLine.Controls.Add(Words("Defaults: dictation speed 100%, sentence 500 ms, comma 0, paragraph 1200 ms. Saved as you move a slider; applies straight away.", true), 1, 0);
+            resetLine.Controls.Add(Words("Defaults: speed 100%, sentence 500 ms, comma 60 ms, paragraph 1200 ms. Changes are saved straight away.", true), 1, 0);
             Row(page, resetLine);
 
             GlobalPreview.Click += delegate { string chosen = PreviewVoiceBox.SelectedItem as string; if (!string.IsNullOrEmpty(chosen)) { TogglePreview(chosen, chosen, null); } };
@@ -1605,7 +1622,7 @@ namespace ModernVoicesConfig
             WordListOnBox = new CheckBox();
             WordListOnBox.Text = "Use these rules"; WordListOnBox.AutoSize = true; WordListOnBox.Checked = true;
             WordListOnBox.Anchor = AnchorStyles.Left; WordListOnBox.Margin = new Padding(Px(12), 0, Px(12), 0);
-            Label rulesNote = Words("Voices use the rules of their own language. Untick to switch this whole list off.", true);
+            Label rulesNote = Words("Each voice uses the rules for its own language. Untick to turn this whole list off.", true);
             rulesNote.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             rulesLine.Controls.Add(Beside("Rules for"), 0, 0); rulesLine.Controls.Add(WordLanguageBox, 1, 0);
             rulesLine.Controls.Add(WordListOnBox, 2, 0); rulesLine.Controls.Add(rulesNote, 3, 0);
@@ -1646,12 +1663,10 @@ namespace ModernVoicesConfig
             foreach (Control c in new Control[] { WordWhole, WordCase, WordSave, wordNew, WordRemove, HearButton }) { wordTools.Controls.Add(c); }
             Row(page, wordTools);
             KeepWidth(HearButton);
-            Row(page, Words("To add a rule: type the word or phrase and how to say it (spell it as it sounds: Niamh as Neev), then Add rule. " +
-                "To change one: select it, edit, then Save rule. Untick a rule to switch it off without removing it. Hear it says the " +
-                "\"Say it as\" text with the voice selected on the Voice manager, to try a spelling before saving (pressed again while it speaks, it stops).", true));
-            Row(page, Words("Rules apply from the next thing a program says. Whole words only: \"cat\" changes \"the cat's\" but not " +
-                "\"catalogue\". Match capitals: \"US\" but not \"us\". Where two rules fit, the longer one is used, and a rule never changes " +
-                "another rule's result. Programs still show and highlight the original words.", true));
+            Row(page, Words("To add a rule, type a word and how it should sound (for example Niamh as Neev), then press Add rule. " +
+                "To change a rule, select it, edit it and press Save rule. Untick a rule to turn it off. " +
+                "Hear it plays your spelling, so you can try it first.", true));
+            Row(page, Words("Whole words only: \"cat\" won't change \"catalogue\". Match capitals: \"US\" won't change \"us\".", true));
 
             WordList.SelectedIndexChanged += delegate { UpdateWordFields(); };
             WordList.ItemChecked += WordTicked;
@@ -1741,12 +1756,11 @@ namespace ModernVoicesConfig
             WarnLabel.ForeColor = Color.Firebrick; WarnLabel.Tag = "warn";
             Row(addGrid, WarnLabel);
             UsBox = new CheckBox();
-            UsBox.Text = "Also list British voices as US English (only if a program does not show them)";
+            UsBox.Text = "Also list British voices as US English (for programs that only show US voices)";
             UsBox.AutoSize = true; UsBox.Checked = UsTags;
             Row(addGrid, UsBox);
-            Row(addGrid, Words("Speakers of one voice share its model, so extra speakers take no extra space. Two qualities of the same voice " +
-                "(medium and high) are separate models: each takes its full size. Some programs (World of Warcraft, for one) take longer to " +
-                "start the more voices Windows has: keep the list to the ones you use.", true));
+            Row(addGrid, Words("Extra speakers of a voice take no extra space. Medium and high quality versions of a voice are separate " +
+                "downloads. Some programs open more slowly when many voices are installed, so install only the ones you use.", true));
 
             AddList.SelectedIndexChanged += delegate { if (!filtering) { UpdateSelection(); } };
             AddList.ItemChecked += delegate(object sender, ItemCheckedEventArgs e)
@@ -1908,8 +1922,8 @@ namespace ModernVoicesConfig
             }
             boxes.ItemCheck += delegate(object sender, ItemCheckEventArgs e) { if (kept.Contains(e.Index)) { e.NewValue = CheckState.Checked; } };
             Row(rows, boxes, true);
-            Row(rows, Words("The program's own words stay in English. Each language has its own pronunciation rules (Pronunciation tab), " +
-                "empty until you add some. Other languages' voices have been tried far less than the English ones.", true));
+            Row(rows, Words("This program itself stays in English. Each language has its own pronunciation rules on the Pronunciation tab. " +
+                "Voices in other languages have been tested much less than the English ones.", true));
             FlowLayoutPanel buttons = Flow();
             buttons.FlowDirection = FlowDirection.RightToLeft; buttons.Dock = DockStyle.Fill;
             Button cancel = Btn("Cancel");
@@ -2093,6 +2107,18 @@ namespace ModernVoicesConfig
             Refresh();
         }
 
+        // The speaker beside the output volume: muted (0) or not, it shows which.
+        public void ToggleMute()
+        {
+            if (OutputBar.Value > 0) { unmutedVolume = OutputBar.Value; OutputBar.Value = 0; }
+            else { OutputBar.Value = unmutedVolume > 0 ? unmutedVolume : 100; }
+        }
+        void ShowMute()
+        {
+            if (MuteIcon == null || MuteIcon.Font.Name != "Segoe MDL2 Assets") { return; }
+            string glyph = OutputBar.Value == 0 ? "\uE74F" : "\uE767";      // a speaker crossed out, or not
+            if (MuteIcon.Text != glyph) { MuteIcon.Text = glyph; }
+        }
         public int HeaderLineBottom { get { return headerLine.PointToScreen(new Point(0, headerLine.Height)).Y; } }
         public static string ReaderExe { get { return Path.Combine(Path.Combine(App.Folder, "reader"), "ModernVoicesReader.exe"); } }
         void OpenReader()
@@ -2112,7 +2138,8 @@ namespace ModernVoicesConfig
         public void ShowPage(int index)
         {
             PageIndex = index;
-            if (DoneButton != null) { DoneButton.Visible = index == 3; }
+            // Apply changes and Done are for Add or remove voices: nothing else needs applying.
+            if (DoneButton != null) { DoneButton.Visible = index == 3; ApplyButton.Visible = index == 3; }
             for (int i = 0; i < Pages.Count; i++)
             {
                 Pages[i].Visible = i == index;
@@ -2183,15 +2210,14 @@ namespace ModernVoicesConfig
             Sliders["Speed"].Value.Text = Sliders["Speed"].Bar.Value + "%";
             double speed = SpeedBar.Value / 100.0;
             SpeedValue.Text = SpeedBar.Value + "%";
-            double step = Math.Pow(3, 0.2);      // a program's rate +2
             foreach (string k in GapKeys)
             {
                 Sliders[k].Value.Text = FormatGap(RoundedMs(Sliders[k].Bar.Value), k);
                 Slider g = GlobalBars[k];
                 int ms = RoundedMs(g.Bar.Value);
                 g.Value.Text = FormatGap(ms, k);
-                g.Example.Text = ms > 0 ? "at " + SpeedBar.Value + "%: " + Math.Round(ms / speed) + " ms at rate 0, " +
-                    Math.Round(ms / speed / step) + " ms at rate +2, " + Math.Round(ms / speed * step) + " ms at rate -2" : "";
+                // (What is heard at the speed set; a program's own speed changes it again.)
+                g.Example.Text = ms > 0 && SpeedBar.Value != 100 ? "At " + SpeedBar.Value + "% speed you hear about " + Math.Round(ms / speed) + " ms." : "";
             }
         }
 
@@ -2241,8 +2267,8 @@ namespace ModernVoicesConfig
         {
             int rate = Voices.WindowsRate;
             if (rate == 0) { RateWarn.Text = ""; RateReset.Visible = false; return; }
-            RateWarn.Text = "Windows' speech speed (its Speech settings) is " + (rate > 0 ? "+" : "") + rate + ". Programs that leave the speed to Windows " +
-                "add it on top of this one, so these voices are " + (rate > 0 ? "faster" : "slower") + " still.";
+            RateWarn.Text = "Windows' own speech speed is set to " + (rate > 0 ? "+" : "") + rate + ", so in many programs these voices are " +
+                (rate > 0 ? "faster" : "slower") + " than shown here.";
             RateReset.Visible = true;
         }
 
@@ -3708,16 +3734,35 @@ namespace ModernVoicesConfig
                 Settle(50);
             }
 
-            // The header: Open Reader left of the moon, with a gap after the last tab; the line under it; the
-            // Voice manager's list starts right under the line.
+            // Open Reader is left of Close; Apply changes shows on Add or remove voices only; the speaker mutes and
+            // unmutes; the preview box lines up with the sliders. The header: the Voice manager's list starts
+            // right under it.
             {
-                Button lastTab = ui.TabButtons[ui.TabButtons.Count - 1];
-                int tabsEnd = lastTab.PointToScreen(new Point(lastTab.Width, 0)).X;
-                int readerLeft = ui.ReaderButton.PointToScreen(Point.Empty).X;
                 int readerRight = ui.ReaderButton.PointToScreen(new Point(ui.ReaderButton.Width, 0)).X;
-                int moonLeft = ui.ThemeButton.PointToScreen(Point.Empty).X;
-                Note("header: tabs end at " + tabsEnd + ", Open Reader " + readerLeft + " to " + readerRight + ", moon at " + moonLeft + "; window at least " + ui.MinimumSize.Width + " wide");
-                Check(ui.ReaderButton.Visible && readerLeft - tabsEnd >= 12 && readerRight <= moonLeft, "Open Reader is left of the moon, with a gap after the tabs");
+                int closeLeft = ui.CloseButton.PointToScreen(Point.Empty).X;
+                int readerTop = ui.ReaderButton.PointToScreen(Point.Empty).Y, closeTop = ui.CloseButton.PointToScreen(Point.Empty).Y;
+                Check(ui.ReaderButton.Visible && readerRight <= closeLeft && closeLeft - readerRight < 20 && readerTop == closeTop, "Open Reader is just left of Close");
+                int applyPage = ui.PageIndex;
+                bool[] applyShown = new bool[4];
+                for (int applyTab = 0; applyTab < 4; applyTab++) { ui.ShowPage(applyTab); Settle(20); applyShown[applyTab] = ui.ApplyButton.Visible; }
+                ui.ShowPage(applyPage);
+                Settle(20);
+                Check(!applyShown[0] && !applyShown[1] && !applyShown[2] && applyShown[3], "Apply changes shows on Add or remove voices only");
+                int volumeWas = ui.OutputBar.Value;
+                ui.OutputBar.Value = 70;
+                ui.ToggleMute();
+                bool muted = ui.OutputBar.Value == 0 && ui.MuteIcon.Text != "\uE767";
+                ui.ToggleMute();
+                Check(muted && ui.OutputBar.Value == 70, "the speaker mutes the output volume, and clicked again puts it back (70%)");
+                ui.OutputBar.Value = volumeWas;
+                ui.ShowPage(0);
+                Settle(100);
+                int boxLeft = ui.PreviewBox.PointToScreen(Point.Empty).X;
+                int sliderLeft = ui.Sliders["Volume"].Bar.PointToScreen(Point.Empty).X;
+                Note("preview box starts at " + boxLeft + ", the sliders at " + sliderLeft);
+                Check(Math.Abs(boxLeft - sliderLeft) <= 1, "the preview box lines up with the sliders below");
+                ui.ShowPage(applyPage);
+                Settle(20);
                 int headerPage = ui.PageIndex;
                 ui.ShowPage(0);
                 Settle(50);
@@ -3903,7 +3948,7 @@ namespace ModernVoicesConfig
                 Check(pausesNow.Sentence == 750 && speedNow == 150 && speedBefore == 100 && pausesNow.Paragraph == pausesBefore.Paragraph,
                     "speed and pauses tab: speed " + speedBefore + " -> " + speedNow + "%, sentence " + pausesBefore.Sentence + " -> " + pausesNow.Sentence +
                     " ms; example: " + ui.GlobalBars["Sentence gap"].Example.Text);
-                Check(ui.GlobalBars["Sentence gap"].Example.Text == "at 150%: 500 ms at rate 0, 401 ms at rate +2, 623 ms at rate -2", "the line under a pause shows what you get at other speeds");
+                Check(ui.GlobalBars["Sentence gap"].Example.Text == "At 150% speed you hear about 500 ms.", "the line under a pause shows what you hear at the speed set");
                 Store.SetGlobalSpeed(App.SettingsFile, speedBefore);
                 Store.SetGlobalPauses(App.SettingsFile, pausesBefore.Sentence, pausesBefore.Comma, pausesBefore.Paragraph);
                 ui.SetGlobalBars(Store.GetPauses(App.SettingsFile), Store.GetGlobalSpeed(App.SettingsFile));
