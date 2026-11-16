@@ -2822,7 +2822,7 @@ namespace ModernVoicesConfig
                 SpeakerList.Enabled = false;
                 if (AddList.SelectedItems.Count == 0)
                 {
-                    SpeakerLabel.Text = "Select a voice to see its speakers: click a name to hear it, tick its box to install it.";
+                    SpeakerLabel.Text = "Select a voice above to see its speakers.";
                     return;
                 }
                 bool voiceTicked = AddList.SelectedItems[0].Checked;
@@ -2835,13 +2835,12 @@ namespace ModernVoicesConfig
                     string only = OnlySpeaker(v);
                     if (onlyTicked && !voiceTicked)
                     {
-                        SpeakerLabel.Text = v.Display + " has one speaker, " + only + ", not ticked (untick \"Only show selected speakers\" to see it).";
+                        SpeakerLabel.Text = v.Display + " is not ticked.";
                         return;
                     }
                     SpeakerList.Items.Add(only, voiceTicked);
                     SpeakerList.Enabled = true;
-                    SpeakerLabel.Text = "Speaker of " + v.Display + " (1): click the name to hear it (Play sample plays it again); its box ticks " +
-                        "the voice itself.";
+                    SpeakerLabel.Text = "Click the name to hear it. Tick the box to install it.";
                     return;
                 }
                 // Listed in name order, numbers by value (p225 before p1000; the voice's own order is kept in its files).
@@ -2860,19 +2859,18 @@ namespace ModernVoicesConfig
                     if (shown.Count == 0 && voiceTicked && v.FirstSpeaker != null) { shown.Add(v.FirstSpeaker); }
                     if (shown.Count == 0)
                     {
-                        SpeakerLabel.Text = "No speakers of " + v.Display + " are ticked (untick \"Only show selected speakers\" to see all " + names.Count + ").";
+                        SpeakerLabel.Text = "None of " + v.Display + "'s " + names.Count + " speakers are ticked.";
                         return;
                     }
                     foreach (string n in shown) { SpeakerList.Items.Add(n, true); }
                     SpeakerList.Enabled = true;
-                    SpeakerLabel.Text = "Speakers of " + v.Display + " ticked: " + shown.Count + " of " + names.Count + " (untick \"Only show selected " +
-                        "speakers\" to see them all). Click a name to hear it; untick its box to remove it.";
+                    SpeakerLabel.Text = shown.Count + " of " + names.Count + " speakers ticked. Click a name to hear it.";
                     return;
                 }
                 foreach (string n in names) { SpeakerList.Items.Add(n, ticked.Contains(n)); }
                 SpeakerList.Enabled = true;
-                SpeakerLabel.Text = "Speakers of " + v.Display + " (" + names.Count + "): click a name to hear it (Play sample plays it again); tick its box to " +
-                    "install it, each becomes a voice (none ticked: " + v.FirstSpeaker + ").";
+                // (With none ticked, the first speaker is the one installed.)
+                SpeakerLabel.Text = names.Count + " speakers. Click a name to hear it. Tick the ones to install: each becomes a voice of its own.";
             }
             finally
             {
