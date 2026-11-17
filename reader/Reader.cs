@@ -3282,7 +3282,7 @@ namespace ModernVoicesReader
                     int lastPercent = -1;
                     Mp3.Encode(tone, toneMp3, null, delegate(int percent) { lastPercent = percent; });
                     double toneSeconds = Mp3Seconds(toneMp3);
-                    log.AppendLine("a 3 s tone as MP3: " + new FileInfo(toneMp3).Length + " bytes, " + toneSeconds.ToString("0.00", CultureInfo.InvariantCulture) + " s at " + Mp3.Kbps + " kbit/s; a twelfth of the WAV's " + new FileInfo(tone).Length);
+                    log.AppendLine("a 3 s tone as MP3: " + new FileInfo(toneMp3).Length + " bytes, " + toneSeconds.ToString("0.00", CultureInfo.InvariantCulture) + " s at " + Mp3.Kbps + " kbit/s; the WAV is " + new FileInfo(tone).Length + " bytes");
                     Check(toneSeconds > 2.9 && toneSeconds < 3.3 && lastPercent == 100, "a WAV file is made into an MP3 of the same length");
                     bool gaveUp = false;
                     try { Mp3.Encode(tone, toneMp3, delegate { return true; }, null); } catch (OperationCanceledException) { gaveUp = true; }
