@@ -16,24 +16,21 @@ run #109 was refused for billing). Builds are free again. Anything pushed is vis
 He confirmed 0.14.0 "seems to be working". Say which model the batch suits first (most is Opus-level
 layout work; the installer language part is the largest piece). Suggested version: 0.15.0. His words:
 
-**A. Which tab opens.** "when the powered by... window pops up, it should be the add/remove voices list
-below it because voices need to be installed. once voices are installed and tested, it should open the
-voice manager page. (as it did before we added the powered by window)". Find out what changed: Config
-used to open on Add or remove voices when no voice is installed and on the Voice manager otherwise
-(look at the constructor's first `ShowPage` and whether the Powered by dialog, shown from
-`Program.Main`'s Shown handler, got in the way). After Apply changes finishes installing on a fresh
-install it should go to the Voice manager.
-The code already reads that way (constructor: `ShowPage(InstalledList.Items.Count == 0 ? 3 : 0)`; after
-Apply: `if (InstalledList.Items.Count > 0) { ShowPage(0); }`), so ASK HIM what he saw and when (fresh
-install or an update with voices already there?) before changing anything. I asked; no answer yet.
+**A. Which tab opens: NOTHING TO DO.** He withdrew it ("my mistake, the add/remove tab is already below
+the powered by popup").
+
+**A2. Default voice box (new, 17 Nov).** "Show windows default voice in voice manager as 'Default windows
+voice' if no voices are installed." The Voice manager's "Windows default voice" box shows the raw token
+name when the default is not one of ours (the screenshots show "TTS_MS_EN-US_DAVID_11.0 (not one of
+these)"). With no Modern Voice installed it should read "Default windows voice" instead. (If voices ARE
+installed and the default is still a Microsoft one, his words don't cover it: leave as is, or ask.)
 
 **B. Reader.** "add a checkbox to reader, below undo button (left aligned with left side of undo button)
 for 'save text on close' to decide if the save text pop up shows. add a checkbox to the save text pop up
 for 'don't ask again' which controls the reader checkbox. save on close enabled by default."
-Read it as: box ticked (default) = closing asks "Save text for next time?"; "Don't ask again" in the
-pop-up unticks the box. Decide and TELL HIM what an unticked box does on close (I'd say: text is not
-kept, nothing asked) since his words leave it open. `AskWindow` already supports a tick (the screen
-warning uses one).
+CONFIRMED by him: ticked (the default) = closing asks "Save text for next time?"; unticked = closing
+does not ask and does not save. "Don't ask again" in the pop-up unticks the Reader's box. `AskWindow`
+already supports a tick (the screen warning uses one).
 
 **C. Voice manager layout.** "move the overide pause duration for selected voice checkbox down so theres
 more of a gap above it. draw a box around the outside of 'how voice sounds' section. overide pause
@@ -48,8 +45,8 @@ tab. `alignPreview` / `alignSaved` measure against the sliders: redo them for th
 
 **D. Speed and pauses.** "centralise the sliders in the pause page as well."
 
-**E. Pronunciation.** "increase the size of the pronunciation rules by 50%." (Ask or decide: I read it as
-the rules list's text and tick boxes, as the lists were enlarged in 0.12.6; say which you did.)
+**E. Pronunciation.** "increase the size of the pronunciation rules by 50%." CONFIRMED: he means the
+HEIGHT of the rules list box, so more rows show at once (not the text size).
 
 **F. Installer language choice (agreed design).** In the install-location window (`New-LocationForm`, a
 WinForms window: a real dropdown is possible; I had wrongly said the installer was text only), under the
