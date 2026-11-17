@@ -1484,7 +1484,22 @@ namespace ModernVoicesConfig
                 return widest;
             }
         }
-        int ValueFit { get { return 6 + TextRenderer.MeasureText(WidestValue, Font).Width; } }
+        // (A value label as wide as the widest value needs, and its margins.)
+        int ValueLabelWidth
+        {
+            get { using (Label sample = new Label()) { sample.AutoSize = true; sample.Font = Font; sample.UseMnemonic = false; sample.Text = WidestValue; return sample.PreferredSize.Width; } }
+        }
+        int ValueFit { get { return 6 + ValueLabelWidth; } }
+        // Inside the frame's right line: what is left of FrameGap after the widest value's words end (its
+        // label's right margin, and the room after its words inside the label).
+        int FramePadRight
+        {
+            get
+            {
+                int words = TextRenderer.MeasureText(WidestValue, Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+                return Math.Max(0, FrameGap - 3 - (ValueLabelWidth - NameInset - words));
+            }
+        }
         // A framed section of sliders: its columns, and its place (the sliders end where the output volume
         // slider does, so the frame stops FramePad after the value column, and its line FrameGap after the
         // widest value's end).
@@ -1494,9 +1509,10 @@ namespace ModernVoicesConfig
             grid.ColumnStyles[2] = new ColumnStyle(SizeType.Absolute, ValueFit);
             foreach (Control c in grid.Controls)
             {
-                if (grid.GetColumn(c) == 2 && c is Label) { c.MinimumSize = Size.Empty; c.MaximumSize = new Size(ValueFit - 6, 0); }
+                if (grid.GetColumn(c) == 2 && c is Label) { c.MinimumSize = Size.Empty; c.MaximumSize = new Size(ValueLabelWidth, 0); }
             }
-            frame.Margin = new Padding(sectionLeft - FramePad, top, Math.Max(0, valueColumn - FramePad - ValueFit), 0);
+            frame.Padding = new Padding(frame.Padding.Left, frame.Padding.Top, FramePadRight, frame.Padding.Bottom);
+            frame.Margin = new Padding(sectionLeft - FramePad, top, Math.Max(0, valueColumn - FramePadRight - ValueFit), 0);
         }
         // The sliders of both tabs stand in one column, in the middle of the window: their names start where
         // the Voice manager's preview box starts, and the sliders end where its output volume slider ends.
@@ -4452,7 +4468,7 @@ namespace ModernVoicesConfig
                 int rightGap = frameRight - valueEnd;
                 int pauseLeft = ui.PauseFrame.PointToScreen(Point.Empty).X;
                 Note("the frames' gaps: " + leftGap + " px on the left, " + rightGap + " px on the right (after \"" + ui.WidestValue + "\"); meant to be " + ui.FrameGap);
-                Check(Math.Abs(leftGap - ui.FrameGap) <= 1 && Math.Abs(rightGap - ui.FrameGap) <= 3 && pauseLeft == frameLeft && ui.PauseFrame.Width == ui.SoundFrame.Width,
+                Check(Math.Abs(leftGap - ui.FrameGap) <= 1 && Math.Abs(rightGap - ui.FrameGap) <= 1 && pauseLeft == frameLeft && ui.PauseFrame.Width == ui.SoundFrame.Width,
                     "each frame's line is as far from the words inside it on its right as on its left");
                 Check(ui.SoundFrame.Contains(volumeBar) && ui.SoundFrame.Contains(ui.ResetButton) && ui.PauseFrame.Contains(ui.OwnBox) &&
                     ui.PauseFrame.Contains(ui.OwnVariation.Bar) && ui.PauseFrame.Top - ui.SoundFrame.Bottom >= 10,
