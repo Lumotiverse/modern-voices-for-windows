@@ -4389,7 +4389,8 @@ namespace ModernVoicesConfig
                 Settle(100);
                 // The sections stand in the middle: the sliders' names start where the preview box does, and the
                 // sliders end where the output volume slider does; each section has a frame around it.
-                int boxLeft = ui.PreviewBox.PointToScreen(Point.Empty).X;
+                // (The box's outer edge: PointToScreen(Point.Empty) is inside its border.)
+                int boxLeft = ui.PreviewBox.Parent.PointToScreen(ui.PreviewBox.Location).X;
                 int nameLeft = ui.Sliders["Volume"].Name.PointToScreen(Point.Empty).X;
                 int tickLeft = ui.OwnBox.PointToScreen(Point.Empty).X;
                 TrackBar volumeBar = ui.Sliders["Volume"].Bar;
@@ -4584,6 +4585,24 @@ namespace ModernVoicesConfig
                     bool english = Languages.Apply("en") && Languages.English && Languages.Show == "";
                     bool unknown = !Languages.Apply("zh") && !Languages.Apply("") && Languages.English;
                     Check(british && american && german && english && unknown, "the installer's language choice: British or American sets Show, another language is listed without English");
+                    Languages.Override = "";
+                    Languages.English = true; Languages.Show = "";
+                    // A window opened with no voice installed, after another language was chosen at install: only
+                    // that language is listed, its rules are the ones shown, and the default voice box says so.
+                    Languages.Override = "de";
+                    Languages.English = false;
+                    using (ConfigForm bare = new ConfigForm(everything, new List<string>(), Voices.UsEnglishTags))
+                    {
+                        bare.StopTimers();
+                        LanguageChoice bareRules = bare.WordLanguageBox.SelectedItem as LanguageChoice;
+                        Note("no voices installed, German chosen at install: " + bare.AddList.Items.Count + " voices listed, " + bare.VoiceFilterBox.Items.Count +
+                            " choices in Show, rules for " + (bareRules == null ? "?" : bareRules.Text) + ", default voice box \"" + bare.DefaultLabel.Text + "\"");
+                        Check(!bare.LanguageShown("en") && bare.AddList.Items.Count == germanVoices && bare.VoiceFilterBox.Items.Count == 2 &&
+                            bare.WordLanguageBox.Items.Count == 1 && bareRules != null && bareRules.Family == "de",
+                            "another language chosen at install, nothing installed: only " + germanName + "'s voices, choice and rules are listed");
+                        Check(bare.DefaultLabel.Text == ConfigForm.NoVoicesDefault, "with no voice installed the default voice box says \"" + ConfigForm.NoVoicesDefault + "\"");
+                        bare.StopTimers();
+                    }
                     Languages.Override = "";
                     Languages.English = true; Languages.Show = "";
                     // The file the installer leaves is taken up once, and deleted (where there is a settings folder).
