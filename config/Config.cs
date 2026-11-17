@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.14.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.15.0.0")]
 
 namespace ModernVoicesConfig
 {
@@ -935,24 +935,39 @@ namespace ModernVoicesConfig
         }
     }
 
+    // Which languages' voices Add or remove voices lists (kept for the person at the PC): the additional
+    // languages chosen, whether English is listed, and what the "Show" box was on. A fresh install's
+    // language choice (the installer's first window) sets them once.
     public static class Languages
     {
         const string OurKey = @"Software\Modern Voices for Windows";
-        public static string Override;      // (the build's test: its own choice, the person's left alone)
+        public static string Override;      // (the build's test: its own choices, the person's left alone)
+        static bool englishInTest = true;
+        static string showInTest = "";
+        public const string AllVoices = "All voices", BritishOnly = "British only", AmericanOnly = "American only";
+
+        static string Kept(string name)
+        {
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(OurKey)) { return key == null ? null : key.GetValue(name) as string; }
+            }
+            catch (Exception) { return null; }
+        }
+        static void Keep(string name, string value)
+        {
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(OurKey)) { key.SetValue(name, value); }
+            }
+            catch (Exception) { }
+        }
 
         public static List<string> Enabled
         {
             get
             {
-                string value = Override;
-                if (value == null)
-                {
-                    try
-                    {
-                        using (RegistryKey key = Registry.CurrentUser.OpenSubKey(OurKey)) { value = key == null ? null : key.GetValue("Languages") as string; }
-                    }
-                    catch (Exception) { }
-                }
+                string value = Override ?? Kept("Languages");
                 List<string> list = new List<string>();
                 foreach (string family in (value ?? "").Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
                 {
@@ -964,12 +979,60 @@ namespace ModernVoicesConfig
             {
                 string text = string.Join(" ", value.ToArray());
                 if (Override != null) { Override = text; return; }
-                try
-                {
-                    using (RegistryKey key = Registry.CurrentUser.CreateSubKey(OurKey)) { key.SetValue("Languages", text); }
-                }
-                catch (Exception) { }
+                Keep("Languages", text);
             }
+        }
+
+        // English's voices listed (as they are unless switched off: the installer's language choice, or the
+        // Additional languages window). The window lists them all the same while no other language is.
+        public static bool English
+        {
+            get { return Override != null ? englishInTest : Kept("English") != "0"; }
+            set { if (Override != null) { englishInTest = value; } else { Keep("English", value ? "1" : "0"); } }
+        }
+
+        // What the "Show" box was on (its words), for the next start: "" for all voices.
+        public static string Show
+        {
+            get { return Override != null ? showInTest : (Kept("Show") ?? ""); }
+            set { if (Override != null) { showInTest = value ?? ""; } else { Keep("Show", value ?? ""); } }
+        }
+
+        // The installer's language choice, taken up: "en" (all English voices), "en_GB" or "en_US" (English,
+        // with Show on British or American), or another language offered (that one listed and English not).
+        public static bool Apply(string choice)
+        {
+            choice = (choice ?? "").Trim();
+            if (choice == "en") { English = true; Show = ""; return true; }
+            if (choice == "en_GB") { English = true; Show = BritishOnly; return true; }
+            if (choice == "en_US") { English = true; Show = AmericanOnly; return true; }
+            if (Array.IndexOf(Catalogue.Offered, choice) < 0) { return false; }
+            List<string> enabled = Enabled;
+            if (!enabled.Contains(choice)) { enabled.Add(choice); }
+            Enabled = enabled;
+            English = false; Show = "";
+            return true;
+        }
+
+        // The choice the installer left (a fresh install's first window), taken up the first time the
+        // program opens after it: install-language.txt in the settings folder, deleted once read. (The
+        // installer runs as an administrator, perhaps another account: it can't set this person's own.)
+        public const string ChoiceFile = "install-language.txt";
+        public static void TakeInstallChoice()
+        {
+            try
+            {
+                string file = Path.Combine(App.SettingsFolder, ChoiceFile);
+                if (!File.Exists(file)) { return; }
+                string stamp = File.GetLastWriteTimeUtc(file).Ticks.ToString(CultureInfo.InvariantCulture);
+                string choice = File.ReadAllText(file);
+                try { File.Delete(file); } catch (Exception) { }
+                // (Should the file not go, it is still taken up only once.)
+                if (Kept("InstallChoice") == stamp) { return; }
+                Keep("InstallChoice", stamp);
+                Apply(choice);
+            }
+            catch (Exception) { }
         }
     }
 
@@ -1152,7 +1215,7 @@ namespace ModernVoicesConfig
     public class Slider
     {
         public TrackBar Bar;
-        public Label Value, Example;
+        public Label Name, Value, Example;
     }
 
     // A row of the Voice manager's list: a voice (model) or one of its installed speakers.
@@ -1186,7 +1249,10 @@ namespace ModernVoicesConfig
         Panel headerLine;
         public Button ReaderButton, PlayButton;
         public Label MuteIcon, AboutButton;
-        public Label SavedNote, FirstNote;
+        public Label SavedNote;
+        public TableLayoutPanel SoundFrame, PauseFrame, GlobalGrid, AdvancedGrid;      // the framed sections, and the Speed tab's sliders
+        public TableLayoutPanel OutLine;
+        int labelColumn, valueColumn, previewColumn;      // the sliders' columns, the same on both tabs
         public Slider OwnVariation;          // the selected voice's own variation (with its own pauses)
         // Each installed voice's language, by the name programs see (for the preview text in its language).
         readonly Dictionary<string, string> languageOfVoice = new Dictionary<string, string>();
@@ -1367,13 +1433,49 @@ namespace ModernVoicesConfig
             value.MinimumSize = new Size(Px(150), 0);
             grid.Controls.Add(label, 0, row); grid.Controls.Add(bar, 1, row); grid.Controls.Add(value, 2, row);
             Slider s = new Slider();
-            s.Bar = bar; s.Value = value;
+            s.Bar = bar; s.Value = value; s.Name = label;
             return s;
         }
         static void AddNote(TableLayoutPanel grid, Control note)
         {
             int row = GridRow(grid);
             grid.Controls.Add(note, 1, row);
+        }
+        // A slider's description, shown when the pointer rests on the slider or on its name.
+        void Describe(Slider slider, string text)
+        {
+            tips.SetToolTip(slider.Bar, text);
+            tips.SetToolTip(slider.Name, text);
+        }
+        // A section with a line drawn around it: its rows, top to bottom.
+        TableLayoutPanel Frame()
+        {
+            TableLayoutPanel frame = new TableLayoutPanel();
+            frame.ColumnCount = 1;
+            frame.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            frame.AutoSize = true; frame.AutoSizeMode = AutoSizeMode.GrowAndShrink; frame.Dock = DockStyle.Fill;
+            frame.Padding = new Padding(FramePad, Px(8), FramePad, Px(10));
+            frame.Tag = "frame";
+            frame.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                if (palette == null) { return; }
+                using (Pen edge = new Pen(palette.Border)) { e.Graphics.DrawRectangle(edge, 0, 0, frame.Width - 1, frame.Height - 1); }
+            };
+            frame.Resize += delegate { frame.Invalidate(); };
+            return frame;
+        }
+        int FramePad { get { return Px(10); } }
+        // The sliders of both tabs stand in one column, in the middle of the window: their names start where
+        // the Voice manager's preview box starts, and the sliders end where its output volume slider ends.
+        // A grid of sliders is given those columns ('inset': what its section's frame already takes up).
+        void Centre(TableLayoutPanel grid, int inset)
+        {
+            grid.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, labelColumn);
+            grid.ColumnStyles[2] = new ColumnStyle(SizeType.Absolute, Math.Max(Px(40), valueColumn - inset));
+            foreach (Control c in grid.Controls)
+            {
+                if (grid.GetColumn(c) == 2 && c is Label) { c.MinimumSize = Size.Empty; }
+            }
         }
         void SliderWheel(object sender, MouseEventArgs e)
         {
@@ -1661,9 +1763,22 @@ namespace ModernVoicesConfig
             // Twice the gap there was between it and the buttons above.
             previewLine.Margin = new Padding(previewLine.Margin.Left, previewLine.Margin.Top + Px(9), previewLine.Margin.Right, previewLine.Margin.Bottom);
             Row(page, previewLine);
+            // The columns the sliders below stand in (see Centre): their names start where the preview box
+            // does, and they end where the output volume slider does.
+            previewColumn = previewLabel.PreferredSize.Width + previewLabel.Margin.Horizontal;
+            previewLine.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, previewColumn);
+            labelColumn = 0;
+            foreach (string sliderName in new string[] { "Volume", "Boost", "Dictation speed", "Sentence pause", "Comma pause", "Paragraph gap", "Voice variation" })
+            {
+                labelColumn = Math.Max(labelColumn, TextRenderer.MeasureText(sliderName, Font).Width);
+            }
+            labelColumn += 6 + Px(10);
+            valueColumn = Px(146);
 
             // Windows' default voice, in a box of its own; beside it the output volume, for every voice.
             TableLayoutPanel outLine = Line("auto", "auto", "fill", "auto");
+            OutLine = outLine;
+            outLine.ColumnStyles[3] = new ColumnStyle(SizeType.Absolute, valueColumn);
             outLine.Margin = new Padding(0, Px(16), 0, Px(12));
             FlowLayoutPanel defaultBox = Flow();
             defaultBox.WrapContents = false; defaultBox.Dock = DockStyle.None; defaultBox.Anchor = AnchorStyles.Left; defaultBox.Tag = "box";
@@ -1696,7 +1811,6 @@ namespace ModernVoicesConfig
             Lower(OutputBar);
             OutputBar.MouseWheel += SliderWheel;
             OutputValue = Beside("100%");
-            OutputValue.MinimumSize = new Size(Px(90), 0);
             string outputTip = "The volume of all these voices, in every program. It changes straight away, even mid-sentence.";
             tips.SetToolTip(outputIcon, "Mute or unmute all these voices");
             tips.SetToolTip(OutputBar, outputTip);
@@ -1709,6 +1823,7 @@ namespace ModernVoicesConfig
                 if (!Filling) { outputTimer.Stop(); outputTimer.Start(); }
             };
 
+            // How the selected voice sounds: a framed section, in the middle of the window.
             TableLayoutPanel soundLine = Line("auto", "auto", "fill");
             SoundLabel = Words("Select a voice above to set how it sounds.", false, true);
             SoundLabel.Dock = DockStyle.None; SoundLabel.Anchor = AnchorStyles.Left;
@@ -1716,46 +1831,36 @@ namespace ModernVoicesConfig
             ResetButton.Enabled = false;
             ResetButton.Margin = new Padding(Px(10), ResetButton.Margin.Top, ResetButton.Margin.Right, ResetButton.Margin.Bottom);
             soundLine.Controls.Add(SoundLabel, 0, 0); soundLine.Controls.Add(ResetButton, 1, 0);
-            Row(page, soundLine);
             TableLayoutPanel soundGrid = Line("auto", "fill", "auto");
             Sliders["Volume"] = AddSlider(soundGrid, "Volume", 0, (int)(Store.MaxPeak * 100), 10, 10, 10, true);
-            AddNote(soundGrid, Words("How loud this voice is.", true));
             Sliders["Boost"] = AddSlider(soundGrid, "Boost", 10, 40, 1, 5, 5, true);
-            AddNote(soundGrid, Words("Makes the voice's quieter parts louder.", true));
             Sliders["Speed"] = AddSlider(soundGrid, "Dictation speed", 25, 200, 1, 5, 25, true);
-            AddNote(soundGrid, Words("Makes this voice faster or slower than the others. The speed for all voices is on the Speed and pauses tab.", true));
-            Row(page, soundGrid);
-            // The preview box's left edge lines up with the sliders' (its label's column as wide as theirs).
-            EventHandler alignPreview = delegate
-            {
-                TrackBar first = Sliders["Volume"].Bar;
-                if (!first.IsHandleCreated || !previewLine.IsHandleCreated) { return; }
-                // (The label's column widened or narrowed by however far the box's edge is from the sliders'.)
-                int now = previewLine.GetColumnWidths()[0];
-                int wanted = now + first.PointToScreen(Point.Empty).X - PreviewBox.PointToScreen(Point.Empty).X;
-                wanted = Math.Max(wanted, previewLabel.PreferredSize.Width + previewLabel.Margin.Horizontal);
-                ColumnStyle column = previewLine.ColumnStyles[0];
-                if (column.SizeType != SizeType.Absolute || Math.Abs(column.Width - wanted) > 0.5f)
-                {
-                    previewLine.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, wanted);
-                }
-            };
-            // (After the layout under way, once there is a window to queue it on.)
-            LayoutEventHandler alignLater = delegate { if (IsHandleCreated) { BeginInvoke(alignPreview); } };
-            soundGrid.Layout += alignLater;
-            HandleCreated += delegate { BeginInvoke(alignPreview); };
+            // (What each does is said when the pointer rests on the slider or its name.)
+            Describe(Sliders["Volume"], "How loud this voice is.");
+            Describe(Sliders["Boost"], "Makes the voice's quieter parts louder.");
+            Describe(Sliders["Speed"], "Makes this voice faster or slower than the others.\r\nThe speed for all voices is on the Speed and pauses tab.");
+            Centre(soundGrid, FramePad);
+            SoundFrame = Frame();
+            SoundFrame.Margin = new Padding(previewColumn - FramePad, 0, 0, 0);
+            Row(SoundFrame, soundLine);
+            Row(SoundFrame, soundGrid);
+            Row(page, SoundFrame);
+
+            // Its own pauses and variation: a framed section too, with room above it.
             OwnBox = new CheckBox();
             OwnBox.Text = "Override pause duration and variation for the selected voice";
             OwnBox.AutoSize = true; OwnBox.Enabled = false; OwnBox.Checked = false;
-            Row(page, OwnBox);
             gapGrid = Line("auto", "fill", "auto");
             Sliders["Sentence gap"] = AddSlider(gapGrid, "Sentence pause", 0, Store.SentenceLimit, 50, 250, 250, true);
             Sliders["Comma gap"] = AddSlider(gapGrid, "Comma pause", 0, Store.CommaLimit, 50, 250, 250, true);
             Sliders["Paragraph gap"] = AddSlider(gapGrid, "Paragraph gap", 0, Store.ParagraphLimit, 50, 250, 250, true);
             // Its own variation too (Speed and pauses has the one for all voices).
             OwnVariation = AddSlider(gapGrid, "Voice variation", 0, Store.VariationLimit, 5, 25, 25, true);
-            AddNote(gapGrid, Words("How much this voice changes its tone and rhythm each time it speaks. Programs that are already open use a " +
-                "new value after you restart them.", true));
+            Describe(Sliders["Sentence gap"], "Extra silence after each sentence, for this voice.");
+            Describe(Sliders["Comma gap"], "Extra silence at each comma, semicolon and colon, for this voice.");
+            Describe(Sliders["Paragraph gap"], "Extra silence when a new line or paragraph starts, for this voice.");
+            Describe(OwnVariation, "How much this voice changes its tone and rhythm each time it speaks.\r\n" +
+                "Programs that are already open use a new value after you restart them.");
             OwnVariation.Bar.Enabled = false;
             OwnVariation.Bar.ValueChanged += delegate
             {
@@ -1766,7 +1871,12 @@ namespace ModernVoicesConfig
                 if (!Filling) { saveTimer.Stop(); saveTimer.Start(); }
             };
             gapGrid.Visible = false;
-            Row(page, gapGrid);
+            Centre(gapGrid, FramePad);
+            PauseFrame = Frame();
+            PauseFrame.Margin = new Padding(previewColumn - FramePad, Px(16), 0, 0);
+            Row(PauseFrame, OwnBox);
+            Row(PauseFrame, gapGrid);
+            Row(page, PauseFrame);
             // Volume moves in tens only (0, 10, ... 100): dragged, it snaps to the nearest.
             Sliders["Volume"].Bar.ValueChanged += delegate
             {
@@ -1774,20 +1884,10 @@ namespace ModernVoicesConfig
                 int snapped = (int)(Math.Round(volume.Value / 10.0, MidpointRounding.AwayFromZero) * 10);
                 if (volume.Value != snapped) { volume.Value = snapped; }
             };
-            // Under the sliders' notes, in line with them, with room above.
-            Label savedNote = Words("Changes are saved straight away: press Preview to hear them.", true);
-            Label firstNote = (Label)soundGrid.GetControlFromPosition(1, 1);
-            Row(page, savedNote);
-            EventHandler alignSaved = delegate
-            {
-                if (firstNote == null || !firstNote.IsHandleCreated || !savedNote.IsHandleCreated) { return; }
-                int left = savedNote.Margin.Left + firstNote.PointToScreen(Point.Empty).X - savedNote.PointToScreen(Point.Empty).X;
-                if (left != savedNote.Margin.Left && left >= 0) { savedNote.Margin = new Padding(left, Px(16), savedNote.Margin.Right, savedNote.Margin.Bottom); }
-            };
-            savedNote.Margin = new Padding(savedNote.Margin.Left, Px(16), savedNote.Margin.Right, savedNote.Margin.Bottom);
-            soundGrid.Layout += delegate { if (IsHandleCreated) { BeginInvoke(alignSaved); } };
-            HandleCreated += delegate { BeginInvoke(alignSaved); };
-            SavedNote = savedNote; FirstNote = firstNote;
+            // Under the sections, starting where the sliders' names do, with room above.
+            SavedNote = Words("Changes are saved straight away: press Preview to hear them.", true);
+            SavedNote.Margin = new Padding(previewColumn + 3, Px(16), SavedNote.Margin.Right, SavedNote.Margin.Bottom);
+            Row(page, SavedNote);
 
             InstalledList.SelectedIndexChanged += delegate { UpdateInstalled(); };
             PreviewButton.Click += delegate { CurrentVoice voice = GetCurrentVoice(); if (voice != null) { TogglePreview(voice.Voice, voice.Voice, null); } };
@@ -1824,7 +1924,7 @@ namespace ModernVoicesConfig
             AddNote(globalGrid, RateWarn);
             RateReset = Btn("Set Windows' speed to 0");
             RateReset.Visible = false;
-            globalGrid.Controls.Add(RateReset, 2, globalGrid.RowCount - 1);
+            AddNote(globalGrid, RateReset);
             string[][] specs = {
                 new string[] { "Sentence gap", "Sentence pause", "Extra silence after each sentence." },
                 new string[] { "Comma gap", "Comma pause", "Extra silence at each comma, semicolon and colon." },
@@ -1839,11 +1939,18 @@ namespace ModernVoicesConfig
                 AddNote(globalGrid, gap.Example);
                 GlobalBars[specs[i][0]] = gap;
             }
+            // The sliders stand in the middle of the window, in the same columns as the Voice manager's; what
+            // follows them starts where their names do.
+            Centre(globalGrid, 0);
+            globalGrid.Margin = new Padding(previewColumn, 0, 0, 0);
+            GlobalGrid = globalGrid;
             Row(page, globalGrid);
-            Row(page, Words("Pauses get shorter when speech is faster and longer when it is slower. A long comma pause can make sentences " +
-                "sound a little less smooth.", true));
+            Label pausesNote = Words("Pauses get shorter when speech is faster and longer when it is slower. A long comma pause can make sentences " +
+                "sound a little less smooth.", true);
+            pausesNote.Margin = new Padding(previewColumn + 3, pausesNote.Margin.Top, pausesNote.Margin.Right, pausesNote.Margin.Bottom);
+            Row(page, pausesNote);
             TableLayoutPanel resetLine = Line("auto", "fill");
-            resetLine.Margin = new Padding(resetLine.Margin.Left, Px(18), resetLine.Margin.Right, resetLine.Margin.Bottom);
+            resetLine.Margin = new Padding(previewColumn, Px(18), resetLine.Margin.Right, resetLine.Margin.Bottom);
             Button pausesReset = Btn("Reset to defaults");
             resetLine.Controls.Add(pausesReset, 0, 0);
             // (Its words level with the button's: in the middle of the row's height.)
@@ -1855,7 +1962,7 @@ namespace ModernVoicesConfig
 
             // Advanced: how much the voices vary from one saying to the next.
             Label advanced = Words("Advanced setting", false, true);
-            advanced.Margin = new Padding(advanced.Margin.Left, Px(22), advanced.Margin.Right, advanced.Margin.Bottom);
+            advanced.Margin = new Padding(previewColumn + 3, Px(22), advanced.Margin.Right, advanced.Margin.Bottom);
             Row(page, advanced);
             TableLayoutPanel advancedGrid = Line("auto", "fill", "auto");
             Slider variation = AddSlider(advancedGrid, "Voice variation", 0, Store.VariationLimit, 5, 25, 25, true);
@@ -1864,6 +1971,9 @@ namespace ModernVoicesConfig
             AddNote(advancedGrid, Words("How much a voice changes its tone and rhythm each time it speaks. Lower is steadier and more even, higher is " +
                 "livelier but less predictable. 100% is how the voices were made; 75% is this program's default.", true));
             AddNote(advancedGrid, Words("Preview uses the new value straight away. Programs that are already open use it after you restart them.", true));
+            Centre(advancedGrid, 0);
+            advancedGrid.Margin = new Padding(previewColumn, 0, 0, 0);
+            AdvancedGrid = advancedGrid;
             Row(page, advancedGrid);
             EventHandler variationShown = delegate
             {
@@ -1914,8 +2024,8 @@ namespace ModernVoicesConfig
             };
             WordListOnBox.CheckedChanged += delegate { if (!Filling) { SaveWords(); } };
             WordList = NewList(true);
-            WordList.Height = Px(260);
-            WordList.MinimumSize = new Size(0, Px(260));
+            WordList.Height = Px(390);
+            WordList.MinimumSize = new Size(0, Px(390));
             WordList.Columns.Add("Word or phrase (ticked: in use)", Px(250));
             WordList.Columns.Add("Said as", Px(270));
             WordList.Columns.Add("Matches", Px(260));
@@ -1963,7 +2073,7 @@ namespace ModernVoicesConfig
             addGrid.Padding = new Padding(Px(6));
             addGrid.Location = new Point(0, 0);
             tab.Controls.Add(addGrid);
-            // Which voices the list shows: all of them at every start. The additional languages chosen have
+            // Which voices the list shows (what it was on last time). The additional languages chosen have
             // their voices in the list, and a choice here each.
             TableLayoutPanel filterLine = Line("auto", "auto", "auto", "fill");
             VoiceFilterBox = new ComboBox();
@@ -2003,10 +2113,23 @@ namespace ModernVoicesConfig
                 VoiceItems.Add(item);
             }
             FillLanguageChoices();
+            // "Show" starts on what it was on last time (or what the installer's language choice set), if that is still a choice.
+            LanguageChoice showFirst = null;
+            string showWas = Languages.Show;
+            fillingChoices = true;
+            try
+            {
+                foreach (object choice in VoiceFilterBox.Items) { if (showWas.Length > 0 && choice.ToString() == showWas) { VoiceFilterBox.SelectedItem = choice; showFirst = choice as LanguageChoice; } }
+            }
+            finally { fillingChoices = false; }
             foreach (ListViewItem item in VoiceItems)
             {
-                if (LanguageShown(((Entry)item.Tag).Family)) { AddList.Items.Add(item); }
+                Entry listed = (Entry)item.Tag;
+                if (FilterShows(showFirst, listed) && LanguageShown(listed.Family)) { AddList.Items.Add(item); }
             }
+            // (The Pronunciation tab lists the rules of the first language there is: English, unless it is not listed.)
+            LanguageChoice rulesFirst = WordLanguageBox.SelectedItem as LanguageChoice;
+            if (rulesFirst != null) { wordFamily = rulesFirst.Family; }
             // The room left over is shared by the two lists: the voices' two fifths, the speakers' three.
             Row(addGrid, AddList, true);
             addGrid.RowStyles[addGrid.RowCount - 1] = new RowStyle(SizeType.Percent, 42f);
@@ -2057,7 +2180,14 @@ namespace ModernVoicesConfig
                 }
             };
             OnlyTickedBox.CheckedChanged += delegate { UpdateSelection(); };
-            VoiceFilterBox.SelectedIndexChanged += delegate { if (!fillingChoices) { ApplyVoiceFilter(); } };
+            VoiceFilterBox.SelectedIndexChanged += delegate
+            {
+                if (fillingChoices) { return; }
+                // (Kept for the next start.)
+                LanguageChoice shown = VoiceFilterBox.SelectedItem as LanguageChoice;
+                Languages.Show = shown == null || shown.Text == Languages.AllVoices ? "" : shown.Text;
+                ApplyVoiceFilter();
+            };
             // A click on a speaker's name only selects it (to play its sample); its box is what ticks it.
             SpeakerList.MouseDown += SpeakerMouseDown;
             SpeakerList.MouseUp += delegate { nameClick = false; };
@@ -2090,11 +2220,20 @@ namespace ModernVoicesConfig
             if (choice == null) { return true; }
             return (choice.Family == null || v.Family == choice.Family) && (choice.Code == null || v.Code == choice.Code);
         }
-        // Whether a language's voices are listed: English always; another when it is one of the additional
-        // languages chosen, or has a voice ticked (an installed one, say: never hidden).
+        // Whether a language's voices are listed: one that is chosen (English is unless switched off, another
+        // when it is one of the additional languages), or has a voice ticked (an installed one, say: never
+        // hidden). English is listed too while nothing else is: the list is never empty.
         public bool LanguageShown(string family)
         {
-            if (family == "en" || Languages.Enabled.Contains(family)) { return true; }
+            List<string> chosen = Languages.Enabled;
+            if (family == "en")
+            {
+                if (Languages.English) { return true; }
+                bool another = false;
+                foreach (Entry v in CatalogueList) { if (v.Family != "en" && chosen.Contains(v.Family)) { another = true; break; } }
+                if (!another) { return true; }
+            }
+            else if (chosen.Contains(family)) { return true; }
             foreach (ListViewItem item in VoiceItems) { if (item.Checked && ((Entry)item.Tag).Family == family) { return true; } }
             return false;
         }
@@ -2121,18 +2260,22 @@ namespace ModernVoicesConfig
             try
             {
                 List<LanguageChoice> shows = new List<LanguageChoice>();
-                shows.Add(new LanguageChoice("All voices", null, null));
-                shows.Add(new LanguageChoice("English only", "en", null));
-                shows.Add(new LanguageChoice("American only", "en", "en_US"));
-                shows.Add(new LanguageChoice("British only", "en", "en_GB"));
+                shows.Add(new LanguageChoice(Languages.AllVoices, null, null));
                 List<LanguageChoice> rules = new List<LanguageChoice>();
-                rules.Add(new LanguageChoice("English", "en", null));
+                if (LanguageShown("en"))
+                {
+                    shows.Add(new LanguageChoice("English only", "en", null));
+                    shows.Add(new LanguageChoice(Languages.AmericanOnly, "en", "en_US"));
+                    shows.Add(new LanguageChoice(Languages.BritishOnly, "en", "en_GB"));
+                    rules.Add(new LanguageChoice("English", "en", null));
+                }
                 foreach (KeyValuePair<string, string> language in OtherLanguages())
                 {
                     if (!LanguageShown(language.Key)) { continue; }
                     shows.Add(new LanguageChoice(language.Value + " only", language.Key, null));
                     rules.Add(new LanguageChoice(language.Value, language.Key, null));
                 }
+                if (rules.Count == 0) { rules.Add(new LanguageChoice("English", "en", null)); }
                 Refill(VoiceFilterBox, shows);
                 if (WordLanguageBox != null) { Refill(WordLanguageBox, rules); }
             }
@@ -2153,9 +2296,10 @@ namespace ModernVoicesConfig
             box.EndUpdate();
         }
         // The additional languages are set (kept for next time): the lists and their choices follow.
-        public void SetLanguages(List<string> families)
+        public void SetLanguages(List<string> families, bool? english = null)
         {
             Languages.Enabled = families;
+            if (english.HasValue) { Languages.English = english.Value; }
             LanguagesChanged();
         }
         void LanguagesChanged()
@@ -2179,7 +2323,7 @@ namespace ModernVoicesConfig
             rows.Dock = DockStyle.Fill; rows.ColumnCount = 1;
             rows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             dialog.Controls.Add(rows);
-            Row(rows, Words("Tick the languages whose voices you want listed on Add or remove voices. English is always listed."));
+            Row(rows, Words("Tick the languages whose voices you want listed on Add or remove voices."));
             BigCheckList boxes = new BigCheckList();
             boxes.Font = listFont; boxes.BoxSize = Px(16); boxes.RowGap = Px(6);
             boxes.CheckOnClick = true; boxes.IntegralHeight = false; boxes.Dock = DockStyle.Fill;
@@ -2187,7 +2331,11 @@ namespace ModernVoicesConfig
             families = new List<string>();
             List<string> chosen = Languages.Enabled;
             List<int> kept = new List<int>();
-            foreach (KeyValuePair<string, string> language in OtherLanguages())
+            // English first (it can be unticked while another language is ticked), then the others by name.
+            List<KeyValuePair<string, string>> offered = new List<KeyValuePair<string, string>>();
+            offered.Add(new KeyValuePair<string, string>("en", "English"));
+            offered.AddRange(OtherLanguages());
+            foreach (KeyValuePair<string, string> language in offered)
             {
                 int voices = 0;
                 bool ticked = false;
@@ -2199,12 +2347,13 @@ namespace ModernVoicesConfig
                 }
                 if (ticked) { kept.Add(families.Count); }
                 families.Add(language.Key);
-                boxes.Items.Add(language.Value + " (" + voices + (voices == 1 ? " voice" : " voices") + (ticked ? ", some ticked: stays listed)" : ")"), ticked || chosen.Contains(language.Key));
+                boxes.Items.Add(language.Value + " (" + voices + (voices == 1 ? " voice" : " voices") + (ticked ? ", some ticked: stays listed)" : ")"),
+                    ticked || (language.Key == "en" ? LanguageShown("en") : chosen.Contains(language.Key)));
             }
             boxes.ItemCheck += delegate(object sender, ItemCheckEventArgs e) { if (kept.Contains(e.Index)) { e.NewValue = CheckState.Checked; } };
             Row(rows, boxes, true);
             Row(rows, Words("This program itself stays in English. Each language has its own pronunciation rules on the Pronunciation tab. " +
-                "Voices in other languages have been tested much less than the English ones.", true));
+                "Voices in other languages have been tested much less than the English ones. With nothing ticked, English is listed.", true));
             FlowLayoutPanel buttons = Flow();
             buttons.FlowDirection = FlowDirection.RightToLeft; buttons.Dock = DockStyle.Fill;
             Button cancel = Btn("Cancel");
@@ -2224,11 +2373,12 @@ namespace ModernVoicesConfig
             List<string> families;
             using (Form dialog = LanguagesDialog(out list, out families))
             {
-                if (families.Count == 0) { StatusLabel.Text = "The voice list has no other languages (it could not be read)."; return; }
+                if (families.Count <= 1) { StatusLabel.Text = "The voice list has no other languages (it could not be read)."; return; }
                 if (dialog.ShowDialog(this) != DialogResult.OK) { return; }
                 List<string> chosen = new List<string>();
                 for (int i = 0; i < families.Count; i++) { if (list.GetItemChecked(i)) { chosen.Add(families[i]); } }
-                SetLanguages(chosen);
+                bool english = chosen.Remove("en");
+                SetLanguages(chosen, english);
             }
         }
         // The list shows the voices the "Show" box lets through. Rows not shown keep their ticks, and the
@@ -2701,6 +2851,7 @@ namespace ModernVoicesConfig
             if (!Filling && CurrentInstalled != null) { saveTimer.Stop(); saveTimer.Start(); }
         }
         public bool OwnPausesShown { get { return gapGrid.Visible; } }
+        public string TipOf(Control c) { return tips.GetToolTip(c) ?? ""; }
 
         // ---- the Voice manager
 
@@ -2764,11 +2915,15 @@ namespace ModernVoicesConfig
             foreach (string n in allVoices) { PreviewVoiceBox.Items.Add(n); }
             if (allVoices.Count > 0) { PreviewVoiceBox.SelectedIndex = Math.Max(0, allVoices.IndexOf(defaultName)); }
             GlobalPreview.Enabled = allVoices.Count > 0;
-            DefaultLabel.Text = defaultName.Length > 0 ? defaultName : defaultToken.Length > 0 ? defaultToken + " (not one of these)" : "not set";
+            // (With none of these voices installed it is one of Windows' own, whichever that is.)
+            DefaultLabel.Text = defaultName.Length > 0 ? defaultName : InstalledList.Items.Count == 0 ? NoVoicesDefault
+                : defaultToken.Length > 0 ? defaultToken + " (not one of these)" : "not set";
             if (InstalledList.Items.Count > 0) { InstalledList.Items[0].Selected = true; }
             else { SoundLabel.Text = "No voices installed yet: add some on the Add or remove voices tab."; }
             UpdateInstalled();
         }
+
+        public const string NoVoicesDefault = "Default windows voice";
 
         public CurrentVoice GetCurrentVoice()
         {
@@ -3869,6 +4024,7 @@ namespace ModernVoicesConfig
             Cursor.Current = Cursors.WaitCursor;
             List<Entry> catalogue = Catalogue.Load(out problem);
             Startup.Mark("voice list read");
+            Languages.TakeInstallChoice();
             ConfigForm form = new ConfigForm(catalogue, Voices.InstalledIds(), Voices.UsEnglishTags);
             Startup.Mark("window built");
             if (problem != null) { form.StatusLabel.Text = problem; }
@@ -4071,6 +4227,8 @@ namespace ModernVoicesConfig
             List<string> ids = real.Count > 0 ? real : new List<string>(new string[] { "en_GB-alba-medium", "en_GB-vctk-medium#p239" });
             DateTime started = DateTime.UtcNow;
             ConfigForm ui = new ConfigForm(everything, ids, Voices.UsEnglishTags);
+            Check(ui.InstalledList.Items.Count > 0 ? ui.DefaultLabel.Text != ConfigForm.NoVoicesDefault : ui.DefaultLabel.Text == ConfigForm.NoVoicesDefault,
+                "the default voice box says \"" + ConfigForm.NoVoicesDefault + "\" only while none of these voices is installed (" + ui.DefaultLabel.Text + ")");
             Note("the window was built in " + (int)(DateTime.UtcNow - started).TotalMilliseconds + " ms; Windows took " + Program.Startup.BeforeMain +
                 " ms to start the program");
             ui.Show();
@@ -4229,10 +4387,34 @@ namespace ModernVoicesConfig
                 if (!settingsHad && File.Exists(App.SettingsFile)) { File.Delete(App.SettingsFile); }
                 ui.ShowPage(0);
                 Settle(100);
+                // The sections stand in the middle: the sliders' names start where the preview box does, and the
+                // sliders end where the output volume slider does; each section has a frame around it.
                 int boxLeft = ui.PreviewBox.PointToScreen(Point.Empty).X;
-                int sliderLeft = ui.Sliders["Volume"].Bar.PointToScreen(Point.Empty).X;
-                Note("preview box starts at " + boxLeft + ", the sliders at " + sliderLeft);
-                Check(Math.Abs(boxLeft - sliderLeft) <= 1, "the preview box lines up with the sliders below");
+                int nameLeft = ui.Sliders["Volume"].Name.PointToScreen(Point.Empty).X;
+                int tickLeft = ui.OwnBox.PointToScreen(Point.Empty).X;
+                TrackBar volumeBar = ui.Sliders["Volume"].Bar;
+                int sliderRight = volumeBar.PointToScreen(new Point(volumeBar.Width, 0)).X;
+                int outputRight = ui.OutputBar.PointToScreen(new Point(ui.OutputBar.Width, 0)).X;
+                Note("preview box starts at " + boxLeft + ", the sliders' names at " + nameLeft + ", the override box at " + tickLeft +
+                    "; the sliders end at " + sliderRight + ", the output volume at " + outputRight);
+                Check(Math.Abs(boxLeft - nameLeft) <= 1 && Math.Abs(boxLeft - tickLeft) <= 1, "the sliders' names and the override box start where the preview box does");
+                Check(Math.Abs(sliderRight - outputRight) <= 1, "the sliders end where the output volume slider ends");
+                Check(volumeBar.Width > 200, "the sliders have room (" + volumeBar.Width + " px)");
+                Check(ui.SoundFrame.Contains(volumeBar) && ui.SoundFrame.Contains(ui.ResetButton) && ui.PauseFrame.Contains(ui.OwnBox) &&
+                    ui.PauseFrame.Contains(ui.OwnVariation.Bar) && ui.PauseFrame.Top - ui.SoundFrame.Bottom >= 10,
+                    "\"How it sounds\" and the override section each have a frame, with a gap between them");
+                Check(ui.TipOf(volumeBar).Length > 0 && ui.TipOf(volumeBar) == ui.TipOf(ui.Sliders["Volume"].Name) && ui.TipOf(ui.OwnVariation.Name).Length > 0 &&
+                    ui.SoundFrame.Controls.Count == 2, "a slider's description shows when the pointer rests on it or its name (none under the sliders)");
+                ui.ShowPage(1);
+                Settle(100);
+                int speedName = ui.GlobalBars["Sentence gap"].Name.PointToScreen(Point.Empty).X;
+                int speedRight = ui.SpeedBar.PointToScreen(new Point(ui.SpeedBar.Width, 0)).X;
+                int variationRight = ui.VariationBar.PointToScreen(new Point(ui.VariationBar.Width, 0)).X;
+                Note("Speed and pauses: names at " + speedName + ", sliders end at " + speedRight + " and " + variationRight);
+                Check(Math.Abs(speedName - nameLeft) <= 1 && Math.Abs(speedRight - variationRight) <= 1 && Math.Abs(speedRight - sliderRight) <= SystemInformation.VerticalScrollBarWidth + 1,
+                    "Speed and pauses: its sliders stand in the same columns");
+                ui.ShowPage(0);
+                Settle(50);
                 ui.ShowPage(applyPage);
                 Settle(20);
                 int headerPage = ui.PageIndex;
@@ -4295,7 +4477,8 @@ namespace ModernVoicesConfig
                 List<string> languageFamilies;
                 using (Form languageDialog = ui.LanguagesDialog(out languageBoxes, out languageFamilies))
                 {
-                    Check(languageBoxes.Items.Count == offeredLanguages.Count && languageBoxes.CheckedItems.Count == 0, "the Additional languages window lists them, none ticked");
+                    Check(languageBoxes.Items.Count == offeredLanguages.Count + 1 && languageBoxes.CheckedItems.Count == 1 && languageBoxes.GetItemChecked(0) &&
+                        languageFamilies[0] == "en", "the Additional languages window lists English (ticked) and the others (not)");
                     if (pictures)
                     {
                         languageDialog.StartPosition = FormStartPosition.Manual; languageDialog.Location = new Point(40, 40);
@@ -4367,6 +4550,52 @@ namespace ModernVoicesConfig
                     Settle(50);
                     Check(ui.AddList.Items.Count == catalogue.Count && ui.VoiceFilterBox.Items.Count == 4 && ui.WordLanguageBox.Items.Count == 1,
                         "German unchosen: the lists are as they were");
+
+                    // English switched off (the installer's language choice does it, or the Additional languages
+                    // window): only the other language is listed, unless English has a voice ticked, or nothing
+                    // else is listed.
+                    bool englishTicked = false;
+                    foreach (ListViewItem voiceRow in ui.VoiceItems) { if (voiceRow.Checked && ((Entry)voiceRow.Tag).Family == "en") { englishTicked = true; } }
+                    ui.SetLanguages(new List<string>(new string[] { "de" }), false);
+                    Settle(50);
+                    LanguageChoice rulesNow = ui.WordLanguageBox.SelectedItem as LanguageChoice;
+                    Note("English switched off, German on: " + ui.AddList.Items.Count + " voices listed, " + ui.VoiceFilterBox.Items.Count + " choices in Show, rules for " +
+                        (rulesNow == null ? "?" : rulesNow.Text) + (englishTicked ? " (English has voices ticked: it stays)" : ""));
+                    if (englishTicked)
+                    {
+                        Check(ui.LanguageShown("en") && ui.AddList.Items.Count == catalogue.Count + germanVoices, "English switched off with English voices ticked: they stay listed");
+                    }
+                    else
+                    {
+                        Check(!ui.LanguageShown("en") && ui.AddList.Items.Count == germanVoices && ui.VoiceFilterBox.Items.Count == 2 &&
+                            ui.WordLanguageBox.Items.Count == 1 && rulesNow != null && rulesNow.Family == "de", "English switched off: only " + germanName + "'s voices, choice and rules are listed");
+                    }
+                    ui.SetLanguages(new List<string>(), false);
+                    Settle(50);
+                    Check(ui.LanguageShown("en") && ui.AddList.Items.Count == catalogue.Count, "English switched off and nothing else chosen: English is listed all the same");
+                    ui.SetLanguages(new List<string>(), true);
+                    Settle(50);
+                    LanguageChoice rulesBack = ui.WordLanguageBox.SelectedItem as LanguageChoice;
+                    Check(ui.VoiceFilterBox.Items.Count == 4 && rulesBack != null && rulesBack.Family == "en", "English switched back on: the lists are as they were");
+                    // The installer's language choice, as the window takes it up.
+                    bool british = Languages.Apply("en_GB") && Languages.English && Languages.Show == Languages.BritishOnly;
+                    bool american = Languages.Apply("en_US") && Languages.English && Languages.Show == Languages.AmericanOnly;
+                    bool german = Languages.Apply("de") && !Languages.English && Languages.Show == "" && Languages.Enabled.Contains("de");
+                    bool english = Languages.Apply("en") && Languages.English && Languages.Show == "";
+                    bool unknown = !Languages.Apply("zh") && !Languages.Apply("") && Languages.English;
+                    Check(british && american && german && english && unknown, "the installer's language choice: British or American sets Show, another language is listed without English");
+                    Languages.Override = "";
+                    Languages.English = true; Languages.Show = "";
+                    // The file the installer leaves is taken up once, and deleted (where there is a settings folder).
+                    string choiceFile = Path.Combine(App.SettingsFolder, Languages.ChoiceFile);
+                    if (Directory.Exists(App.SettingsFolder) && !File.Exists(choiceFile))
+                    {
+                        File.WriteAllText(choiceFile, "de");
+                        Languages.TakeInstallChoice();
+                        Check(!File.Exists(choiceFile) && !Languages.English && Languages.Enabled.Contains("de"), "the installer's language file is taken up, and deleted");
+                        Languages.Override = "";
+                        Languages.English = true; Languages.Show = "";
+                    }
                 }
             }
 
@@ -4433,9 +4662,9 @@ namespace ModernVoicesConfig
                 int notePage = ui.PageIndex;
                 ui.ShowPage(0);
                 Settle(150);
-                int savedLeft = ui.SavedNote.PointToScreen(Point.Empty).X, noteLeft = ui.FirstNote.PointToScreen(Point.Empty).X;
-                Note("\"Changes are saved\" starts at " + savedLeft + ", the sliders' notes at " + noteLeft);
-                Check(Math.Abs(savedLeft - noteLeft) <= 1, "\"Changes are saved straight away\" lines up with the sliders' notes");
+                int savedLeft = ui.SavedNote.PointToScreen(Point.Empty).X, noteLeft = ui.Sliders["Volume"].Name.PointToScreen(Point.Empty).X;
+                Note("\"Changes are saved\" starts at " + savedLeft + ", the sliders' names at " + noteLeft);
+                Check(Math.Abs(savedLeft - noteLeft) <= 1, "\"Changes are saved straight away\" lines up with the sliders' names");
                 ui.ShowPage(notePage);
                 Settle(20);
             }

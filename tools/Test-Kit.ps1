@@ -100,8 +100,11 @@ $settingsFile = Join-Path $Data 'settings.json'
 $rulesFile = Join-Path $Data 'dictionary.txt'
 
 Step 'The "where to install" screen, and Modern Voices Config (before installing)'
+# (Pictures of the installer's two windows go with the others.)
+$env:MV_PICTURES = Join-Path (Split-Path (Resolve-Path $Kit).Path -Parent) 'screens'
 $code = Invoke-Install @('-PickerSelfTest') 300
-Check ($code -eq 0) 'the "where to install" screen builds, and makes its own folder in the one chosen'
+$env:MV_PICTURES = $null
+Check ($code -eq 0) 'the "where to install" screen builds, makes its own folder in the one chosen, and offers the languages, each with its note'
 $code = Invoke-ConfigTest (Join-Path $Kit 'config\ModernVoicesConfig.exe')
 Check ($code -eq 0) "Modern Voices Config's window builds from the real catalogue; speakers and duplicate warning work"
 # From here the kit is as a download leaves it: its programs carry Windows' "from the internet" mark (the
@@ -113,7 +116,12 @@ foreach ($markedExe in @((Join-Path $Kit 'config\ModernVoicesConfig.exe'), (Join
 
 Step 'Install: Alba, Northern English Male, VCTK speaker p239'
 $code = Invoke-Install @('-Voices', 'en_GB-alba-medium,en_GB-northern_english_male-medium,en_GB-vctk-medium#p239', '-Unattended', '-NoPause',
-    '-Progress', '-InstallDir', $InstallParent)
+    '-Progress', '-InstallDir', $InstallParent, '-InstallLanguage', 'en_GB')
+# A fresh install's language choice is left for Modern Voices Config (which takes it up when it first opens,
+# and deletes it: taken away here, so that the tests below start from no choice).
+$choiceFile = Join-Path $Data 'install-language.txt'
+Check ((Test-Path $choiceFile) -and (Get-Content $choiceFile -Raw).Trim() -eq 'en_GB') 'the language chosen at install is left for Modern Voices Config (install-language.txt)'
+Remove-Item $choiceFile -Force -ErrorAction SilentlyContinue
 Check ((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows').InstallLocation -eq $App) "installed in the chosen folder ($App)"
 $users = (New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-545').Translate([Security.Principal.NTAccount]).Value
 $rules = @((Get-Acl $App).Access)

@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.14.0
+Modern Voices for Windows 0.15.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -19,7 +19,13 @@ Install
 -------
 1. Double-click Install.cmd and say yes to the administrator prompt.
 2. Choose where to install (C:\Program Files\Modern Voices for Windows unless you change it; a folder
-   named Modern Voices for Windows is made in the folder you choose) and press Install.
+   named Modern Voices for Windows is made in the folder you choose), and the language of the voices
+   you want to choose from: English, English (British), English (American), or one of the other
+   languages there are voices for. Then press Install. With British or American, "Show" (step 3)
+   starts on that; with another language, only that language's voices are listed, not the English
+   ones, and a note says what to expect (in that language, with the English under it). Nothing is
+   installed by the choice itself, and it can be changed later ("Additional languages...", step 3).
+   Updating an installed version does not ask.
 3. The Modern Voices Config window opens (if you can't see it, it's on the taskbar). On "Add or remove
    voices", tick the voices you want. Select one and press Play sample to hear it first (press it
    again, "Stop sample" meanwhile, to stop). Voices with
@@ -29,10 +35,12 @@ Install
    "Only show selected speakers" (beside Play sample, off each time the window opens) lists only
    the ticked speakers of the voice selected, to find the ones installed.
    "Show" above the list narrows it (All voices, English only, American only, British only);
-   voices not shown keep their ticks.
-   "Additional languages..." beside it lists the other languages there are voices for (German,
-   Spanish, French...: European languages written left to right). Tick a language and its voices
-   join the list, with a choice of their own in "Show". The program's own words stay in English.
+   voices not shown keep their ticks, and it opens on what it was last on.
+   "Additional languages..." beside it lists English and the other languages there are voices for
+   (German, Spanish, French...: European languages written left to right). Tick a language and its
+   voices join the list, with a choice of their own in "Show"; untick one (English too) and they
+   leave it. A language with a voice ticked stays listed, and with nothing ticked English is listed.
+   The program's own words stay in English.
 4. Press Apply changes. It downloads the chosen voices from Hugging Face (rhasspy/piper-voices,
    version 1.0.0), prepares them, and tests each one through Windows' speech API, with the progress
    shown at the bottom of the window. Done goes back to the Voice manager.
@@ -86,6 +94,9 @@ unmute. Unlike the other settings it works while a
 voice is speaking, within a moment. It turns down what the voices hand to a program: a program's own
 volume control still works on top. (settings.json's "output_percent", 0 to 100, in the settings folder:
 anything allowed to write that file can set it.)
+
+Rest the pointer on a slider, or on its name, to read what it does. The Windows default voice box
+reads "Default windows voice" while none of these voices is installed.
 
 Changes are saved as you move a slider and take effect straight away, also in programs that are already
 using the voice (from the next thing they say): no restarting, no repair. Preview says the text in the
@@ -234,7 +245,9 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     back the last ten changes to the text: typing, a paste, a file opened, Clear.
   * Closed with text in the box, the Reader asks "Save text for next time?": Yes and the text is
     there, at its place, the next time it opens; No and it opens empty. (A file's place is kept
-    either way: open the file again and Play goes on from where you stopped.)
+    either way: open the file again and Play goes on from where you stopped.) "Save text on close"
+    (under Undo, ticked to begin with) is what makes it ask: unticked, the Reader closes without
+    asking and the text is not kept. Ticking "Don't ask again" in the question unticks it.
   * Opened while it is already running, the Reader asks whether to start a second one; Cancel
     shows the one that is open.
   * Sums of money are said the way they are read aloud, by every program that uses the voices:

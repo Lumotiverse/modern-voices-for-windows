@@ -1,71 +1,60 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.14.0 (16 Nov 2026). The batch under NEXT below is waiting to be
-built. Model rule: say which model a batch suits BEFORE starting; Opus-level work while he is
-on Fable: recommend switching and wait (he often answers "build on Fable": then go ahead).
+Last updated at version 0.15.0 (17 Nov 2026). Model rule: say which model a batch suits BEFORE
+starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
+"build on Fable": then go ahead).
 
-**Version:** he asked "0.14 or perhaps v1.0?"; I made it 0.14.0 and suggested the next build be 1.0.0
-with nothing new, once he has used 0.14 for a few days. Ask/confirm before calling a build 1.0.
+**Version:** he asked "0.14 or perhaps v1.0?"; I suggested 1.0.0 be a build with nothing new, once he has
+used the current one for a few days. Ask/confirm before calling a build 1.0.
 
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
-## NEXT: his 16/17 Nov batch, NOT STARTED (he asked for a hand-off to a new chat to build it)
+## 0.15.0 (17 Nov 2026), delivered, not yet confirmed by him: his 16/17 Nov batch
 
-He confirmed 0.14.0 "seems to be working". Say which model the batch suits first (most is Opus-level
-layout work; the installer language part is the largest piece). Suggested version: 0.15.0. His words:
+He confirmed 0.14.0 "seems to be working". Built on Fable at his say.
 
-**A. Which tab opens: NOTHING TO DO.** He withdrew it ("my mistake, the add/remove tab is already below
-the powered by popup").
+1. **Default voice box:** reads "Default windows voice" (`ConfigForm.NoVoicesDefault`, his words) while no
+   Modern Voice is installed (`UpdateDefault`). With voices installed and a Microsoft default it still
+   shows the token name "(not one of these)": his words didn't cover that.
+2. **Reader "Save text on close"** (`saveBox`, under Undo, placed by `AlignLine`; `State.SaveOnClose`,
+   default true). Ticked: closing with text asks; unticked: no question, text not kept. The question has
+   "Don't ask again" (`Program.SaveTextWindow(out tick)`), which unticks it (`AnswerSaveText`).
+3. **Voice manager layout.** Two framed sections (`Frame()`, tag "frame", border painted; `SoundFrame`,
+   `PauseFrame` with 16 px between). No measuring any more (`alignPreview` / `alignSaved` are gone): the
+   columns are fixed numbers worked out in `BuildVoiceManager`: `previewColumn` (the "Preview says"
+   label's width: the preview box, the sliders' names, the override tick and "Changes are saved" all
+   start there), `labelColumn` (the widest slider name) and `valueColumn` (146 px: the value text right
+   of a slider; the output volume's too, so every slider ends at the same x). `Centre(grid, inset)` gives
+   a slider grid those columns. The notes under the sliders are tooltips now (`Describe`: on the slider
+   and on its name; a disabled slider shows none, its name still does).
+4. **Speed and pauses:** the same columns (`Centre(globalGrid, 0)`), everything from the sliders down
+   indented by `previewColumn`; the title and "Preview with" stay at the left. Its notes stay under the
+   sliders (he asked for tooltips on the Voice manager only). "Set Windows' speed to 0" moved under its
+   warning (the value column is too narrow for a button now).
+5. **Pronunciation:** the rules list is 390 px high (was 260).
+6. **Installer language choice.** `New-LocationForm` has a dropdown: English, English (British), English
+   (American), then the 29 others as "German - Deutsch" (`installer/Languages.ps1`: names and notes as
+   JSON with \u escapes in a here-string, made by `tools/dev/make_languages.py`: edit the words THERE).
+   Another language than English shows `New-LanguageNoteForm`: the note in that language, the English
+   under it, OK / Back. The choice goes to `%ProgramData%\...\install-language.txt`
+   (`Set-LanguageChoice`; also `-InstallLanguage CODE` for unattended installs); Config takes it up once
+   at its next start and deletes it (`Languages.TakeInstallChoice` / `Apply`). An UPDATE does not ask
+   (the first window only shows on a fresh install).
+   - `Languages.English` (HKCU `English`, "0" = off) and `Languages.Show` (HKCU `Show`: the "Show" box's
+     words, kept between runs now; that is how British / American sticks. Before 0.15 Show was "All
+     voices" at every start: I changed that, told him).
+   - `LanguageShown("en")`: on unless switched off; also on while it has a ticked voice, or while no other
+     chosen language has voices in the list (so the list is never empty).
+   - Additional languages has an English row first (`SetLanguages(families, english)`).
+   - The 29 notes are Claude's translations, unchecked, like `PreviewTexts`.
 
-**A2. Default voice box (new, 17 Nov).** "Show windows default voice in voice manager as 'Default windows
-voice' if no voices are installed." The Voice manager's "Windows default voice" box shows the raw token
-name when the default is not one of ours (the screenshots show "TTS_MS_EN-US_DAVID_11.0 (not one of
-these)"). With no Modern Voice installed it should read "Default windows voice" instead. (If voices ARE
-installed and the default is still a Microsoft one, his words don't cover it: leave as is, or ask.)
-
-**B. Reader.** "add a checkbox to reader, below undo button (left aligned with left side of undo button)
-for 'save text on close' to decide if the save text pop up shows. add a checkbox to the save text pop up
-for 'don't ask again' which controls the reader checkbox. save on close enabled by default."
-CONFIRMED by him: ticked (the default) = closing asks "Save text for next time?"; unticked = closing
-does not ask and does not save. "Don't ask again" in the pop-up unticks the Reader's box. `AskWindow`
-already supports a tick (the screen warning uses one).
-
-**C. Voice manager layout.** "move the overide pause duration for selected voice checkbox down so theres
-more of a gap above it. draw a box around the outside of 'how voice sounds' section. overide pause
-duration section should also have a box drawn around it. move both the sections to the right so they
-appear in the centre of the window (keep the layout of the sections as is, just shift it sideways. (left
-side of all the slider labels should probably align with the left of the preview box. the right side of
-the sliders should align with the right side of the output volume slider.) change the slider
-descriptions so they instead show when you hover the mouse over the slider dragclicker or the slider
-labels on the left."
-So: the notes under the sliders (added in 0.13.2) become tooltips on the slider and its label, on this
-tab. `alignPreview` / `alignSaved` measure against the sliders: redo them for the new positions.
-
-**D. Speed and pauses.** "centralise the sliders in the pause page as well."
-
-**E. Pronunciation.** "increase the size of the pronunciation rules by 50%." CONFIRMED: he means the
-HEIGHT of the rules list box, so more rows show at once (not the text size).
-
-**F. Installer language choice (agreed design).** In the install-location window (`New-LocationForm`, a
-WinForms window: a real dropdown is possible; I had wrongly said the installer was text only), under the
-folder: a language dropdown. "have english, english (british) and english (american) as options in the
-list", then the `Catalogue.Offered` languages. Purpose: "people can pre decide to not enable the english
-voices and instead only list their selected language".
-- No voices are auto-installed on a fresh interactive install, in any language: Config opens on Add or
-  remove voices and the person picks (that is how English works now; he corrected me on this).
-- The choice sets what Add or remove voices lists: English (all), English with Show on British or
-  American, or only the chosen language with English NOT listed. So English must become switchable:
-  `LanguageShown("en")` is always true today; `Languages.Enabled` (HKCU) holds only the extras. The
-  installer runs elevated and Config runs as the person, so pass the choice through something both see
-  (a value in settings.json or a file in ProgramData that Config reads once), not HKCU of the admin.
-  "Additional languages" then needs an English row so it can be ticked back.
-- "also add a warning popup about potential translation errors, pronunciation lists, ui remaining in
-  english, etc (warning in the language selected for install). dont show if any english is selected."
-  Agreed: the warning shows in the chosen language WITH THE ENGLISH UNDERNEATH (he agreed), so a bad
-  translation can't hide it. 29 more unchecked translations: same care as `PreviewTexts`.
-- An update (not a fresh install) should not ask, or should show the current choice: decide, tell him.
+**Checking C# here (new):** `apt-get update && apt-get install -y mono-mcs libmono-system-windows-forms4.0-cil
+libmono-system-web-extensions4.0-cil libmono-windowsbase4.0-cil libmono-system-xaml4.0-cil
+libmono-system-io-compression4.0-cil libmono-system-io-compression-filesystem4.0-cil` gives `mcs`; with a
+small file of stubs for System.Speech and `System.Windows.Media.MediaPlayer`, `mcs -langversion:5` type-checks
+Config.cs and Reader.cs in seconds (it found nothing csc didn't, but saves a CI round per typo).
 
 ## 0.14.0 (16 Nov 2026), delivered, not yet confirmed by him
 

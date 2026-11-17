@@ -98,12 +98,17 @@ more) can be added from **Modern Voices Config > Add or remove voices > Addition
 language and its voices appear in the list to install, like the English ones. Windows is told each
 voice's language, so programs that choose voices by language find them.
 
+You can also choose the language when installing: the installer's first window has a list (English,
+British or American English, or one of the other languages). With another language, only that
+language's voices are listed and the English ones are left out; English can be ticked back in
+**Additional languages** at any time.
+
 Some things to know:
 
 - **The program itself is in English.** Its windows, buttons and help stay in English whatever voices
   you install.
 - **There may be mistakes in the other languages.** Lumoti only speaks English, so the parts written
-  in other languages (the preview text each voice reads in Config) were translated by Claude and
+  in other languages (the preview text each voice reads in Config, the installer's note) were translated by Claude and
   haven't been checked by a native speaker. Corrections are welcome as issues or pull requests.
 - **Other languages have been tested far less** than English: a German voice is installed, spoken and
   checked by the automatic test, and the rest are trusted to work the same way.

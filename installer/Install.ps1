@@ -28,6 +28,8 @@ param(
     [string]$InstallDir,      # where to install (a folder named Modern Voices for Windows is made in it); else asked
     [switch]$ExactVoices,     # exactly -Voices, also when that is none (else: none given means the ones installed)
     [switch]$Progress,        # prints "##progress N" (percent) lines while a file downloads
+    [string]$InstallLanguage, # a fresh install's language choice, as its first window would leave it for Modern Voices
+                              # Config: en, en_GB, en_US, or another language offered (de, fr, ...)
     [switch]$PickerSelfTest,  # builds the "where to install" screen without showing it (for the build's tests)
     [switch]$FunctionsOnly    # defines the functions and stops (for tests)
 )
@@ -54,6 +56,7 @@ if (-not $isAdmin -and -not $PickerSelfTest -and -not $FunctionsOnly) {
     if ($NoPause) { $forward += '-NoPause' }
     if ($UsEnglishTags) { $forward += '-UsEnglishTags' }
     if ($InstallDir) { $forward += '-InstallDir'; $forward += "`"$InstallDir`"" }
+    if ($InstallLanguage) { $forward += '-InstallLanguage'; $forward += $InstallLanguage }
     if ($ExactVoices) { $forward += '-ExactVoices' }
     if ($Progress) { $forward += '-Progress' }
     $env:MV_LOADING_SAID = $null      # (the administrator's window says it for itself)
@@ -81,8 +84,9 @@ if (-not $FunctionsOnly -and -not $PickerSelfTest -and -not ($Repair -or $Voices
 $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 . (Join-Path $Here 'VoiceConvert.ps1')
+. (Join-Path $Here 'Languages.ps1')
 
-$Version = '0.14.0'
+$Version = '0.15.0'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -134,6 +138,7 @@ $DefaultPeak = 1
 $DefaultBoost = 1.5
 Set-AppPaths $DefaultApp
 $InPlace = $false
+$ChosenLanguage = ''
 
 # Names for the catalogue's voices (else its own name, in capitals), and the voices known to be
 # male or female (SAPI's Gender attribute; left out where not known or several speakers).
@@ -326,14 +331,29 @@ function New-Control([string]$Type, $Parent, [int]$X, [int]$Y, [int]$Width, [int
     return $c
 }
 
-function New-LocationForm([string]$Default) {
+# The languages a fresh install can be set up for beside English (Languages.ps1), by code: each with its
+# name in English ('name') and in itself ('native'), and its note ('title', 'lines').
+function Get-InstallLanguages {
+    if (-not $script:LanguageNotes) { $script:LanguageNotes = Read-Json $LanguageNotesJson }
+    return $script:LanguageNotes
+}
+# What the note says, in English (shown under the note in the language chosen, should its translation be wrong).
+$LanguageNoteEnglish = @('Please note',
+    "This program's windows and buttons are in English only.",
+    'The few texts in your language were translated by a computer and have not been checked. They may contain mistakes.',
+    'Voices in this language have been tested much less than the English voices.',
+    'There are no ready-made pronunciation rules for this language. You can add your own on the "Pronunciation" tab.',
+    'English voices will not be listed. You can add them later with the "Additional languages" button.')
+
+# 'Pick': the language chosen to begin with (a code: en, en_GB, en_US, or another language's).
+function New-LocationForm([string]$Default, [string]$Pick = 'en') {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "$AppName $Version - install"
     Set-UiIcon $form
-    $form.Size = New-Object System.Drawing.Size(640, 300)
+    $form.Size = New-Object System.Drawing.Size(640, 414)
     $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false; $form.MinimizeBox = $false
     $form.StartPosition = 'CenterScreen'
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
@@ -346,15 +366,74 @@ function New-LocationForm([string]$Default) {
     $change = New-Control 'Button' $form 506 70 100 27 'Change...' ''
     $note = New-Control 'Label' $form 16 106 590 90 '' ''
     $note.ForeColor = [System.Drawing.Color]::DimGray
-    $install = New-Control 'Button' $form 400 216 100 30 'Install' ''
-    $cancel = New-Control 'Button' $form 506 216 100 30 'Cancel' ''
+    # The language of the voices to choose from: English (all of it, or British or American first), or
+    # one of the other languages offered, without English.
+    [void](New-Control 'Label' $form 16 206 600 20 'Language of the voices:' '')
+    $pickBox = New-Control 'ComboBox' $form 16 228 300 24 '' ''
+    $pickBox.DropDownStyle = 'DropDownList'
+    $pickBox.MaxDropDownItems = 16
+    $codes = @('en', 'en_GB', 'en_US')
+    foreach ($english in 'English', 'English (British)', 'English (American)') { [void]$pickBox.Items.Add($english) }
+    $notes = Get-InstallLanguages
+    foreach ($code in @($notes.Keys | Sort-Object { [string]$notes[$_]['name'] })) {
+        [void]$pickBox.Items.Add("$($notes[$code]['name']) - $($notes[$code]['native'])")
+        $codes += [string]$code
+    }
+    $pickBox.SelectedIndex = [Math]::Max(0, [Array]::IndexOf($codes, $Pick))
+    $pickNote = New-Control 'Label' $form 16 260 590 62 ("The window that opens after installing lists these voices for you to choose from: nothing is " +
+        "installed until you tick it there. With a language other than English, the English voices are not listed. " +
+        "You can change this later, with that window's Additional languages button.") ''
+    $pickNote.ForeColor = [System.Drawing.Color]::DimGray
+    $install = New-Control 'Button' $form 400 330 100 30 'Install' ''
+    $cancel = New-Control 'Button' $form 506 330 100 30 'Cancel' ''
     $install.DialogResult = 'OK'; $cancel.DialogResult = 'Cancel'
     $form.AcceptButton = $install; $form.CancelButton = $cancel
-    $script:Where = @{ Form = $form; Path = $path; Note = $note }
+    $script:Where = @{ Form = $form; Path = $path; Note = $note; Pick = $pickBox; Codes = $codes }
     $change.add_Click({ Select-InstallFolder })
     $path.add_TextChanged({ Update-LocationNote })
     Update-LocationNote
     return $script:Where
+}
+
+# The note shown when a language other than English is chosen: in that language, with the English of
+# it underneath (the translations are not checked). OK goes on; Back returns to the first window.
+function New-LanguageNoteForm([string]$Code) {
+    $entry = (Get-InstallLanguages)[$Code]
+    $dot = [string][char]0x2022
+    $own = [string]$entry['title'] + "`n`n" + ((@($entry['lines']) | ForEach-Object { "$dot  $_" }) -join "`n")
+    $plain = $LanguageNoteEnglish[0] + "`n`n" + ((@($LanguageNoteEnglish | Select-Object -Skip 1) | ForEach-Object { "$dot  $_" }) -join "`n")
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "$AppName - $($entry['native'])"
+    Set-UiIcon $form
+    $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false; $form.MinimizeBox = $false
+    $form.StartPosition = 'CenterScreen'
+    $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+    $form.TopMost = $true
+    $wide = 600
+    $top = 16
+    $labels = @()
+    foreach ($words in $own, $plain) {
+        $label = New-Object System.Windows.Forms.Label
+        $label.UseMnemonic = $false
+        $label.AutoSize = $true
+        $label.MaximumSize = New-Object System.Drawing.Size($wide, 0)
+        $label.Location = New-Object System.Drawing.Point(18, $top)
+        $label.Text = $words
+        $form.Controls.Add($label)
+        $top += $label.PreferredSize.Height + 22
+        $labels += $label
+    }
+    $labels[0].Font = New-Object System.Drawing.Font('Segoe UI', 10)
+    # (The first is larger: what follows it moves down by as much as it grew.)
+    $labels[1].Top = $labels[0].Top + $labels[0].PreferredSize.Height + 22
+    $labels[1].ForeColor = [System.Drawing.Color]::DimGray
+    $top = $labels[1].Top + $labels[1].PreferredSize.Height + 22
+    $ok = New-Control 'Button' $form ($wide + 18 - 206) $top 100 30 'OK' ''
+    $back = New-Control 'Button' $form ($wide + 18 - 100) $top 100 30 'Back' ''
+    $ok.DialogResult = 'OK'; $back.DialogResult = 'Cancel'
+    $form.AcceptButton = $ok; $form.CancelButton = $back
+    $form.ClientSize = New-Object System.Drawing.Size(($wide + 36), ($top + 46))
+    return @{ Form = $form; Own = $labels[0]; English = $labels[1] }
 }
 
 function Test-UnderProgramFiles([string]$Folder) {
@@ -390,22 +469,47 @@ function Select-InstallFolder {
 }
 
 # Asks where to install; the program's folder, or '' when cancelled.
+# (The language chosen with it is left in $script:ChosenLanguage.)
 function Read-InstallFolder {
+    $text = $DefaultApp
+    $lang = 'en'
     while ($true) {
-        $where = New-LocationForm $DefaultApp
+        $where = New-LocationForm $text $lang
         $answer = $where.Form.ShowDialog()
         $text = $where.Path.Text
+        $lang = $where.Codes[[Math]::Max(0, $where.Pick.SelectedIndex)]
         $where.Form.Dispose()
         if ($answer -ne 'OK') { return '' }
+        $folder = ''
         try {
             $folder = Resolve-AppFolder $text
             $drive = [System.IO.Path]::GetPathRoot($folder)
             if (-not $drive -or -not (Test-Path $drive)) { throw "There is no drive $drive." }
-            return $folder
         } catch {
             [void][System.Windows.Forms.MessageBox]::Show("Can't install there: $($_.Exception.Message)", $AppName)
+            continue
         }
+        # Another language than English: what to expect, in that language (Back returns to the first window).
+        if ($lang -notlike 'en*') {
+            $warning = New-LanguageNoteForm $lang
+            $agreed = $warning.Form.ShowDialog()
+            $warning.Form.Dispose()
+            if ($agreed -ne 'OK') { continue }
+        }
+        $script:ChosenLanguage = $lang
+        return $folder
     }
+}
+
+# A fresh install's language choice, left for Modern Voices Config to take up the first time it opens (it
+# runs as the person at the PC; this installer as an administrator, perhaps another account): a file in
+# the settings folder, which Config reads once and deletes.
+function Set-LanguageChoice([string]$Code) {
+    if (@('en', 'en_GB', 'en_US') -notcontains $Code -and -not (Get-InstallLanguages).ContainsKey($Code)) {
+        Write-Host "  (language '$Code' is not one offered: left as English)" -ForegroundColor Yellow
+        return
+    }
+    [System.IO.File]::WriteAllText((Join-Path $SettingsFolder 'install-language.txt'), $Code)
 }
 
 # Outside Program Files, the folder is made as Program Files is: administrators and Windows may change
@@ -869,7 +973,41 @@ try {
         $first = $where.Path.Text
         $where.Path.Text = 'D:\Tools'
         $note = $where.Note.Text
+        # The language choice: English three ways, then the other languages; each with its note, in itself
+        # and in English. (Pictures of both windows where the build asks for them.)
+        $offered = Get-InstallLanguages
+        $shots = $env:MV_PICTURES
+        $listed = $where.Pick.Items.Count
+        $firstPick = $where.Codes[$where.Pick.SelectedIndex]
+        $where.Pick.SelectedIndex = [Array]::IndexOf($where.Codes, 'de')
+        $german = [string]$where.Pick.SelectedItem
+        Write-Output "languages: $listed listed ($($offered.Count) beside English); the first is '$firstPick'; de is '$german'"
+        if ($listed -ne 32 -or $offered.Count -ne 29 -or $firstPick -ne 'en' -or $where.Codes[1] -ne 'en_GB' -or $where.Codes[2] -ne 'en_US' -or
+            $german -ne 'German - Deutsch') { $bad += 'language list' }
+        function Save-FormPicture($Form, [string]$Name) {
+            if (-not $shots) { return }
+            try {
+                $Form.TopMost = $false; $Form.Show(); [System.Windows.Forms.Application]::DoEvents()
+                $shot = New-Object System.Drawing.Bitmap $Form.Width, $Form.Height
+                $Form.DrawToBitmap($shot, (New-Object System.Drawing.Rectangle 0, 0, $Form.Width, $Form.Height))
+                New-Item $shots -ItemType Directory -Force | Out-Null
+                $shot.Save((Join-Path $shots $Name), [System.Drawing.Imaging.ImageFormat]::Png)
+                $shot.Dispose(); $Form.Hide()
+            } catch { Write-Output "  (no picture $Name`: $($_.Exception.Message))" }
+        }
+        Save-FormPicture $where.Form 'install-location.png'
         $where.Form.Dispose()
+        foreach ($code in @($offered.Keys | Sort-Object)) {
+            $entry = $offered[$code]
+            $warning = New-LanguageNoteForm $code
+            $own = $warning.Own.Text; $plain = $warning.English.Text
+            if (-not $entry['name'] -or -not $entry['native'] -or @($entry['lines']).Count -ne 5 -or $own.Length -lt 200 -or $own -eq $plain -or
+                -not $own.Contains('Pronunciation') -or -not $own.Contains('Additional languages') -or -not $plain.StartsWith('Please note') -or
+                $warning.English.Top -lt $warning.Own.Bottom -or $warning.Form.ClientSize.Height -lt $warning.English.Bottom + 40) { $bad += "note for $code" }
+            if (@('de', 'el', 'ru') -contains $code) { Save-FormPicture $warning.Form "install-note-$code.png" }
+            $warning.Form.Dispose()
+        }
+        Write-Output "language notes: $($offered.Count) checked"
         Write-Output "location: default $first; D:\Tools -> $(Resolve-AppFolder 'D:\Tools')"
         if ($first -ne $DefaultApp -or (Resolve-AppFolder 'D:\Tools') -ne "D:\Tools\$AppName" -or $note -notmatch 'Outside Program Files' -or
             (Resolve-AppFolder "D:\Tools\$AppName") -ne "D:\Tools\$AppName") { $bad += 'location screen' }
@@ -907,6 +1045,9 @@ try {
     New-Item $App -ItemType Directory -Force | Out-Null
     if ($fresh) { Protect-AppFolder }
     Initialize-SettingsFolder
+    # A fresh install's language choice (its first window's, or -InstallLanguage): left for Modern Voices Config.
+    $choice = if ($script:ChosenLanguage) { $script:ChosenLanguage } else { $InstallLanguage }
+    if ($choice -and -not $existing) { Set-LanguageChoice $choice }
     $usTags = [bool]$UsEnglishTags
     # (Modern Voices Config says exactly what is wanted; otherwise the option stays as it was unless asked for.)
     if (-not $UsEnglishTags -and -not $ExactVoices -and (Test-Path $Settings)) { $usTags = ((Get-ItemProperty $Settings).UsEnglishTags -eq 1) }
