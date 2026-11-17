@@ -29,6 +29,10 @@ He confirmed 0.14.0 "seems to be working". Built on Fable at his say.
    of a slider; the output volume's too, so every slider ends at the same x). `Centre(grid, inset)` gives
    a slider grid those columns. The notes under the sliders are tooltips now (`Describe`: on the slider
    and on its name; a disabled slider shows none, its name still does).
+   `NameInset` (Font.Height / 5, 3 px at 100%): a label's words start that far inside it, so the sections
+   sit that much to the left and the WORDS start at the preview box's edge. The CI screen is only 720
+   high: `Pictures` now also takes `dark-N-lower.png`, each tab scrolled to its foot (the Voice manager's
+   with the override sliders showing, `PeekOwnPauses`). Look at those too.
 4. **Speed and pauses:** the same columns (`Centre(globalGrid, 0)`), everything from the sliders down
    indented by `previewColumn`; the title and "Preview with" stay at the left. Its notes stay under the
    sliders (he asked for tooltips on the Voice manager only). "Set Windows' speed to 0" moved under its
@@ -49,6 +53,11 @@ He confirmed 0.14.0 "seems to be working". Built on Fable at his say.
      chosen language has voices in the list (so the list is never empty).
    - Additional languages has an English row first (`SetLanguages(families, english)`).
    - The 29 notes are Claude's translations, unchecked, like `PreviewTexts`.
+   - The installer lists all 29 `Catalogue.Offered` languages, but the catalogue had voices (medium or
+     better) for only 25 of them on 17 Nov: choosing one of the other four lists English after all (the
+     never-empty rule). Told him; could be trimmed if he minds.
+   - Pictures: `-PickerSelfTest` saves install-location.png and install-note-de/el/ru.png when
+     `$env:MV_PICTURES` names a folder (Test-Kit sets it).
 
 **Checking C# here (new):** `apt-get update && apt-get install -y mono-mcs libmono-system-windows-forms4.0-cil
 libmono-system-web-extensions4.0-cil libmono-windowsbase4.0-cil libmono-system-xaml4.0-cil
