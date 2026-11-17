@@ -23,6 +23,9 @@ used to open on Add or remove voices when no voice is installed and on the Voice
 (look at the constructor's first `ShowPage` and whether the Powered by dialog, shown from
 `Program.Main`'s Shown handler, got in the way). After Apply changes finishes installing on a fresh
 install it should go to the Voice manager.
+The code already reads that way (constructor: `ShowPage(InstalledList.Items.Count == 0 ? 3 : 0)`; after
+Apply: `if (InstalledList.Items.Count > 0) { ShowPage(0); }`), so ASK HIM what he saw and when (fresh
+install or an update with voices already there?) before changing anything. I asked; no answer yet.
 
 **B. Reader.** "add a checkbox to reader, below undo button (left aligned with left side of undo button)
 for 'save text on close' to decide if the save text pop up shows. add a checkbox to the save text pop up
