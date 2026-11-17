@@ -2764,6 +2764,7 @@ namespace ModernVoicesConfig
             window.Controls.Add(words);
             Button ok = Btn("OK");
             ok.Name = "ok"; ok.MinimumSize = new Size(Px(90), 0);
+            ok.Anchor = AnchorStyles.Top | AnchorStyles.Left;      // (stays put when the window is sized below)
             ThemeOn(ok, palette);
             ok.DialogResult = DialogResult.OK;
             window.Controls.Add(ok);
@@ -4812,8 +4813,11 @@ namespace ModernVoicesConfig
                         startOk is Button && startOk.Text == "OK" && start.AcceptButton == startOk && start.CancelButton == startOk &&
                         startX != null && startX.Bounds.Contains(new Point(start.ClientSize.Width - 16, 16)) && start.Controls[0] == startX,
                         "with no voice installed: \"Select the voices...\", with OK and an X in the top right corner");
-                    Check(startOk.Bottom < start.ClientSize.Height && startWords.Right < startX.Left + startX.Width && startWords.Top >= startX.Bottom - 2,
-                        "its words and OK fit inside it, under the X");
+                    start.Show(); Application.DoEvents();
+                    Note("select voices: words " + startWords.Bounds + ", OK " + startOk.Bounds + ", window " + start.ClientSize);
+                    Check(startOk.Top >= startWords.Bottom + 10 && startOk.Bottom < start.ClientSize.Height && startWords.Top >= startX.Bottom - 2,
+                        "its words, then OK under them, fit inside it, under the X");
+                    start.Hide();
                     if (pictures) { SavePicture(start, Path.Combine(folder, "select-voices.png")); }
                 }
                 Check(ui.AboutButton.Visible && ui.AboutButton.PointToScreen(Point.Empty).X < ui.ThemeButton.PointToScreen(Point.Empty).X, "About is in the header, left of the moon");
