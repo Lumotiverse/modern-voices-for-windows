@@ -37,8 +37,8 @@ release is made of.
 ## Beside the Reader
 
 Two libraries lie beside `ModernVoicesReader.exe` as files of their own, unchanged, and are loaded
-only when they are needed. Neither is part of the engine. The build fetches them (`tools/Package.ps1`,
-which names where from and checks each file's SHA-256).
+only when they are needed. Neither is part of the engine. They are kept, unchanged, in this repository's
+`third-party/reader` folder; `tools/Package.ps1` names where each came from and checks its SHA-256.
 
 | Component | License | Source |
 |---|---|---|

@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.16.0 (17 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.17.0 (17 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -11,13 +11,37 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
-## 0.16.0 (17 Nov 2026), delivered, not yet confirmed by him: PDFs and MP3s in the Reader
+## 0.17.0 (17 Nov 2026), delivered, not yet confirmed by him
+
+Built on Opus 5.5 (he switched). His three points after trying 0.16:
+
+1. **PDF bullets were read as "play button"** (an arrowhead bullet read by its sign's name). `Pdf.Tidy`
+   now finds a bullet at a line's start (`Pdf.Bullet`): the signs in `BulletSigns` (dots, squares,
+   diamonds, arrowheads, arrows, ticks), any Private Use Area letter (U+E000-F8FF: what a symbol
+   font's letter often comes out as), a letter drawn in a Wingdings / Webdings / Symbol / Dingbats
+   font (`Pdf.Pages(path, out marks)` collects them per page from PdfPig's `page.Letters`,
+   `Letter.FontName`), or a dash / star with a space and words after it ("- 3 -" stays a page number).
+   The bullet is dropped and the item starts a paragraph of its own (internally marked with `Item`,
+   \u0001, so it is never joined to the page before). PUA and symbol-font signs inside a line become
+   a space (`Unmarked`). Not handled: Courier "o" sub-bullets unless that "o" is in a symbol font;
+   numbered lists are left as they are (they read fine).
+2. **"Is there a way so install won't fail if the PDF/MP3 repos change?"** The install never downloaded
+   anything (the kit carries the DLLs); only the BUILD did. Now the eight DLLs are in the repo,
+   `third-party/reader/` (`*.dll binary` in .gitattributes), and `tools/Package.ps1` copies them,
+   checking each one's SHA-256 (a table in the script). No network at build time for them any more.
+3. **Frame gaps.** `FrameGap` = twice 0.15's visible gap (2 x (10 px + 3 + NameInset) = 32 px at 100%),
+   both sides: the left line that far from the slider names' words, the right line that far from the
+   end of the widest value text (`WidestValue` of `ValueSamples`: "none (as said)" at 100%, so for a
+   "100%" row the right gap looks bigger; he asked for "the end of the percent numbers", told him).
+   Done by `FrameSliders`: the value column is now just `ValueFit` wide and the frame's right margin
+   takes up the rest, so the sliders still end where the output volume slider ends (text and sliders
+   did not move: he said they are right). Volume's "off (as Piper made it)" is wider than the column and
+   wraps onto two lines (value labels' MaximumSize). Config's test checks both gaps.
+
 
 His words: "add pdf support to reader and mp3 saving". Built on Fable. Both use an outside library,
 which lies beside `ModernVoicesReader.exe` (flat: the installer copies `reader\*` without subfolders) and
-is NOT in the repo: `tools/Package.ps1` downloads each from GitHub and stops the build if its SHA-256 is
-not the pinned one (`Get-Checked`). If a URL dies, the build breaks there: find the same file elsewhere,
-keep the hash.
+is in the repo since 0.17 (`third-party/reader/`; see 0.17.0 above).
 
 1. **PDF** (`Pdf` in Reader.cs): PdfPig 0.1.8 (Apache-2.0; the net47 DLLs from the project's GitHub
    release; 0.1.8 because later versions need System.Memory and binding redirects). Loaded by

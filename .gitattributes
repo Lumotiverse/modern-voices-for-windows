@@ -6,3 +6,4 @@
 engine/espeak-ng-data/** -text
 *.ico binary
 *.exe binary
+*.dll binary

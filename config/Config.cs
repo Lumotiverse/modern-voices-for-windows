@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.16.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.17.0.0")]
 
 namespace ModernVoicesConfig
 {
@@ -1457,7 +1457,7 @@ namespace ModernVoicesConfig
             frame.ColumnCount = 1;
             frame.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             frame.AutoSize = true; frame.AutoSizeMode = AutoSizeMode.GrowAndShrink; frame.Dock = DockStyle.Fill;
-            frame.Padding = new Padding(FramePad, Px(8), FramePad, Px(10));
+            frame.Padding = new Padding(FramePad, Px(8), FramePad, Px(10));      // (FramePad: see there)
             frame.Tag = "frame";
             frame.Paint += delegate(object sender, PaintEventArgs e)
             {
@@ -1467,7 +1467,37 @@ namespace ModernVoicesConfig
             frame.Resize += delegate { frame.Invalidate(); };
             return frame;
         }
-        int FramePad { get { return Px(10); } }
+        // A frame's line is FrameGap from the words inside it: from the sliders' names on its left, and from
+        // the end of the widest value (ValueFit) on its right. Inside the line, FramePad: the gap less the
+        // label's own margin and the room before its words.
+        public int FrameGap { get { return 2 * (Px(10) + 3 + NameInset); } }
+        int FramePad { get { return FrameGap - 3 - NameInset; } }
+        // The value column of a framed section: the widest value its sliders show (a value wider than that,
+        // the Volume's "off (as Piper made it)", goes onto a second line).
+        public static readonly string[] ValueSamples = { "100%", "150%", "200%", "4.0x", "none", "+3000 ms", "none added", "none (as said)" };
+        public string WidestValue
+        {
+            get
+            {
+                string widest = "";
+                foreach (string sample in ValueSamples) { if (TextRenderer.MeasureText(sample, Font).Width > TextRenderer.MeasureText(widest, Font).Width) { widest = sample; } }
+                return widest;
+            }
+        }
+        int ValueFit { get { return 6 + TextRenderer.MeasureText(WidestValue, Font).Width; } }
+        // A framed section of sliders: its columns, and its place (the sliders end where the output volume
+        // slider does, so the frame stops FramePad after the value column, and its line FrameGap after the
+        // widest value's end).
+        void FrameSliders(TableLayoutPanel frame, TableLayoutPanel grid, int sectionLeft, int top)
+        {
+            grid.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, labelColumn);
+            grid.ColumnStyles[2] = new ColumnStyle(SizeType.Absolute, ValueFit);
+            foreach (Control c in grid.Controls)
+            {
+                if (grid.GetColumn(c) == 2 && c is Label) { c.MinimumSize = Size.Empty; c.MaximumSize = new Size(ValueFit - 6, 0); }
+            }
+            frame.Margin = new Padding(sectionLeft - FramePad, top, Math.Max(0, valueColumn - FramePad - ValueFit), 0);
+        }
         // The sliders of both tabs stand in one column, in the middle of the window: their names start where
         // the Voice manager's preview box starts, and the sliders end where its output volume slider ends.
         // A grid of sliders is given those columns ('inset': what its section's frame already takes up).
@@ -1847,9 +1877,8 @@ namespace ModernVoicesConfig
             Describe(Sliders["Volume"], "How loud this voice is.");
             Describe(Sliders["Boost"], "Makes the voice's quieter parts louder.");
             Describe(Sliders["Speed"], "Makes this voice faster or slower than the others.\r\nThe speed for all voices is on the Speed and pauses tab.");
-            Centre(soundGrid, FramePad);
             SoundFrame = Frame();
-            SoundFrame.Margin = new Padding(sectionLeft - FramePad, 0, 0, 0);
+            FrameSliders(SoundFrame, soundGrid, sectionLeft, 0);
             Row(SoundFrame, soundLine);
             Row(SoundFrame, soundGrid);
             Row(page, SoundFrame);
@@ -1880,9 +1909,8 @@ namespace ModernVoicesConfig
                 if (!Filling) { saveTimer.Stop(); saveTimer.Start(); }
             };
             gapGrid.Visible = false;
-            Centre(gapGrid, FramePad);
             PauseFrame = Frame();
-            PauseFrame.Margin = new Padding(sectionLeft - FramePad, Px(16), 0, 0);
+            FrameSliders(PauseFrame, gapGrid, sectionLeft, Px(16));
             Row(PauseFrame, OwnBox);
             Row(PauseFrame, gapGrid);
             Row(page, PauseFrame);
@@ -4414,6 +4442,18 @@ namespace ModernVoicesConfig
                     "the sliders' names (their words, " + ui.NameInset + " px inside their labels) and the override box start where the preview box does");
                 Check(Math.Abs(sliderRight - outputRight) <= 1, "the sliders end where the output volume slider ends");
                 Check(volumeBar.Width > 200, "the sliders have room (" + volumeBar.Width + " px)");
+                // Each frame's line is as far from the words inside it on its right (the end of the widest
+                // value) as on its left (the sliders' names): twice what it was in 0.16.
+                int frameLeft = ui.SoundFrame.PointToScreen(Point.Empty).X, frameRight = frameLeft + ui.SoundFrame.Width;
+                int leftGap = nameLeft + ui.NameInset - frameLeft;
+                Label volumeValue = ui.Sliders["Volume"].Value;
+                int valueEnd = volumeValue.PointToScreen(Point.Empty).X + ui.NameInset +
+                    TextRenderer.MeasureText(ui.WidestValue, volumeValue.Font, Size.Empty, TextFormatFlags.NoPadding).Width;
+                int rightGap = frameRight - valueEnd;
+                int pauseLeft = ui.PauseFrame.PointToScreen(Point.Empty).X;
+                Note("the frames' gaps: " + leftGap + " px on the left, " + rightGap + " px on the right (after \"" + ui.WidestValue + "\"); meant to be " + ui.FrameGap);
+                Check(Math.Abs(leftGap - ui.FrameGap) <= 1 && Math.Abs(rightGap - ui.FrameGap) <= 3 && pauseLeft == frameLeft && ui.PauseFrame.Width == ui.SoundFrame.Width,
+                    "each frame's line is as far from the words inside it on its right as on its left");
                 Check(ui.SoundFrame.Contains(volumeBar) && ui.SoundFrame.Contains(ui.ResetButton) && ui.PauseFrame.Contains(ui.OwnBox) &&
                     ui.PauseFrame.Contains(ui.OwnVariation.Bar) && ui.PauseFrame.Top - ui.SoundFrame.Bottom >= 10,
                     "\"How it sounds\" and the override section each have a frame, with a gap between them");

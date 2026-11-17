@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.16.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.17.0.0")]
 
 namespace ModernVoicesReader
 {
@@ -387,6 +387,15 @@ namespace ModernVoicesReader
         // Each page's text as PdfPig gives it: a line per line, an empty line where the gap is a paragraph's.
         public static List<string> Pages(string path)
         {
+            List<HashSet<string>> marks;
+            return Pages(path, out marks);
+        }
+
+        // 'marks': each page's letters drawn in a font of symbols (Wingdings, Symbol, Dingbats): a list's
+        // bullet is often a letter of one of these (Wingdings' "l" is a round bullet, its "\u00D8" an arrowhead).
+        public static List<string> Pages(string path, out List<HashSet<string>> marks)
+        {
+            marks = new List<HashSet<string>>();
             if (!Available) { throw new InvalidOperationException("the PDF reader is missing (" + Path.GetFileName(Library) + "): install Modern Voices again"); }
             List<string> pages = new List<string>();
             try
@@ -408,8 +417,14 @@ namespace ModernVoicesReader
                     for (int i = 1; i <= count; i++)
                     {
                         // (A page that can't be read is left out: the rest is still worth reading.)
-                        try { pages.Add((string)getText.Invoke(null, new object[] { getPage.Invoke(opened, new object[] { i }), true }) ?? ""); }
+                        object read = null;
+                        try
+                        {
+                            read = getPage.Invoke(opened, new object[] { i });
+                            pages.Add((string)getText.Invoke(null, new object[] { read, true }) ?? "");
+                        }
                         catch (System.Reflection.TargetInvocationException) { pages.Add(""); }
+                        marks.Add(SymbolLetters(read, page));
                     }
                 }
                 finally { IDisposable closing = opened as IDisposable; if (closing != null) { closing.Dispose(); } }
@@ -426,9 +441,35 @@ namespace ModernVoicesReader
             return pages;
         }
 
+        static HashSet<string> SymbolLetters(object read, Type page)
+        {
+            HashSet<string> found = new HashSet<string>();
+            if (read == null) { return found; }
+            try
+            {
+                System.Collections.IEnumerable letters = page.GetProperty("Letters").GetValue(read, null) as System.Collections.IEnumerable;
+                if (letters == null) { return found; }
+                System.Reflection.PropertyInfo value = null, font = null;
+                foreach (object letter in letters)
+                {
+                    if (value == null) { value = letter.GetType().GetProperty("Value"); font = letter.GetType().GetProperty("FontName"); }
+                    if (value == null || font == null) { break; }
+                    string name = (font.GetValue(letter, null) as string ?? "").ToLowerInvariant();
+                    string text = (value.GetValue(letter, null) as string ?? "").Trim();
+                    if (text.Length > 0 && (name.Contains("wingding") || name.Contains("webding") || name.Contains("dingbat") || name.Contains("symbol")))
+                    {
+                        found.Add(text);
+                    }
+                }
+            }
+            catch (Exception) { }
+            return found;
+        }
+
         public static string Read(string path)
         {
-            string text = Tidy(Pages(path));
+            List<HashSet<string>> marks;
+            string text = Tidy(Pages(path, out marks), marks);
             if (text.Trim().Length == 0)
             {
                 throw new InvalidOperationException("there is no text in it, only pictures of pages (a scan?). Show a page on the screen and use the magnifying glass");
@@ -442,22 +483,43 @@ namespace ModernVoicesReader
         // with a hyphen is made whole); a line that ends a sentence well short of the others ends a
         // paragraph too; page numbers, and lines that head or foot most pages, are left out; a paragraph
         // that runs over a page's end goes on.
-        public static string Tidy(List<string> pages)
+        //
+        // A list's items: a line that starts with a bullet (a dot, a square, an arrowhead, a tick, a dash, a
+        // letter of a font of symbols, or a sign Windows has no letter for) starts a paragraph of its own,
+        // without the bullet. (Read out, a bullet is a sign's name: "play button" for an arrowhead.)
+        // 'marks' (may be null): each page's letters drawn in a font of symbols (Pages).
+        public static string Tidy(List<string> pages, List<HashSet<string>> marks = null)
         {
-            // Each page's blocks (what stands between empty lines), each block its lines.
+            // Each page's blocks (what stands between empty lines), each block its lines. A list item's
+            // first line starts with Item (taken off when its paragraph is made).
             List<List<List<string>>> all = new List<List<List<string>>>();
-            foreach (string pageText in pages)
+            for (int pageNumber = 0; pageNumber < pages.Count; pageNumber++)
             {
+                string pageText = pages[pageNumber];
+                HashSet<string> symbols = marks != null && pageNumber < marks.Count ? marks[pageNumber] : null;
                 List<List<string>> blocks = new List<List<string>>();
                 List<string> block = new List<string>();
+                bool itemNext = false;
                 foreach (string rawLine in (pageText ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
                 {
-                    string line = Regex.Replace(rawLine.Replace(' ', ' '), @"[ \t]+", " ").Trim();
+                    string line = Regex.Replace(Unmarked(rawLine.Replace('\u00A0', ' '), symbols), @"[ \t]+", " ").Trim();
+                    string rest;
+                    bool item = Bullet(line, symbols, out rest);
+                    if (item) { line = rest; }
                     if (line.Length == 0)
                     {
+                        // (A bullet on a line of its own: the item is the next line.)
+                        if (item) { itemNext = true; }
                         if (block.Count > 0) { blocks.Add(block); block = new List<string>(); }
+                        continue;
                     }
-                    else { block.Add(line); }
+                    if (item || itemNext)
+                    {
+                        if (block.Count > 0) { blocks.Add(block); block = new List<string>(); }
+                        line = Item + line;
+                        itemNext = false;
+                    }
+                    block.Add(line);
                 }
                 if (block.Count > 0) { blocks.Add(block); }
                 all.Add(blocks);
@@ -512,9 +574,11 @@ namespace ModernVoicesReader
                         if (!last && !shortEnd) { continue; }
                         string made = paragraph.ToString();
                         paragraph.Length = 0;
+                        bool listed = made.StartsWith(Item);
+                        if (listed) { made = made.Substring(Item.Length); }
                         // The first paragraph of a page goes on from the last of the page before, where that one
-                        // stopped mid-sentence and this one starts with a small letter.
-                        if (pageStart && paragraphs.Count > 0 && made.Length > 0 && char.IsLower(made[0]) && !EndsSentence.IsMatch(paragraphs[paragraphs.Count - 1]))
+                        // stopped mid-sentence and this one starts with a small letter (not a list's item).
+                        if (pageStart && !listed && paragraphs.Count > 0 && made.Length > 0 && char.IsLower(made[0]) && !EndsSentence.IsMatch(paragraphs[paragraphs.Count - 1]))
                         {
                             StringBuilder joined = new StringBuilder(paragraphs[paragraphs.Count - 1]);
                             Join(joined, made);
@@ -526,6 +590,54 @@ namespace ModernVoicesReader
                 }
             }
             return string.Join("\r\n\r\n", paragraphs.ToArray());
+        }
+
+        const string Item = "\u0001";      // (marks a list item's first line, inside Tidy only)
+
+        // Signs that stand for a list's bullet at a line's start: dots, squares, diamonds, arrowheads,
+        // arrows and ticks. (Dashes and stars count only with a space after them: "-5" is a number.)
+        const string BulletSigns = "\u2022\u25E6\u2023\u2043\u2219\u00B7\u25AA\u25AB\u25A0\u25A1\u25CF\u25CB\u25C6\u25C7\u25CA\u2666\u2756" +
+            "\u25BA\u25B6\u25B8\u25B9\u25BB\u25B7\u27A2\u27A3\u27A4\u2794\u279C\u279D\u279E\u2192\u21D2\u21E8\u2713\u2714\u2717\u2718" +
+            "\u2751\u2752\u274F\u2750\u29BE\u29BF\u2B9A\u2BC8\u25A3\u25FE\u25FD\u25AC";
+
+        // A sign Windows has no letter for (the Private Use Area: how a symbol font's letters often come
+        // out of a PDF).
+        static bool Unlettered(char c) { return c >= '\uE000' && c <= '\uF8FF'; }
+
+        public static bool Bullet(string line, HashSet<string> symbols, out string rest)
+        {
+            rest = line;
+            if (line.Length == 0) { return false; }
+            char first = line[0];
+            bool spaced = line.Length == 1 || char.IsWhiteSpace(line[1]);
+            bool sign = BulletSigns.IndexOf(first) >= 0 || Unlettered(first);
+            // A symbol font's letter ("l", "n", "q", "\u00D8"...) or a dash or star: only with a space after it.
+            bool symbol = spaced && symbols != null && symbols.Contains(first.ToString());
+            bool dash = spaced && line.Length > 1 && (first == '-' || first == '\u2013' || first == '\u2014' || first == '*' || first == 'o' && symbols != null && symbols.Contains("o"));
+            if (!sign && !symbol && !dash) { return false; }
+            // (A dash with no words after it is not a bullet: "- 3 -" is a page number.)
+            string after = line.Substring(1).TrimStart();
+            if (dash && !Regex.IsMatch(after, @"\p{L}")) { return false; }
+            rest = after;
+            return true;
+        }
+
+        // A line without the signs of a symbol font, or with no letter, inside it (a bullet's sign at its
+        // start is kept, for Bullet to find).
+        static string Unmarked(string line, HashSet<string> symbols)
+        {
+            if (line.Length < 2) { return line; }
+            StringBuilder kept = new StringBuilder(line.Length);
+            int start = 0;
+            while (start < line.Length && char.IsWhiteSpace(line[start])) { start++; }
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                bool symbol = symbols != null && symbols.Contains(c.ToString()) && !char.IsLetterOrDigit(c);
+                if (i > start && (Unlettered(c) || symbol)) { kept.Append(' '); continue; }
+                kept.Append(c);
+            }
+            return kept.ToString();
         }
 
         static List<string> Edges(List<List<string>> blocks)
@@ -3247,6 +3359,15 @@ namespace ModernVoicesReader
                     "A paragraph with no gap before it starts on this line and then it stops in the middle of a sentence, which goes on over the page.\r\n\r\nSecond page, second paragraph.\r\n\r\nThe last page.",
                     "a PDF's lines become paragraphs: broken words joined, page numbers and running heads left out, a paragraph goes on over a page");
                 Check(Pdf.Tidy(new List<string>(new string[] { "", "  \r\n" })) == "", "a PDF with no text gives none");
+                // Lists: each item a paragraph of its own, its bullet not read.
+                List<string> listPage = new List<string>();
+                listPage.Add("Things to bring:\r\n\u2022 A coat\r\n\u25B6 Boots that\r\nfit well\r\n\uF0D8 Water\r\nl A map\r\n\u2022\r\nA torch\r\n- Food\r\n\r\n-5 degrees at night \uF0A7 or colder.");
+                List<HashSet<string>> listMarks = new List<HashSet<string>>();
+                listMarks.Add(new HashSet<string>(new string[] { "l", "\uF0D8" }));
+                string listed = Pdf.Tidy(listPage, listMarks);
+                log.AppendLine("pdf list tidied: " + listed.Replace("\r\n\r\n", " / "));
+                Check(listed == "Things to bring:\r\n\r\nA coat\r\n\r\nBoots that fit well\r\n\r\nWater\r\n\r\nA map\r\n\r\nA torch\r\n\r\nFood\r\n\r\n-5 degrees at night or colder.",
+                    "a PDF's list: each item its own paragraph, without its bullet (dots, arrowheads, a symbol font's letters, dashes)");
                 // A real PDF, read by the PDF reader beside this program.
                 Check(Pdf.Available, "the PDF reader is beside the Reader (" + Path.GetFileName(Pdf.Library) + ")");
                 string pdf = Path.Combine(made, "pages.pdf");
@@ -3254,14 +3375,14 @@ namespace ModernVoicesReader
                 {
                     File.WriteAllBytes(pdf, TestPdf(new string[][] {
                         new string[] { "A Heading", "", "The first paragraph starts on this line, which is long enough,", "and goes on to a second line (with brackets) and a caf\u00e9.", "", "A second paragraph, after a gap, ends in the mid-", "dle of a word. Then it stops in the middle of a" },
-                        new string[] { "sentence that goes on over the page.", "", "The last paragraph.", "", "2" } }));
+                        new string[] { "sentence that goes on over the page.", "", "The last paragraph.", "\u2022 A listed item", "\u2022 Another one", "", "2" } }));
                     List<string> rawPages = Pdf.Pages(pdf);
                     for (int i = 0; i < rawPages.Count; i++) { log.AppendLine("pdf page " + (i + 1) + " as read: " + rawPages[i].Replace("\r", "").Replace("\n", " | ")); }
                     string fromPdf = Files.Read(pdf);
                     log.AppendLine("pdf: " + fromPdf.Replace("\r\n\r\n", " / "));
                     Check(fromPdf == "A Heading\r\n\r\nThe first paragraph starts on this line, which is long enough, and goes on to a second line (with brackets) and a caf\u00e9.\r\n\r\n" +
-                        "A second paragraph, after a gap, ends in the middle of a word. Then it stops in the middle of a sentence that goes on over the page.\r\n\r\nThe last paragraph.",
-                        "a PDF is read: its paragraphs, accents and brackets, across two pages");
+                        "A second paragraph, after a gap, ends in the middle of a word. Then it stops in the middle of a sentence that goes on over the page.\r\n\r\nThe last paragraph.\r\n\r\nA listed item\r\n\r\nAnother one",
+                        "a PDF is read: its paragraphs, accents, brackets and a list, across two pages");
                     string noText = Path.Combine(made, "scan.pdf");
                     File.WriteAllBytes(noText, TestPdf(new string[][] { new string[] { } }));
                     string scanSaid = "";
@@ -3458,7 +3579,7 @@ namespace ModernVoicesReader
                     if (Pdf.Available)
                     {
                         form.OpenFile(Path.Combine(made, "pages.pdf"));
-                        Check(form.BoxText.StartsWith("A Heading\r\n\r\nThe first paragraph") && form.BoxText.EndsWith("The last paragraph."), "Open a file opens a PDF");
+                        Check(form.BoxText.StartsWith("A Heading\r\n\r\nThe first paragraph") && form.BoxText.EndsWith("Another one"), "Open a file opens a PDF");
                     }
 
                     // A file's place is kept for when it is opened again.

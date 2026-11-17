@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.16.0
+Modern Voices for Windows 0.17.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -234,7 +234,8 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     you stopped in it (while its text is unchanged). (Not the older .doc: copy the text from those
     and press Paste and read.)
     A PDF's text is put back into paragraphs: lines are joined, words broken at a line's end are
-    made whole, and page numbers and the line that heads or foots every page are left out. That is
+    made whole, and page numbers and the line that heads or foots every page are left out. Each item
+    of a list is read as a paragraph of its own, without its bullet (dots, arrows, ticks, dashes). That is
     worked out from where the words stand on the page, so now and then a paragraph is split or two
     are joined; tables and pages in columns can come out in an odd order. A scanned PDF is pictures
     of pages and has no text to open: show a page on the screen and use the magnifying glass. A PDF
