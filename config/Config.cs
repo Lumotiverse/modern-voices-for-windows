@@ -1252,6 +1252,7 @@ namespace ModernVoicesConfig
         public Label SavedNote;
         public TableLayoutPanel SoundFrame, PauseFrame, GlobalGrid, AdvancedGrid;      // the framed sections, and the Speed tab's sliders
         public TableLayoutPanel OutLine;
+        public int NameInset;
         int labelColumn, valueColumn, previewColumn;      // the sliders' columns, the same on both tabs
         public Slider OwnVariation;          // the selected voice's own variation (with its own pauses)
         // Each installed voice's language, by the name programs see (for the preview text in its language).
@@ -1767,6 +1768,11 @@ namespace ModernVoicesConfig
             // does, and they end where the output volume slider does.
             previewColumn = previewLabel.PreferredSize.Width + previewLabel.Margin.Horizontal;
             previewLine.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, previewColumn);
+            // (A label's words start a little inside it: the sections are set that much to the left, so
+            // that the words themselves, not their labels, start at the preview box's edge.)
+            NameInset = Math.Max(0, (TextRenderer.MeasureText("Volume", Font).Width -
+                TextRenderer.MeasureText("Volume", Font, Size.Empty, TextFormatFlags.NoPadding).Width) / 2);
+            int sectionLeft = previewColumn - NameInset;
             labelColumn = 0;
             foreach (string sliderName in new string[] { "Volume", "Boost", "Dictation speed", "Sentence pause", "Comma pause", "Paragraph gap", "Voice variation" })
             {
@@ -1841,7 +1847,7 @@ namespace ModernVoicesConfig
             Describe(Sliders["Speed"], "Makes this voice faster or slower than the others.\r\nThe speed for all voices is on the Speed and pauses tab.");
             Centre(soundGrid, FramePad);
             SoundFrame = Frame();
-            SoundFrame.Margin = new Padding(previewColumn - FramePad, 0, 0, 0);
+            SoundFrame.Margin = new Padding(sectionLeft - FramePad, 0, 0, 0);
             Row(SoundFrame, soundLine);
             Row(SoundFrame, soundGrid);
             Row(page, SoundFrame);
@@ -1850,6 +1856,7 @@ namespace ModernVoicesConfig
             OwnBox = new CheckBox();
             OwnBox.Text = "Override pause duration and variation for the selected voice";
             OwnBox.AutoSize = true; OwnBox.Enabled = false; OwnBox.Checked = false;
+            OwnBox.Margin = new Padding(3 + NameInset, 3, 3, 3);      // (its box, not its words, starts at that edge)
             gapGrid = Line("auto", "fill", "auto");
             Sliders["Sentence gap"] = AddSlider(gapGrid, "Sentence pause", 0, Store.SentenceLimit, 50, 250, 250, true);
             Sliders["Comma gap"] = AddSlider(gapGrid, "Comma pause", 0, Store.CommaLimit, 50, 250, 250, true);
@@ -1873,7 +1880,7 @@ namespace ModernVoicesConfig
             gapGrid.Visible = false;
             Centre(gapGrid, FramePad);
             PauseFrame = Frame();
-            PauseFrame.Margin = new Padding(previewColumn - FramePad, Px(16), 0, 0);
+            PauseFrame.Margin = new Padding(sectionLeft - FramePad, Px(16), 0, 0);
             Row(PauseFrame, OwnBox);
             Row(PauseFrame, gapGrid);
             Row(page, PauseFrame);
@@ -1886,7 +1893,7 @@ namespace ModernVoicesConfig
             };
             // Under the sections, starting where the sliders' names do, with room above.
             SavedNote = Words("Changes are saved straight away: press Preview to hear them.", true);
-            SavedNote.Margin = new Padding(previewColumn + 3, Px(16), SavedNote.Margin.Right, SavedNote.Margin.Bottom);
+            SavedNote.Margin = new Padding(sectionLeft + 3, Px(16), SavedNote.Margin.Right, SavedNote.Margin.Bottom);
             Row(page, SavedNote);
 
             InstalledList.SelectedIndexChanged += delegate { UpdateInstalled(); };
@@ -1941,16 +1948,17 @@ namespace ModernVoicesConfig
             }
             // The sliders stand in the middle of the window, in the same columns as the Voice manager's; what
             // follows them starts where their names do.
+            int sectionLeft = previewColumn - NameInset;
             Centre(globalGrid, 0);
-            globalGrid.Margin = new Padding(previewColumn, 0, 0, 0);
+            globalGrid.Margin = new Padding(sectionLeft, 0, 0, 0);
             GlobalGrid = globalGrid;
             Row(page, globalGrid);
             Label pausesNote = Words("Pauses get shorter when speech is faster and longer when it is slower. A long comma pause can make sentences " +
                 "sound a little less smooth.", true);
-            pausesNote.Margin = new Padding(previewColumn + 3, pausesNote.Margin.Top, pausesNote.Margin.Right, pausesNote.Margin.Bottom);
+            pausesNote.Margin = new Padding(sectionLeft + 3, pausesNote.Margin.Top, pausesNote.Margin.Right, pausesNote.Margin.Bottom);
             Row(page, pausesNote);
             TableLayoutPanel resetLine = Line("auto", "fill");
-            resetLine.Margin = new Padding(previewColumn, Px(18), resetLine.Margin.Right, resetLine.Margin.Bottom);
+            resetLine.Margin = new Padding(sectionLeft, Px(18), resetLine.Margin.Right, resetLine.Margin.Bottom);
             Button pausesReset = Btn("Reset to defaults");
             resetLine.Controls.Add(pausesReset, 0, 0);
             // (Its words level with the button's: in the middle of the row's height.)
@@ -1962,7 +1970,7 @@ namespace ModernVoicesConfig
 
             // Advanced: how much the voices vary from one saying to the next.
             Label advanced = Words("Advanced setting", false, true);
-            advanced.Margin = new Padding(previewColumn + 3, Px(22), advanced.Margin.Right, advanced.Margin.Bottom);
+            advanced.Margin = new Padding(sectionLeft + 3, Px(22), advanced.Margin.Right, advanced.Margin.Bottom);
             Row(page, advanced);
             TableLayoutPanel advancedGrid = Line("auto", "fill", "auto");
             Slider variation = AddSlider(advancedGrid, "Voice variation", 0, Store.VariationLimit, 5, 25, 25, true);
@@ -1972,7 +1980,7 @@ namespace ModernVoicesConfig
                 "livelier but less predictable. 100% is how the voices were made; 75% is this program's default.", true));
             AddNote(advancedGrid, Words("Preview uses the new value straight away. Programs that are already open use it after you restart them.", true));
             Centre(advancedGrid, 0);
-            advancedGrid.Margin = new Padding(previewColumn, 0, 0, 0);
+            advancedGrid.Margin = new Padding(sectionLeft, 0, 0, 0);
             AdvancedGrid = advancedGrid;
             Row(page, advancedGrid);
             EventHandler variationShown = delegate
@@ -2851,6 +2859,8 @@ namespace ModernVoicesConfig
             if (!Filling && CurrentInstalled != null) { saveTimer.Stop(); saveTimer.Start(); }
         }
         public bool OwnPausesShown { get { return gapGrid.Visible; } }
+        // (For a picture of the override sliders: shown or hidden, nothing saved.)
+        public void PeekOwnPauses(bool on) { gapGrid.Visible = on; }
         public string TipOf(Control c) { return tips.GetToolTip(c) ?? ""; }
 
         // ---- the Voice manager
@@ -4398,7 +4408,8 @@ namespace ModernVoicesConfig
                 int outputRight = ui.OutputBar.PointToScreen(new Point(ui.OutputBar.Width, 0)).X;
                 Note("preview box starts at " + boxLeft + ", the sliders' names at " + nameLeft + ", the override box at " + tickLeft +
                     "; the sliders end at " + sliderRight + ", the output volume at " + outputRight);
-                Check(Math.Abs(boxLeft - nameLeft) <= 1 && Math.Abs(boxLeft - tickLeft) <= 1, "the sliders' names and the override box start where the preview box does");
+                Check(Math.Abs(boxLeft - ui.NameInset - nameLeft) <= 1 && Math.Abs(boxLeft - tickLeft) <= 1 && ui.NameInset >= 1 && ui.NameInset <= 8,
+                    "the sliders' names (their words, " + ui.NameInset + " px inside their labels) and the override box start where the preview box does");
                 Check(Math.Abs(sliderRight - outputRight) <= 1, "the sliders end where the output volume slider ends");
                 Check(volumeBar.Width > 200, "the sliders have room (" + volumeBar.Width + " px)");
                 Check(ui.SoundFrame.Contains(volumeBar) && ui.SoundFrame.Contains(ui.ResetButton) && ui.PauseFrame.Contains(ui.OwnBox) &&
@@ -5027,6 +5038,20 @@ namespace ModernVoicesConfig
                     ui.ShowPage(i);
                     Settle(200);
                     ui.Picture(Path.Combine(folder, shape[0] + "-" + (i + 1) + ".png"));
+                    // The dark ones again, scrolled to the foot of a tab that doesn't fit (the Voice manager's with
+                    // the override sliders showing).
+                    if (shape[0] != "dark") { continue; }
+                    bool peeked = i == 0 && !ui.OwnPausesShown;
+                    if (peeked) { ui.PeekOwnPauses(true); Settle(100); }
+                    if (ui.Pages[i].DisplayRectangle.Height > ui.Pages[i].ClientSize.Height)
+                    {
+                        ui.Pages[i].AutoScrollPosition = new Point(0, 20000);
+                        Settle(200);
+                        ui.Picture(Path.Combine(folder, shape[0] + "-" + (i + 1) + "-lower.png"));
+                        ui.Pages[i].AutoScrollPosition = new Point(0, 0);
+                    }
+                    if (peeked) { ui.PeekOwnPauses(false); }
+                    Settle(100);
                 }
             }
             Theme.Override = null;

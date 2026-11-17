@@ -353,7 +353,7 @@ function New-LocationForm([string]$Default, [string]$Pick = 'en') {
     $form = New-Object System.Windows.Forms.Form
     $form.Text = "$AppName $Version - install"
     Set-UiIcon $form
-    $form.Size = New-Object System.Drawing.Size(640, 414)
+    $form.Size = New-Object System.Drawing.Size(640, 430)
     $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false; $form.MinimizeBox = $false
     $form.StartPosition = 'CenterScreen'
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
@@ -364,12 +364,12 @@ function New-LocationForm([string]$Default, [string]$Pick = 'en') {
     [void](New-Control 'Label' $form 16 50 600 20 'Install to:' '')
     $path = New-Control 'TextBox' $form 16 72 480 24 $Default ''
     $change = New-Control 'Button' $form 506 70 100 27 'Change...' ''
-    $note = New-Control 'Label' $form 16 106 590 90 '' ''
+    $note = New-Control 'Label' $form 16 106 590 106 '' ''
     $note.ForeColor = [System.Drawing.Color]::DimGray
     # The language of the voices to choose from: English (all of it, or British or American first), or
     # one of the other languages offered, without English.
-    [void](New-Control 'Label' $form 16 206 600 20 'Language of the voices:' '')
-    $pickBox = New-Control 'ComboBox' $form 16 228 300 24 '' ''
+    [void](New-Control 'Label' $form 16 222 600 20 'Language of the voices:' '')
+    $pickBox = New-Control 'ComboBox' $form 16 244 300 24 '' ''
     $pickBox.DropDownStyle = 'DropDownList'
     $pickBox.MaxDropDownItems = 16
     $codes = @('en', 'en_GB', 'en_US')
@@ -380,12 +380,12 @@ function New-LocationForm([string]$Default, [string]$Pick = 'en') {
         $codes += [string]$code
     }
     $pickBox.SelectedIndex = [Math]::Max(0, [Array]::IndexOf($codes, $Pick))
-    $pickNote = New-Control 'Label' $form 16 260 590 62 ("The window that opens after installing lists these voices for you to choose from: nothing is " +
+    $pickNote = New-Control 'Label' $form 16 276 590 62 ("The window that opens after installing lists these voices for you to choose from: nothing is " +
         "installed until you tick it there. With a language other than English, the English voices are not listed. " +
         "You can change this later, with that window's Additional languages button.") ''
     $pickNote.ForeColor = [System.Drawing.Color]::DimGray
-    $install = New-Control 'Button' $form 400 330 100 30 'Install' ''
-    $cancel = New-Control 'Button' $form 506 330 100 30 'Cancel' ''
+    $install = New-Control 'Button' $form 400 346 100 30 'Install' ''
+    $cancel = New-Control 'Button' $form 506 346 100 30 'Cancel' ''
     $install.DialogResult = 'OK'; $cancel.DialogResult = 'Cancel'
     $form.AcceptButton = $install; $form.CancelButton = $cancel
     $script:Where = @{ Form = $form; Path = $path; Note = $note; Pick = $pickBox; Codes = $codes }
