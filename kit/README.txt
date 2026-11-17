@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.17.0
+Modern Voices for Windows 0.18.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -26,7 +26,9 @@ Install
    ones, and a note says what to expect (in that language, with the English under it). Nothing is
    installed by the choice itself, and it can be changed later ("Additional languages...", step 3).
    Updating an installed version does not ask.
-3. The Modern Voices Config window opens (if you can't see it, it's on the taskbar). On "Add or remove
+3. The Modern Voices Config window opens (if you can't see it, it's on the taskbar). The first time,
+   a "Powered by" window over it names what the program is made from: click it to close it. While no
+   voice is installed, a note then says where to start (OK or its X closes it). On "Add or remove
    voices", tick the voices you want. Select one and press Play sample to hear it first (press it
    again, "Stop sample" meanwhile, to stop). Voices with
    several speakers (VCTK, LibriTTS, ...) list their speakers in name order: click a name to hear

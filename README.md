@@ -7,8 +7,11 @@ Windows has had a standard way for programs to speak since the early 2000s (call
 readers, e-book readers, games and many other programs use it. The voices Windows supplies for it
 are old and robotic, and the newer "natural" voices in Narrator can't be used by those programs.
 Modern Voices for Windows adds modern neural voices that they can use: 64-bit and 32-bit programs
-alike. English voices are installed by default, and voices in over 25 other European languages can be
+alike. English voices are offered first, and voices in over 25 other European languages can be
 added (see [Other languages](#other-languages)).
+
+It comes with its own Reader, which reads aloud whatever you paste or copy, documents (Word, PDF, web
+pages and plain text) and text on the screen, and can save what it reads as an MP3 or WAV file.
 
 Modern Voices for Windows is free to use and open source.
 
@@ -71,8 +74,13 @@ This program is a thin layer over years of work by people who actually know how 
 - **Piper** (Michael Hansen and contributors) for the voices and the way of making them.
 - **eSpeak NG** (Jonathan Duddington, Reece H. Dunn and contributors) for pronunciation.
 - **sherpa-onnx** (the k2-fsa project) and **ONNX Runtime** (Microsoft) for running the voices.
-- **PdfPig** (UglyToad and contributors) for reading PDFs in the Reader, and **LAME** (the LAME
-  Project) for saving MP3s.
+- **Claude** (Anthropic) translated the parts written in other languages: each voice's preview text
+  and the installer's note.
+- **[PdfPig](https://github.com/UglyToad/PdfPig)** (UglyToad and contributors) for reading the
+  text of PDFs in the Reader.
+- **[LAME](https://lame.sourceforge.io)** (the LAME Project) for saving MP3 files; the Windows builds
+  are [RareWares'](https://www.rarewares.org/mp3-lame-libraries.php), as kept by the
+  [NAudio.Lame](https://github.com/Corey-M/NAudio.Lame) project.
 - Everyone who recorded their voice for a research collection or an audiobook and let it be used.
 
 The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
@@ -82,7 +90,7 @@ The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES
 | Program | What it is for |
 |---|---|
 | **Modern Voices Config** | Choose and download voices, set how each one sounds (volume, speed, pauses), teach it how to pronounce names and words, and pick Windows' default voice. |
-| **Modern Voices Reader** | Reads text aloud: pasted or copied text, documents, web pages you copy, and text on the screen. It can save the reading as a sound file. |
+| **Modern Voices Reader** | Reads text aloud: pasted or copied text, documents (Word, PDF, rich text, web pages, plain text), and text on the screen. It can save the reading as an MP3 or WAV file. See [The Reader](#the-reader). |
 | **Modern Voices Repair** | Registers the voices with Windows again, if a large Windows update makes them vanish from programs. |
 | **Modern Voices Test** | Speaks with each voice and shows what the engine reports, to find out whether a problem is with the voices or with the program using them. |
 
@@ -90,8 +98,36 @@ The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES
 select the voices you want to add from the list, and everything should work.
 
 To install, download `ModernVoicesForWindows<version>.zip` from
-[Releases](../../releases), unzip it and run `Install.cmd`. To update, do the same with the new
-version: your voices and settings stay. `README.txt` in the zip is the user's guide.
+[Releases](../../releases), unzip it and run `Install.cmd`. The installer's first window asks where to
+install and which language's voices you want to choose from. Modern Voices Config then opens on
+**Add or remove voices** with a short note saying where to start: tick the voices you want and press
+**Apply changes**. To update, do the same with the new version: your voices and settings stay, and
+nothing is asked. `README.txt` in the zip is the user's guide.
+
+## The Reader
+
+Modern Voices Reader is a small window for reading text aloud with any of the installed voices
+(or any other Windows voice).
+
+- **Paste and read**, or tick **Instantly read copy** to have it read whatever you copy, in any
+  program. **Don't read links** skips web addresses, code and stray symbols.
+- **Open a file:** plain text, Markdown, Word documents (.docx), **PDFs**, rich text (.rtf) and web
+  pages (.html). Dropping a file on the window opens it too. A file opened again carries on from
+  where you stopped.
+- **The magnifying glass** reads text on the screen: drag a box around it (it uses Windows' own text
+  recognition).
+- **Save as audio:** the text as an **MP3** (about half a megabyte a minute) or a **WAV** file, made
+  as fast as the voice can, without playing it.
+- Pick a voice from the list, give it a nickname, set it as Windows' default voice, and set the
+  speed and volume. Undo and redo for the text, and the text can be kept for next time.
+
+**A note on PDFs.** A PDF doesn't store sentences and paragraphs, only where each letter sits on a
+page, so the Reader works out the text from that. It joins lines into paragraphs, mends words broken
+at a line's end, reads each item of a list without its bullet, and leaves out page numbers and
+running headers. **Opening a PDF can load with some inaccuracies in the text:** a paragraph may be
+split in two or joined to the next, and tables or pages in columns can come out in an odd order. A
+scanned PDF is a picture of the pages and has no text to open (show it on the screen and use the
+magnifying glass instead), and a PDF locked with a password can't be opened.
 
 ## Other languages
 
@@ -189,6 +225,7 @@ collection (version 1.0.0). They are not part of this project and keep their own
 | `config/` | Modern Voices Config (C#, Windows Forms): the settings window |
 | `reader/` | Modern Voices Reader (C#, Windows Forms) |
 | `kit/` | what goes at the top of the packaged kit (`Install.cmd`, `README.txt`) |
+| `third-party/reader/` | the Reader's two outside libraries, unchanged: PdfPig (reads PDFs) and LAME (makes MP3s); `Package.ps1` copies them into the kit after checking each file's SHA-256 |
 | `tools/` | `Package.ps1` (sign and package), `Get-SherpaX86.ps1` (32-bit sherpa-onnx), `Test-Kit.ps1` (end-to-end test), `make_icons.py` |
 | `.github/workflows/build.yml` | builds 64- and 32-bit engines, signs, packages `ModernVoicesForWindows<version>.zip`, and runs the end-to-end test |
 | `HANDOFF.md` | notes for whoever (or whichever AI) picks the work up next |
@@ -200,4 +237,6 @@ Push to `main` (or run the workflow by hand) to build. The version is `engine/Ca
 
 GPL-3.0-or-later (eSpeak NG, built into the engine, is GPL-3.0). See [LICENSE](LICENSE) and
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). The voices are downloaded at install time and
-keep their own licences.
+keep their own licences. The Reader's two libraries, which lie beside it as separate files, keep
+theirs too: PdfPig is Apache-2.0 and LAME is LGPL (a different build of LAME can be put in its
+place).

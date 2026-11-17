@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.17.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.0.0")]
 
 namespace ModernVoicesConfig
 {
@@ -2740,6 +2740,56 @@ namespace ModernVoicesConfig
             return window;
         }
 
+        // Over Add or remove voices whenever Config opens with no voice installed (after "Powered by", the
+        // first time): where to start. OK, its X, Enter or Esc closes it.
+        public const string FirstVoicesWords = "Select the voices you wish to download and install, then click Apply changes.";
+        public Form FirstVoicesWindow()
+        {
+            Form window = new Form();
+            window.Text = App.Name; window.Font = Font;
+            window.FormBorderStyle = FormBorderStyle.None; window.ShowInTaskbar = false;
+            window.StartPosition = FormStartPosition.CenterParent; window.KeyPreview = true;
+            window.BackColor = palette.Input; window.ForeColor = palette.Text;
+            window.Paint += delegate(object sender, PaintEventArgs e)
+            {
+                using (Pen edge = new Pen(palette.TabOn, Px(2))) { e.Graphics.DrawRectangle(edge, Px(1), Px(1), window.ClientSize.Width - Px(2), window.ClientSize.Height - Px(2)); }
+            };
+            int width = Px(340);
+            Label words = new Label();
+            words.Name = "words"; words.UseMnemonic = false;
+            words.Text = FirstVoicesWords; words.AutoSize = false; words.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            words.Font = new Font(Font.FontFamily, Font.Size + 1.5f); words.ForeColor = palette.Text; words.BackColor = palette.Input;
+            words.Size = new Size(width, TextRenderer.MeasureText(FirstVoicesWords, words.Font, new Size(width, 0), TextFormatFlags.WordBreak | TextFormatFlags.HorizontalCenter).Height + Px(4));
+            words.Location = new Point(Px(30), Px(40));
+            window.Controls.Add(words);
+            Button ok = Btn("OK");
+            ok.Name = "ok"; ok.MinimumSize = new Size(Px(90), 0);
+            ThemeOn(ok, palette);
+            ok.DialogResult = DialogResult.OK;
+            window.Controls.Add(ok);
+            Size okSize = ok.PreferredSize;
+            ok.Size = new Size(Math.Max(okSize.Width, Px(90)), okSize.Height);
+            ok.Location = new Point(Px(30) + (width - ok.Width) / 2, words.Bottom + Px(22));
+            window.ClientSize = new Size(width + Px(60), ok.Bottom + Px(24));
+            window.AcceptButton = ok; window.CancelButton = ok;
+            // The X, in the top right corner, as on "Powered by".
+            Label x = new Label();
+            x.AutoSize = false; x.Size = new Size(Px(34), Px(30)); x.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            x.ForeColor = palette.Text; x.BackColor = palette.Input; x.Cursor = Cursors.Hand;
+            Font closeSymbols = new Font("Segoe MDL2 Assets", Font.Size + 1f);
+            if (closeSymbols.Name == "Segoe MDL2 Assets") { x.Font = closeSymbols; x.Text = "\uE8BB"; }
+            else { x.Font = new Font(Font.FontFamily, Font.Size + 2f, FontStyle.Bold); x.Text = "X"; }
+            x.Name = "close";
+            x.Location = new Point(window.ClientSize.Width - x.Width - Px(4), Px(4));
+            x.MouseEnter += delegate { x.BackColor = Color.FromArgb(196, 43, 28); x.ForeColor = Color.White; };
+            x.MouseLeave += delegate { x.BackColor = palette.Input; x.ForeColor = palette.Text; };
+            x.Click += delegate { window.DialogResult = DialogResult.OK; window.Close(); };
+            window.Controls.Add(x);
+            x.BringToFront();
+            window.Shown += delegate { ok.Focus(); };
+            return window;
+        }
+
         public static string ReaderExe { get { return Path.Combine(Path.Combine(App.Folder, "reader"), "ModernVoicesReader.exe"); } }
         void OpenReader()
         {
@@ -4089,11 +4139,20 @@ namespace ModernVoicesConfig
                 Application.UseWaitCursor = false;
                 Cursor.Current = Cursors.Default;
                 Startup.Mark("window shown"); Startup.Save();
-                // The first time: "Powered by", over the window, until it is clicked.
-                if (!Welcome.Seen)
+                // The first time: "Powered by", over the window, until it is clicked. Then, with no voice
+                // installed (the window opens on Add or remove voices), where to start.
+                bool welcome = !Welcome.Seen;
+                if (welcome) { Welcome.Seen = true; }
+                if (welcome || form.InstalledList.Items.Count == 0)
                 {
-                    Welcome.Seen = true;
-                    form.BeginInvoke((MethodInvoker)delegate { using (Form powered = form.PoweredByWindow()) { powered.ShowDialog(form); } });
+                    form.BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (welcome) { using (Form powered = form.PoweredByWindow()) { powered.ShowDialog(form); } }
+                        if (form.InstalledList.Items.Count == 0 && !form.IsDisposed)
+                        {
+                            using (Form start = form.FirstVoicesWindow()) { start.ShowDialog(form); }
+                        }
+                    });
                 }
             };
             Application.Run(form);
@@ -4745,6 +4804,17 @@ namespace ModernVoicesConfig
                     Check(corner.Name == "close" && corner.Text.Length == 1 && corner.Bounds.Contains(new Point(powered.ClientSize.Width - 16, 16)),
                         "its X is in the top right corner, over the rest");
                     if (pictures) { SavePicture(powered, Path.Combine(folder, "powered-by.png")); }
+                }
+                using (Form start = ui.FirstVoicesWindow())
+                {
+                    Control startWords = start.Controls["words"], startOk = start.Controls["ok"], startX = start.Controls["close"];
+                    Check(startWords != null && startWords.Text == "Select the voices you wish to download and install, then click Apply changes." &&
+                        startOk is Button && startOk.Text == "OK" && start.AcceptButton == startOk && start.CancelButton == startOk &&
+                        startX != null && startX.Bounds.Contains(new Point(start.ClientSize.Width - 16, 16)) && start.Controls[0] == startX,
+                        "with no voice installed: \"Select the voices...\", with OK and an X in the top right corner");
+                    Check(startOk.Bottom < start.ClientSize.Height && startWords.Right < startX.Left + startX.Width && startWords.Top >= startX.Bottom - 2,
+                        "its words and OK fit inside it, under the X");
+                    if (pictures) { SavePicture(start, Path.Combine(folder, "select-voices.png")); }
                 }
                 Check(ui.AboutButton.Visible && ui.AboutButton.PointToScreen(Point.Empty).X < ui.ThemeButton.PointToScreen(Point.Empty).X, "About is in the header, left of the moon");
                 int notePage = ui.PageIndex;

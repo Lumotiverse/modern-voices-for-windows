@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.17.0 (17 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.0 (17 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -11,7 +11,20 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
-## 0.17.0 (17 Nov 2026), delivered, not yet confirmed by him
+## 0.18.0 (17 Nov 2026), delivered, not yet confirmed by him
+
+Built on Opus 5.5.
+1. **GitHub README**: a new "The Reader" section (features, and his note that opening a PDF can load
+   with some inaccuracies in the text), the Reader in the intro and the "What you get" table, the
+   install's first windows, PdfPig / LAME (with RareWares and NAudio.Lame) and Claude's translations
+   in "Standing on other people's work", `third-party/reader/` in the developers' table, the
+   libraries' licences under Licence.
+2. **"Select voices" note** (`FirstVoicesWindow`, words in `FirstVoicesWords`, his wording): borderless
+   like "Powered by", with OK and an X (top right); Enter / Esc close it. `Program.Main` shows it
+   whenever Config opens with no voice installed, after "Powered by" on the first start (both from one
+   `BeginInvoke`, one after the other, over the window, which opens on Add or remove voices).
+   Picture: select-voices.png.
+
 
 Built on Opus 5.5 (he switched). His three points after trying 0.16:
 
