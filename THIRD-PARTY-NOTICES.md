@@ -34,6 +34,20 @@ libraries are the project's own prebuilt static release (`sherpa-onnx-v1.13.8-wi
 which the `sherpa-onnx-sys` crate downloads at the first build; the components above are what that
 release is made of.
 
+## Beside the Reader
+
+Two libraries lie beside `ModernVoicesReader.exe` as files of their own, unchanged, and are loaded
+only when they are needed. Neither is part of the engine. The build fetches them (`tools/Package.ps1`,
+which names where from and checks each file's SHA-256).
+
+| Component | License | Source |
+|---|---|---|
+| **PdfPig** 0.1.8 (`UglyToad.PdfPig*.dll`: reads the text of PDFs), by UglyToad (Eliot Jones) and contributors | Apache-2.0 ([licenses/Apache-2.0.txt](licenses/Apache-2.0.txt)) | https://github.com/UglyToad/PdfPig |
+| **LAME** 3.100 (`libmp3lame.64.dll`, `libmp3lame.32.dll`: makes MP3 files), by the LAME Project; these builds are RareWares', as distributed with NAudio.Lame | LGPL-2.0-or-later ([licenses/LGPL-2.0-lame.txt](licenses/LGPL-2.0-lame.txt)) | https://lame.sourceforge.io (source), https://www.rarewares.org/mp3-lame-libraries.php (builds), https://github.com/Corey-M/NAudio.Lame |
+
+LAME is used as a separate library, as the LGPL allows: to use another build of it, replace the two
+`libmp3lame` files in the Reader's folder.
+
 ## Not built into the engine
 
 - **The voice models** are separate files the engine loads (`model.onnx`, `tokens.txt`, `voice.json`

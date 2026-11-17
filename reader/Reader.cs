@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.15.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.16.0.0")]
 
 namespace ModernVoicesReader
 {
@@ -287,21 +287,27 @@ namespace ModernVoicesReader
 
     public static class Files
     {
-        public const string Filter = "Text and documents (*.txt, *.md, *.docx, *.rtf, *.html)|*.txt;*.md;*.markdown;*.text;*.log;*.docx;*.rtf;*.html;*.htm|All files (*.*)|*.*";
+        public const string Filter = "Text and documents (*.txt, *.md, *.docx, *.pdf, *.rtf, *.html)|*.txt;*.md;*.markdown;*.text;*.log;*.docx;*.pdf;*.rtf;*.html;*.htm|All files (*.*)|*.*";
 
-        // The text of a file, by its kind: Word documents (.docx), rich text (.rtf), web pages
+        // The text of a file, by its kind: Word documents (.docx), PDFs, rich text (.rtf), web pages
         // (.html); anything else is read as plain text.
         public static string Read(string path)
         {
-            if (new FileInfo(path).Length > 30 * 1024 * 1024) { throw new InvalidOperationException("the file is larger than 30 MB"); }
             string kind = Path.GetExtension(path).ToLowerInvariant();
+            // (A PDF is mostly pictures and fonts: it may be far larger than its text.)
+            if (kind == ".pdf")
+            {
+                if (new FileInfo(path).Length > 300L * 1024 * 1024) { throw new InvalidOperationException("the file is larger than 300 MB"); }
+                return Pdf.Read(path);
+            }
+            if (new FileInfo(path).Length > 30 * 1024 * 1024) { throw new InvalidOperationException("the file is larger than 30 MB"); }
             if (kind == ".docx") { return FromWord(path); }
             if (kind == ".rtf")
             {
                 using (RichTextBox rich = new RichTextBox()) { rich.Rtf = Plain(path); return rich.Text; }
             }
             if (kind == ".html" || kind == ".htm") { return Html.ToText(Plain(path)); }
-            if (kind == ".doc" || kind == ".pdf" || kind == ".odt" || kind == ".epub")
+            if (kind == ".doc" || kind == ".odt" || kind == ".epub")
             {
                 throw new InvalidOperationException("files of this kind (" + kind + ") can't be read: copy the text and press Paste and read");
             }
@@ -361,6 +367,344 @@ namespace ModernVoicesReader
             string name = Regex.Replace(Regex.Replace(title, @"[\\/:*?""<>|\r\n\t]+", " "), @"\s+", " ").Trim().TrimEnd('.');
             if (name.Length > 60) { name = name.Substring(0, 60).Trim(); }
             return name.Length == 0 ? "Reading" : name;
+        }
+    }
+
+    // ---------------------------------------------------------------- text from PDFs
+
+    // A PDF's text, read with PdfPig (https://github.com/UglyToad/PdfPig, Apache 2.0): its DLLs lie beside
+    // this program and are loaded the first time a PDF is opened (by name, so the Reader is built and
+    // starts without them). A PDF stores letters at places on a page, not sentences: PdfPig gives a
+    // page's lines in the order they were written, and Tidy makes paragraphs of them.
+    public static class Pdf
+    {
+        public static string Library { get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "UglyToad.PdfPig.dll"); } }
+        public static bool Available
+        {
+            get { return File.Exists(Library) && File.Exists(Path.Combine(Path.GetDirectoryName(Library), "UglyToad.PdfPig.DocumentLayoutAnalysis.dll")); }
+        }
+
+        // Each page's text as PdfPig gives it: a line per line, an empty line where the gap is a paragraph's.
+        public static List<string> Pages(string path)
+        {
+            if (!Available) { throw new InvalidOperationException("the PDF reader is missing (" + Path.GetFileName(Library) + "): install Modern Voices again"); }
+            List<string> pages = new List<string>();
+            try
+            {
+                System.Reflection.Assembly main = System.Reflection.Assembly.LoadFrom(Library);
+                System.Reflection.Assembly layout = System.Reflection.Assembly.LoadFrom(Path.Combine(Path.GetDirectoryName(Library), "UglyToad.PdfPig.DocumentLayoutAnalysis.dll"));
+                Type document = main.GetType("UglyToad.PdfPig.PdfDocument", true);
+                Type page = main.GetType("UglyToad.PdfPig.Content.Page", true);
+                Type options = main.GetType("UglyToad.PdfPig.ParsingOptions", true);
+                Type extractor = layout.GetType("UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor.ContentOrderTextExtractor", true);
+                System.Reflection.MethodInfo open = document.GetMethod("Open", new Type[] { typeof(string), options });
+                System.Reflection.MethodInfo getPage = document.GetMethod("GetPage", new Type[] { typeof(int) });
+                System.Reflection.MethodInfo getText = extractor.GetMethod("GetText", new Type[] { page, typeof(bool) });
+                if (open == null || getPage == null || getText == null) { throw new InvalidOperationException("the PDF reader is not the one expected"); }
+                object opened = open.Invoke(null, new object[] { path, null });
+                try
+                {
+                    int count = (int)document.GetProperty("NumberOfPages").GetValue(opened, null);
+                    for (int i = 1; i <= count; i++)
+                    {
+                        // (A page that can't be read is left out: the rest is still worth reading.)
+                        try { pages.Add((string)getText.Invoke(null, new object[] { getPage.Invoke(opened, new object[] { i }), true }) ?? ""); }
+                        catch (System.Reflection.TargetInvocationException) { pages.Add(""); }
+                    }
+                }
+                finally { IDisposable closing = opened as IDisposable; if (closing != null) { closing.Dispose(); } }
+            }
+            catch (System.Reflection.TargetInvocationException e)
+            {
+                Exception inner = e.InnerException ?? e;
+                if (inner.GetType().Name.IndexOf("Encrypted", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    throw new InvalidOperationException("it is locked with a password");
+                }
+                throw new InvalidOperationException("it could not be read as a PDF (" + inner.Message.Split('\r', '\n')[0] + ")");
+            }
+            return pages;
+        }
+
+        public static string Read(string path)
+        {
+            string text = Tidy(Pages(path));
+            if (text.Trim().Length == 0)
+            {
+                throw new InvalidOperationException("there is no text in it, only pictures of pages (a scan?). Show a page on the screen and use the magnifying glass");
+            }
+            return text;
+        }
+
+        static readonly Regex EndsSentence = new Regex(@"[.!?:;…][""'”’)\]]*$");
+
+        // Paragraphs out of pages of lines. Lines of a paragraph are joined (a word broken at a line's end
+        // with a hyphen is made whole); a line that ends a sentence well short of the others ends a
+        // paragraph too; page numbers, and lines that head or foot most pages, are left out; a paragraph
+        // that runs over a page's end goes on.
+        public static string Tidy(List<string> pages)
+        {
+            // Each page's blocks (what stands between empty lines), each block its lines.
+            List<List<List<string>>> all = new List<List<List<string>>>();
+            foreach (string pageText in pages)
+            {
+                List<List<string>> blocks = new List<List<string>>();
+                List<string> block = new List<string>();
+                foreach (string rawLine in (pageText ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+                {
+                    string line = Regex.Replace(rawLine.Replace(' ', ' '), @"[ \t]+", " ").Trim();
+                    if (line.Length == 0)
+                    {
+                        if (block.Count > 0) { blocks.Add(block); block = new List<string>(); }
+                    }
+                    else { block.Add(line); }
+                }
+                if (block.Count > 0) { blocks.Add(block); }
+                all.Add(blocks);
+            }
+            // A page's first and last line, where they are a page number or the same on most pages (numbers
+            // apart), are a header or footer: not read.
+            Dictionary<string, int> seen = new Dictionary<string, int>();
+            foreach (List<List<string>> blocks in all)
+            {
+                foreach (string edge in Edges(blocks))
+                {
+                    string key = EdgeKey(edge);
+                    int count;
+                    seen.TryGetValue(key, out count);
+                    seen[key] = count + 1;
+                }
+            }
+            int filled = 0;
+            foreach (List<List<string>> blocks in all) { if (blocks.Count > 0) { filled++; } }
+            foreach (List<List<string>> blocks in all)
+            {
+                for (int pass = 0; pass < 2 && blocks.Count > 0; pass++)
+                {
+                    List<string> edgeBlock = pass == 0 ? blocks[0] : blocks[blocks.Count - 1];
+                    string edge = pass == 0 ? edgeBlock[0] : edgeBlock[edgeBlock.Count - 1];
+                    bool number = Regex.IsMatch(edge, @"^(page\s+)?[-–— ]*\d{1,4}[-–— ]*(\s*(of|/)\s*\d{1,4})?$", RegexOptions.IgnoreCase);
+                    int times;
+                    seen.TryGetValue(EdgeKey(edge), out times);
+                    bool repeated = filled >= 3 && edge.Length <= 80 && times * 2 > filled;
+                    if (!number && !repeated) { continue; }
+                    edgeBlock.RemoveAt(pass == 0 ? 0 : edgeBlock.Count - 1);
+                    if (edgeBlock.Count == 0) { blocks.Remove(edgeBlock); }
+                }
+            }
+            // Paragraphs.
+            List<string> paragraphs = new List<string>();
+            bool pageStart = false;
+            foreach (List<List<string>> blocks in all)
+            {
+                pageStart = true;
+                foreach (List<string> lines in blocks)
+                {
+                    int longest = 0;
+                    foreach (string line in lines) { longest = Math.Max(longest, line.Length); }
+                    StringBuilder paragraph = new StringBuilder();
+                    for (int i = 0; i < lines.Count; i++)
+                    {
+                        Join(paragraph, lines[i]);
+                        bool last = i == lines.Count - 1;
+                        // (A short last line of a paragraph set without a gap after it.)
+                        bool shortEnd = !last && lines.Count >= 3 && lines[i].Length * 4 < longest * 3 && EndsSentence.IsMatch(lines[i]);
+                        if (!last && !shortEnd) { continue; }
+                        string made = paragraph.ToString();
+                        paragraph.Length = 0;
+                        // The first paragraph of a page goes on from the last of the page before, where that one
+                        // stopped mid-sentence and this one starts with a small letter.
+                        if (pageStart && paragraphs.Count > 0 && made.Length > 0 && char.IsLower(made[0]) && !EndsSentence.IsMatch(paragraphs[paragraphs.Count - 1]))
+                        {
+                            StringBuilder joined = new StringBuilder(paragraphs[paragraphs.Count - 1]);
+                            Join(joined, made);
+                            paragraphs[paragraphs.Count - 1] = joined.ToString();
+                        }
+                        else if (made.Length > 0) { paragraphs.Add(made); }
+                        pageStart = false;
+                    }
+                }
+            }
+            return string.Join("\r\n\r\n", paragraphs.ToArray());
+        }
+
+        static List<string> Edges(List<List<string>> blocks)
+        {
+            List<string> edges = new List<string>();
+            if (blocks.Count == 0) { return edges; }
+            edges.Add(blocks[0][0]);
+            List<string> end = blocks[blocks.Count - 1];
+            if (blocks.Count > 1 || end.Count > 1) { edges.Add(end[end.Count - 1]); }
+            return edges;
+        }
+        static string EdgeKey(string line) { return Regex.Replace(line.ToLowerInvariant(), @"\d+", "#"); }
+
+        // A line added to those before it: after a space, or straight on where the line before broke a word
+        // with a hyphen ("hyphen-" + "ated": hyphenated; "well-" + "Known" keeps its hyphen).
+        static void Join(StringBuilder text, string line)
+        {
+            if (text.Length == 0) { text.Append(line); return; }
+            int end = text.Length - 1;
+            bool hyphen = (text[end] == '-' || text[end] == '­' || text[end] == '‐') && end > 0 && char.IsLetter(text[end - 1]);
+            if (hyphen && line.Length > 0 && char.IsLower(line[0])) { text.Length = end; text.Append(line); }
+            else if (hyphen) { text.Append(line); }
+            else { text.Append(' ').Append(line); }
+        }
+    }
+
+    // ---------------------------------------------------------------- sound as MP3
+
+    // A WAV file made into an MP3 by LAME (https://lame.sourceforge.io, LGPL): libmp3lame.64.dll or
+    // libmp3lame.32.dll beside this program, loaded the first time an MP3 is saved.
+    public static class Mp3
+    {
+        public const int Kbps = 64;     // (one voice, 22 kHz: more is not heard)
+        public static string Library
+        {
+            get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), IntPtr.Size == 8 ? "libmp3lame.64.dll" : "libmp3lame.32.dll"); }
+        }
+        public static bool Available { get { return File.Exists(Library); } }
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern IntPtr LoadLibraryW(string path);
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true, BestFitMapping = false)]
+        static extern IntPtr GetProcAddress(IntPtr library, string name);
+        static IntPtr LoadNative(string path) { return LoadLibraryW(path); }
+        static IntPtr FindNative(IntPtr library, string name) { return GetProcAddress(library, name); }
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate IntPtr InitFn();
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int SetFn(IntPtr lame, int value);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int GoFn(IntPtr lame);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int EncodeFn(IntPtr lame, short[] left, short[] right, int samples, [In, Out] byte[] into, int room);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate int FlushFn(IntPtr lame, [In, Out] byte[] into, int room);
+
+        static IntPtr library = IntPtr.Zero;
+        static readonly Dictionary<string, Delegate> functions = new Dictionary<string, Delegate>();
+        static Delegate Function(string name, Type kind)
+        {
+            lock (functions)
+            {
+                Delegate found;
+                if (functions.TryGetValue(name, out found)) { return found; }
+                if (library == IntPtr.Zero)
+                {
+                    library = LoadNative(Library);
+                    if (library == IntPtr.Zero) { throw new InvalidOperationException("the MP3 encoder could not be loaded (" + Path.GetFileName(Library) + ")"); }
+                }
+                IntPtr address = FindNative(library, name);
+                if (address == IntPtr.Zero) { throw new InvalidOperationException("the MP3 encoder is not the one expected (no " + name + ")"); }
+                found = Marshal.GetDelegateForFunctionPointer(address, kind);
+                functions[name] = found;
+                return found;
+            }
+        }
+        static void Set(IntPtr lame, string name, int value)
+        {
+            if (((SetFn)Function(name, typeof(SetFn)))(lame, value) < 0) { throw new InvalidOperationException("the MP3 encoder refused " + name + " " + value); }
+        }
+
+        // Where a WAV file's sound is, and what it is: 16-bit, one or two channels.
+        public static void WavInfo(Stream wav, out int rate, out int channels, out long start, out long length)
+        {
+            rate = 0; channels = 0; start = 0; length = 0;
+            byte[] head = new byte[12];
+            if (wav.Read(head, 0, 12) < 12 || Encoding.ASCII.GetString(head, 0, 4) != "RIFF" || Encoding.ASCII.GetString(head, 8, 4) != "WAVE")
+            {
+                throw new InvalidOperationException("the sound made is not a WAV file");
+            }
+            byte[] chunk = new byte[8];
+            int bits = 0;
+            while (wav.Read(chunk, 0, 8) == 8)
+            {
+                string id = Encoding.ASCII.GetString(chunk, 0, 4);
+                long size = BitConverter.ToUInt32(chunk, 4);
+                if (id == "fmt ")
+                {
+                    byte[] format = new byte[16];
+                    if (size < 16 || wav.Read(format, 0, 16) < 16) { break; }
+                    channels = BitConverter.ToUInt16(format, 2);
+                    rate = BitConverter.ToInt32(format, 4);
+                    bits = BitConverter.ToUInt16(format, 14);
+                    if (BitConverter.ToUInt16(format, 0) != 1 || bits != 16 || channels < 1 || channels > 2) { throw new InvalidOperationException("the sound made is not 16-bit PCM"); }
+                    wav.Seek(size - 16 + (size & 1), SeekOrigin.Current);
+                }
+                else if (id == "data")
+                {
+                    if (rate == 0) { break; }
+                    start = wav.Position;
+                    // (A length that was never filled in, or runs past the file's end: what is there.)
+                    long there = wav.Length - start;
+                    length = size == 0 || size > there ? there : size;
+                    return;
+                }
+                else { wav.Seek(size + (size & 1), SeekOrigin.Current); }
+            }
+            throw new InvalidOperationException("the sound made has no sound in it");
+        }
+
+        // 'stop' is asked between pieces (true: given up, with an OperationCanceledException); 'progress' is
+        // told how far it is, 0 to 100. Either may be null.
+        public static void Encode(string wavPath, string mp3Path, Func<bool> stop, Action<int> progress)
+        {
+            using (FileStream wav = new FileStream(wavPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16))
+            {
+                int rate, channels;
+                long start, length;
+                WavInfo(wav, out rate, out channels, out start, out length);
+                wav.Seek(start, SeekOrigin.Begin);
+                IntPtr lame = ((InitFn)Function("lame_init", typeof(InitFn)))();
+                if (lame == IntPtr.Zero) { throw new InvalidOperationException("the MP3 encoder did not start"); }
+                try
+                {
+                    Set(lame, "lame_set_in_samplerate", rate);
+                    Set(lame, "lame_set_out_samplerate", rate);
+                    Set(lame, "lame_set_num_channels", channels);
+                    Set(lame, "lame_set_mode", channels == 1 ? 3 : 1);      // mono, or joint stereo
+                    Set(lame, "lame_set_brate", channels == 1 ? Kbps : Kbps * 2);
+                    Set(lame, "lame_set_quality", 3);
+                    Set(lame, "lame_set_bWriteVbrTag", 0);     // (a constant rate: players work its length out from its size)
+                    if (((GoFn)Function("lame_init_params", typeof(GoFn)))(lame) < 0) { throw new InvalidOperationException("the MP3 encoder refused the sound's format (" + rate + " Hz)"); }
+                    EncodeFn encode = (EncodeFn)Function("lame_encode_buffer", typeof(EncodeFn));
+                    FlushFn flush = (FlushFn)Function("lame_encode_flush", typeof(FlushFn));
+                    const int Piece = 8192;
+                    byte[] raw = new byte[Piece * 2 * channels];
+                    short[] left = new short[Piece], right = channels == 2 ? new short[Piece] : left;
+                    byte[] made = new byte[Piece * 5 / 4 + 7200];
+                    long done = 0;
+                    int said = -1;
+                    using (FileStream mp3 = new FileStream(mp3Path, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
+                    {
+                        while (done < length)
+                        {
+                            if (stop != null && stop()) { throw new OperationCanceledException(); }
+                            int want = (int)Math.Min(raw.Length, length - done), got = 0;
+                            while (got < want)
+                            {
+                                int read = wav.Read(raw, got, want - got);
+                                if (read <= 0) { break; }
+                                got += read;
+                            }
+                            int samples = got / (2 * channels);
+                            if (samples == 0) { break; }
+                            for (int i = 0; i < samples; i++)
+                            {
+                                left[i] = (short)(raw[i * 2 * channels] | (raw[i * 2 * channels + 1] << 8));
+                                if (channels == 2) { right[i] = (short)(raw[i * 4 + 2] | (raw[i * 4 + 3] << 8)); }
+                            }
+                            int bytes = encode(lame, left, right, samples, made, made.Length);
+                            if (bytes < 0) { throw new InvalidOperationException("the MP3 encoder failed (" + bytes + ")"); }
+                            mp3.Write(made, 0, bytes);
+                            done += got;
+                            int percent = (int)(100 * done / Math.Max(1, length));
+                            if (progress != null && percent != said) { said = percent; progress(percent); }
+                            if (got < want) { break; }
+                        }
+                        int rest = flush(lame, made, made.Length);
+                        if (rest > 0) { mp3.Write(made, 0, rest); }
+                    }
+                }
+                finally { ((GoFn)Function("lame_close", typeof(GoFn)))(lame); }
+            }
         }
     }
 
@@ -620,6 +964,7 @@ namespace ModernVoicesReader
         public bool ScreenWarningOff;        // "Do not display this warning again" was ticked (Read screen's warning)
         public bool KeepText;                // "Save text for next time?" was answered Yes as the Reader closed
         public bool SaveOnClose = true;      // "Save text on close" is ticked: closing with text asks that question
+        public string AudioKind = "mp3";     // what Save as audio last made: "mp3" or "wav"
         public int[] Bounds = new int[0];
         public Dictionary<string, Place> Places = new Dictionary<string, Place>();
     }
@@ -948,6 +1293,9 @@ namespace ModernVoicesReader
         public string LastRecognised = "";
         public int LastRecogniserCode = -1;
         string savingTo = "";
+        string savingWav;                // an MP3 is wanted: the WAV the voice makes first (a temporary file), else null
+        bool encoding;                   // that WAV is being made into the MP3 (on another thread)
+        volatile bool stopEncoding;
         CheckBox autoBox, tidyBox, saveBox;
         ProgressBar progress;
         Timer tick;
@@ -2153,12 +2501,16 @@ namespace ModernVoicesReader
         public void OpenFile(string path)
         {
             string text;
+            // (A long PDF takes a moment to read through.)
+            bool slow = Path.GetExtension(path).ToLowerInvariant() == ".pdf";
+            if (slow) { Status("Opening " + Path.GetFileName(path) + "..."); Cursor = Cursors.WaitCursor; Update(); }
             try { text = Files.Read(path); }
             catch (Exception e)
             {
                 Status("Could not open " + Path.GetFileName(path) + ": " + e.Message + ".");
                 return;
             }
+            finally { if (slow) { Cursor = Cursors.Default; } }
             if (text.Trim().Length == 0) { Status(Path.GetFileName(path) + " has no text in it."); return; }
             text = Regex.Replace(text, "\r?\n", "\r\n");
             string full = Path.GetFullPath(path);
@@ -2260,27 +2612,43 @@ namespace ModernVoicesReader
             }
         }
 
-        // ---- the text as a sound file (WAV), made as fast as the voice can: not played
+        // ---- the text as a sound file (MP3 or WAV), made as fast as the voice can: not played. The voice
+        // makes a WAV; for an MP3 that is a temporary file, which LAME then makes the MP3 from (Mp3).
 
+        public const string AudioKinds = "MP3 audio, smaller (*.mp3)|*.mp3|WAV audio, as the voice made it (*.wav)|*.wav";
         void ChooseAudioFile()
         {
-            if (saver != null) { CancelSaving(); return; }
+            if (Saving) { CancelSaving(); return; }
             if (box.TextLength == 0) { Status("Nothing to save: paste some text first."); return; }
             if (CurrentVoice == null) { Status("Choose a voice first."); return; }
             using (SaveFileDialog dialog = new SaveFileDialog())
             {
+                // (The kind made last time is offered first; without the MP3 encoder, WAV only.)
+                bool mp3 = Mp3.Available && store.State.AudioKind != "wav";
                 dialog.Title = "Save the text as audio";
-                dialog.Filter = "Sound (*.wav)|*.wav";
-                dialog.FileName = Files.SafeName(Store.TitleOf(box.Text)) + ".wav";
-                if (dialog.ShowDialog(this) == DialogResult.OK) { SaveAudio(dialog.FileName); }
+                dialog.Filter = Mp3.Available ? AudioKinds : "WAV audio (*.wav)|*.wav";
+                dialog.FilterIndex = mp3 || !Mp3.Available ? 1 : 2;
+                dialog.AddExtension = true;
+                dialog.FileName = Files.SafeName(Store.TitleOf(box.Text)) + (mp3 ? ".mp3" : ".wav");
+                if (dialog.ShowDialog(this) != DialogResult.OK) { return; }
+                string kind = Path.GetExtension(dialog.FileName).ToLowerInvariant() == ".mp3" ? "mp3" : "wav";
+                if (Mp3.Available && store.State.AudioKind != kind) { store.State.AudioKind = kind; store.Save(); }
+                SaveAudio(dialog.FileName);
             }
         }
 
-        public bool Saving { get { return saver != null; } }
+        public bool Saving { get { return saver != null || encoding; } }
 
         public void SaveAudio(string path)
         {
-            if (saver != null) { return; }
+            if (Saving) { return; }
+            bool mp3 = Path.GetExtension(path).ToLowerInvariant() == ".mp3";
+            if (mp3 && !Mp3.Available)
+            {
+                Status("The MP3 encoder is missing (" + Path.GetFileName(Mp3.Library) + "): install Modern Voices again, or save as WAV.");
+                return;
+            }
+            savingWav = mp3 ? Path.Combine(Path.GetTempPath(), "ModernVoicesReader-" + Guid.NewGuid().ToString("N") + ".wav") : null;
             Prepared whole = Cleaner.Prepare(box.Text, tidyBox.Checked);
             int length = Math.Max(1, whole.Text.Length);
             try
@@ -2289,7 +2657,7 @@ namespace ModernVoicesReader
                 saver.SelectVoice(CurrentVoice.Spoken);
                 saver.Rate = rateBar.Value;
                 saver.Volume = volumeBar.Value;
-                saver.SetOutputToWaveFile(path, new SpeechAudioFormatInfo(22050, AudioBitsPerSample.Sixteen, AudioChannel.Mono));
+                saver.SetOutputToWaveFile(savingWav ?? path, new SpeechAudioFormatInfo(22050, AudioBitsPerSample.Sixteen, AudioChannel.Mono));
                 savingTo = path;
                 saver.SpeakProgress += delegate(object sender, SpeakProgressEventArgs e)
                 {
@@ -2316,6 +2684,7 @@ namespace ModernVoicesReader
 
         void CancelSaving()
         {
+            if (encoding) { stopEncoding = true; return; }
             if (saver == null) { return; }
             try { saver.SpeakAsyncCancelAll(); } catch (Exception) { SavingEnded(false, ""); }
         }
@@ -2328,18 +2697,69 @@ namespace ModernVoicesReader
                 try { saver.Dispose(); } catch (Exception) { }
                 saver = null;
             }
-            audioButton.Text = "Save as audio...";
-            if (finished && File.Exists(savingTo))
+            string spoken = savingWav ?? savingTo;
+            if (finished && File.Exists(spoken))
             {
-                long bytes = new FileInfo(savingTo).Length;
-                Status("Saved " + Path.GetFileName(savingTo) + ": " + Clock(Math.Max(0, bytes - 44) / 44100.0) + " long, " +
-                    (bytes / 1048576.0).ToString("0.#", CultureInfo.InvariantCulture) + " MB.");
+                double seconds = Math.Max(0, new FileInfo(spoken).Length - 44) / 44100.0;
+                // An MP3: made from the WAV now, on another thread (a long text takes a while); the button
+                // goes on reading "Stop saving" until it is done.
+                if (savingWav != null) { StartEncoding(savingWav, savingTo, seconds); return; }
+                audioButton.Text = "Save as audio...";
+                SayAudioSaved(seconds);
             }
             else
             {
-                try { if (File.Exists(savingTo)) { File.Delete(savingTo); } } catch (Exception) { }
+                audioButton.Text = "Save as audio...";
+                try { if (File.Exists(spoken)) { File.Delete(spoken); } } catch (Exception) { }
                 Status(problem.Length > 0 ? "Could not save the sound: " + problem : "Saving stopped: no file made.");
             }
+        }
+
+        void SayAudioSaved(double seconds)
+        {
+            long bytes = new FileInfo(savingTo).Length;
+            Status("Saved " + Path.GetFileName(savingTo) + ": " + Clock(seconds) + " long, " +
+                (bytes / 1048576.0).ToString(bytes < 1048576 ? "0.##" : "0.#", CultureInfo.InvariantCulture) + " MB.");
+        }
+
+        void StartEncoding(string wav, string target, double seconds)
+        {
+            encoding = true;
+            stopEncoding = false;
+            Status("Saving as audio: making the MP3...  (" + Path.GetFileName(target) + ")");
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                string failed = null;
+                bool stopped = false;
+                try
+                {
+                    Mp3.Encode(wav, target, delegate { return stopEncoding; }, delegate(int percent)
+                    {
+                        if (percent % 5 != 0) { return; }
+                        Later(delegate { if (encoding) { Status("Saving as audio: making the MP3, " + percent + "%  (" + Path.GetFileName(target) + ")"); } });
+                    });
+                }
+                catch (OperationCanceledException) { stopped = true; }
+                catch (Exception e) { failed = e.Message; }
+                try { File.Delete(wav); } catch (Exception) { }
+                if (stopped || failed != null) { try { File.Delete(target); } catch (Exception) { } }
+                Later(delegate
+                {
+                    encoding = false;
+                    savingWav = null;
+                    audioButton.Text = "Save as audio...";
+                    if (failed != null) { Status("Could not save the sound: " + failed + "."); }
+                    else if (stopped) { Status("Saving stopped: no file made."); }
+                    else { SayAudioSaved(seconds); }
+                });
+            });
+        }
+
+        // Something for the window to do, asked from another thread (nothing, once the window has gone).
+        void Later(MethodInvoker work)
+        {
+            try { if (IsHandleCreated && !IsDisposed) { BeginInvoke(work); } }
+            catch (Exception) { }
         }
 
         // ---- the clipboard
@@ -2487,6 +2907,7 @@ namespace ModernVoicesReader
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             if (mode != Mode.Stopped) { Halt(); }
+            stopEncoding = true;
             if (saver != null) { try { saver.SpeakAsyncCancelAll(); } catch (Exception) { } SavingEnded(false, ""); }
             // Text in the box: kept for next time, if wanted ("Save text on close" not ticked: not asked, not kept).
             if (!silent && e.CloseReason == CloseReason.UserClosing && box.Text.Trim().Length > 0 && store.State.SaveOnClose)
@@ -2691,6 +3112,79 @@ namespace ModernVoicesReader
             if (!ok) { failures++; }
         }
 
+        // A PDF of plain pages for the test: each page its lines from the top, in 12 point Helvetica, 14
+        // points apart; an empty line leaves a paragraph's gap. (Letters as Windows-1252.)
+        public static byte[] TestPdf(string[][] pages)
+        {
+            Encoding latin = Encoding.GetEncoding(1252);
+            List<byte[]> objects = new List<byte[]>();
+            StringBuilder kids = new StringBuilder();
+            for (int i = 0; i < pages.Length; i++) { kids.Append(4 + i * 2).Append(" 0 R "); }
+            objects.Add(latin.GetBytes("<< /Type /Catalog /Pages 2 0 R >>"));
+            objects.Add(latin.GetBytes("<< /Type /Pages /Kids [ " + kids + "] /Count " + pages.Length + " >>"));
+            objects.Add(latin.GetBytes("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"));
+            foreach (string[] lines in pages)
+            {
+                StringBuilder content = new StringBuilder("BT /F1 12 Tf 72 780 Td ");
+                int down = 0;
+                foreach (string line in lines)
+                {
+                    if (line.Length == 0) { down += 20; continue; }
+                    content.Append("0 -").Append(down).Append(" Td (").Append(line.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)")).Append(") Tj ");
+                    down = 14;
+                }
+                content.Append("ET");
+                byte[] stream = latin.GetBytes(content.ToString());
+                objects.Add(latin.GetBytes("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents " + (objects.Count + 2) + " 0 R >>"));
+                List<byte> body = new List<byte>(latin.GetBytes("<< /Length " + stream.Length + " >>\nstream\n"));
+                body.AddRange(stream);
+                body.AddRange(latin.GetBytes("\nendstream"));
+                objects.Add(body.ToArray());
+            }
+            using (MemoryStream file = new MemoryStream())
+            {
+                byte[] head = latin.GetBytes("%PDF-1.4\n");
+                file.Write(head, 0, head.Length);
+                List<long> places = new List<long>();
+                for (int i = 0; i < objects.Count; i++)
+                {
+                    places.Add(file.Position);
+                    byte[] open = latin.GetBytes((i + 1) + " 0 obj\n"), close = latin.GetBytes("\nendobj\n");
+                    file.Write(open, 0, open.Length); file.Write(objects[i], 0, objects[i].Length); file.Write(close, 0, close.Length);
+                }
+                long table = file.Position;
+                StringBuilder tail = new StringBuilder("xref\n0 " + (objects.Count + 1) + "\n0000000000 65535 f \n");
+                foreach (long place in places) { tail.Append(place.ToString("0000000000", CultureInfo.InvariantCulture)).Append(" 00000 n \n"); }
+                tail.Append("trailer\n<< /Size " + (objects.Count + 1) + " /Root 1 0 R >>\nstartxref\n" + table + "\n%%EOF\n");
+                byte[] end = latin.GetBytes(tail.ToString());
+                file.Write(end, 0, end.Length);
+                return file.ToArray();
+            }
+        }
+
+        // A WAV file for the test: a tone, 22050 Hz, 16-bit, one channel.
+        public static void TestWav(string path, double seconds)
+        {
+            int samples = (int)(22050 * seconds);
+            using (BinaryWriter w = new BinaryWriter(File.Create(path)))
+            {
+                w.Write(Encoding.ASCII.GetBytes("RIFF")); w.Write(36 + samples * 2); w.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
+                w.Write(16); w.Write((short)1); w.Write((short)1); w.Write(22050); w.Write(44100); w.Write((short)2); w.Write((short)16);
+                w.Write(Encoding.ASCII.GetBytes("data")); w.Write(samples * 2);
+                for (int i = 0; i < samples; i++) { w.Write((short)(8000 * Math.Sin(i * 2 * Math.PI * 440 / 22050))); }
+            }
+        }
+
+        // An MP3 file as LAME makes it here: it starts with a frame (0xFF, then 0xE or 0xF in the next
+        // byte's top bits), and its length is its size at the rate asked for.
+        public static double Mp3Seconds(string path)
+        {
+            byte[] start = new byte[2];
+            using (FileStream f = File.OpenRead(path)) { if (f.Read(start, 0, 2) < 2) { return 0; } }
+            if (start[0] != 0xFF || (start[1] & 0xE0) != 0xE0) { return 0; }
+            return new FileInfo(path).Length * 8.0 / (Mp3.Kbps * 1000);
+        }
+
         static bool WaitWhile(Func<bool> busy, int seconds)
         {
             DateTime until = DateTime.UtcNow.AddSeconds(seconds);
@@ -2741,6 +3235,58 @@ namespace ModernVoicesReader
                             "<w:p><w:r><w:t xml:space=\"preserve\">This is </w:t></w:r><w:r><w:rPr><w:b/></w:rPr><w:t>bold</w:t></w:r><w:r><w:t xml:space=\"preserve\"> and</w:t><w:tab/><w:t>tabbed.</w:t><w:br/><w:t>Next line.</w:t></w:r></w:p>" +
                             "<w:p><w:r><w:instrText>PAGE</w:instrText></w:r></w:p></w:body></w:document>");
                     }
+                }
+                // PDFs: lines made into paragraphs (tested without a PDF: Tidy takes pages of lines).
+                List<string> pdfPages = new List<string>();
+                pdfPages.Add("A Running Head\r\n\r\nChapter One\r\n\r\nThis line ends with a hyphen-\r\nated word, and this one with a well-\r\nKnown name. A sentence starts here and\r\nruns on to the next line. It ends\r\nshort.\r\nA paragraph with no gap before it starts on this line and\r\nthen it stops in the middle of a\r\n\r\n1");
+                pdfPages.Add("A Running Head\r\n\r\nsentence, which goes on over the page.\r\n\r\nSecond page, second paragraph.\r\n\r\nPage 2 of 3");
+                pdfPages.Add("A Running Head\r\n\r\nThe last page.\r\n\r\n- 3 -");
+                string tidied = Pdf.Tidy(pdfPages);
+                log.AppendLine("pdf lines tidied: " + tidied.Replace("\r\n\r\n", " / "));
+                Check(tidied == "Chapter One\r\n\r\nThis line ends with a hyphenated word, and this one with a well-Known name. A sentence starts here and runs on to the next line. It ends short.\r\n\r\n" +
+                    "A paragraph with no gap before it starts on this line and then it stops in the middle of a sentence, which goes on over the page.\r\n\r\nSecond page, second paragraph.\r\n\r\nThe last page.",
+                    "a PDF's lines become paragraphs: broken words joined, page numbers and running heads left out, a paragraph goes on over a page");
+                Check(Pdf.Tidy(new List<string>(new string[] { "", "  \r\n" })) == "", "a PDF with no text gives none");
+                // A real PDF, read by the PDF reader beside this program.
+                Check(Pdf.Available, "the PDF reader is beside the Reader (" + Path.GetFileName(Pdf.Library) + ")");
+                string pdf = Path.Combine(made, "pages.pdf");
+                if (Pdf.Available)
+                {
+                    File.WriteAllBytes(pdf, TestPdf(new string[][] {
+                        new string[] { "A Heading", "", "The first paragraph starts on this line, which is long enough,", "and goes on to a second line (with brackets) and a caf\u00e9.", "", "A second paragraph, after a gap, ends in the mid-", "dle of a word. Then it stops in the middle of a" },
+                        new string[] { "sentence that goes on over the page.", "", "The last paragraph.", "", "2" } }));
+                    List<string> rawPages = Pdf.Pages(pdf);
+                    for (int i = 0; i < rawPages.Count; i++) { log.AppendLine("pdf page " + (i + 1) + " as read: " + rawPages[i].Replace("\r", "").Replace("\n", " | ")); }
+                    string fromPdf = Files.Read(pdf);
+                    log.AppendLine("pdf: " + fromPdf.Replace("\r\n\r\n", " / "));
+                    Check(fromPdf == "A Heading\r\n\r\nThe first paragraph starts on this line, which is long enough, and goes on to a second line (with brackets) and a caf\u00e9.\r\n\r\n" +
+                        "A second paragraph, after a gap, ends in the middle of a word. Then it stops in the middle of a sentence that goes on over the page.\r\n\r\nThe last paragraph.",
+                        "a PDF is read: its paragraphs, accents and brackets, across two pages");
+                    string noText = Path.Combine(made, "scan.pdf");
+                    File.WriteAllBytes(noText, TestPdf(new string[][] { new string[] { } }));
+                    string scanSaid = "";
+                    try { Files.Read(noText); } catch (InvalidOperationException e) { scanSaid = e.Message; }
+                    string notPdf = Path.Combine(made, "broken.pdf");
+                    File.WriteAllText(notPdf, "This is not a PDF at all.");
+                    string brokenSaid = "";
+                    try { Files.Read(notPdf); } catch (InvalidOperationException e) { brokenSaid = e.Message; }
+                    log.AppendLine("a PDF without text: " + scanSaid + "; not a PDF: " + brokenSaid);
+                    Check(scanSaid.Contains("no text") && brokenSaid.Contains("could not be read"), "a PDF with no text, and a file that is no PDF, are refused with a reason");
+                }
+                // MP3: a tone encoded by the encoder beside this program.
+                Check(Mp3.Available, "the MP3 encoder is beside the Reader (" + Path.GetFileName(Mp3.Library) + ")");
+                if (Mp3.Available)
+                {
+                    string tone = Path.Combine(made, "tone.wav"), toneMp3 = Path.Combine(made, "tone.mp3");
+                    TestWav(tone, 3);
+                    int lastPercent = -1;
+                    Mp3.Encode(tone, toneMp3, null, delegate(int percent) { lastPercent = percent; });
+                    double toneSeconds = Mp3Seconds(toneMp3);
+                    log.AppendLine("a 3 s tone as MP3: " + new FileInfo(toneMp3).Length + " bytes, " + toneSeconds.ToString("0.00", CultureInfo.InvariantCulture) + " s at " + Mp3.Kbps + " kbit/s; a twelfth of the WAV's " + new FileInfo(tone).Length);
+                    Check(toneSeconds > 2.9 && toneSeconds < 3.3 && lastPercent == 100, "a WAV file is made into an MP3 of the same length");
+                    bool gaveUp = false;
+                    try { Mp3.Encode(tone, toneMp3, delegate { return true; }, null); } catch (OperationCanceledException) { gaveUp = true; }
+                    Check(gaveUp, "making an MP3 can be stopped");
                 }
                 string fromWord = Files.Read(word);
                 log.AppendLine("docx: " + fromWord.Replace("\r\n", " / "));
@@ -2896,6 +3442,24 @@ namespace ModernVoicesReader
                     bool saved = WaitWhile(delegate { return form.Saving; }, 120);
                     double seconds = File.Exists(wav) ? (new FileInfo(wav).Length - 44) / 44100.0 : 0;
                     Check(saved && seconds > 4 && seconds < 40, "the text is saved as a WAV file (" + seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s of sound)");
+                    // The same as an MP3: as long as the WAV, a fraction of its size, and no temporary file left.
+                    if (Mp3.Available)
+                    {
+                        string mp3 = Path.Combine(made, "said.mp3");
+                        int tempBefore = Directory.GetFiles(Path.GetTempPath(), "ModernVoicesReader-*.wav").Length;
+                        form.SaveAudio(mp3);
+                        Check(form.Saving, "saving as MP3 starts");
+                        bool savedMp3 = WaitWhile(delegate { return form.Saving; }, 120);
+                        double mp3Seconds = File.Exists(mp3) ? Mp3Seconds(mp3) : 0;
+                        log.AppendLine("saved as MP3: " + (File.Exists(mp3) ? new FileInfo(mp3).Length : 0) + " bytes, " + mp3Seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s; the WAV " + new FileInfo(wav).Length + " bytes; the Reader says: " + form.StatusText);
+                        Check(savedMp3 && Math.Abs(mp3Seconds - seconds) < 1.5 && new FileInfo(mp3).Length * 4 < new FileInfo(wav).Length, "the text is saved as an MP3 file (" + mp3Seconds.ToString("0.0", CultureInfo.InvariantCulture) + " s of sound)");
+                        Check(Directory.GetFiles(Path.GetTempPath(), "ModernVoicesReader-*.wav").Length <= tempBefore && form.StatusText.StartsWith("Saved said.mp3"), "the WAV it was made from is gone, and the Reader says what was saved");
+                    }
+                    if (Pdf.Available)
+                    {
+                        form.OpenFile(Path.Combine(made, "pages.pdf"));
+                        Check(form.BoxText.StartsWith("A Heading\r\n\r\nThe first paragraph") && form.BoxText.EndsWith("The last paragraph."), "Open a file opens a PDF");
+                    }
 
                     // A file's place is kept for when it is opened again.
                     string plainFile = Path.Combine(made, "utf8.txt");

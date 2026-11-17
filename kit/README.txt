@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.15.0
+Modern Voices for Windows 0.16.0
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -229,18 +229,26 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     another program is read straight away.
   * "Don't read links" (which also leaves out code and symbols): web addresses are read as "link", blocks of code are
     skipped, and bullets and the marks of formatted text (#, **, `, table lines) aren't read out.
-  * Open a file: plain text (.txt, .md), Word documents (.docx), rich text (.rtf) and web pages
-    (.html). A file dropped on the text is opened too. A file opened again goes on from where you
-    stopped in it (while its text is unchanged). (Not PDF or the older .doc: copy the text from those
+  * Open a file: plain text (.txt, .md), Word documents (.docx), PDFs, rich text (.rtf) and web
+    pages (.html). A file dropped on the text is opened too. A file opened again goes on from where
+    you stopped in it (while its text is unchanged). (Not the older .doc: copy the text from those
     and press Paste and read.)
+    A PDF's text is put back into paragraphs: lines are joined, words broken at a line's end are
+    made whole, and page numbers and the line that heads or foots every page are left out. That is
+    worked out from where the words stand on the page, so now and then a paragraph is split or two
+    are joined; tables and pages in columns can come out in an odd order. A scanned PDF is pictures
+    of pages and has no text to open: show a page on the screen and use the magnifying glass. A PDF
+    locked with a password can't be opened.
   * Read the screen (the magnifying glass): for text that can't be selected or copied (a
     picture, a game, some PDFs).
     It first says what it is for and that it can misread (tick "Do not display this warning again"
     to skip that next time). Then the screen dims; drag a box around the text, and Windows' own text
     recognition reads it into the box and starts reading. Recognition is not perfect, small or fancy print least of all. It works
     for the languages Windows has text recognition for (Settings > Time & language > Language).
-  * Save as audio: the text as a WAV file, in the voice and at the speed chosen, made as fast as the
-    voice can (not played). About 2.6 MB a minute.
+  * Save as audio: the text as an MP3 or a WAV file (choose which under "Save as type"; the Reader
+    offers the one you chose last time), in the voice and at the speed chosen, made as fast as the
+    voice can (not played). An MP3 is about half a megabyte a minute, a WAV about 2.6 MB. For an MP3
+    the voice's sound is made first and then packed: "making the MP3" shows while it is.
   * Undo (Ctrl+Z) and redo (Ctrl+Y), or the two arrow buttons beside Clear, take back and put
     back the last ten changes to the text: typing, a paste, a file opened, Clear.
   * Closed with text in the box, the Reader asks "Save text for next time?": Yes and the text is

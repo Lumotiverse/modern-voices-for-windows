@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.15.0 (17 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.16.0 (17 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -10,6 +10,40 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
+
+## 0.16.0 (17 Nov 2026), delivered, not yet confirmed by him: PDFs and MP3s in the Reader
+
+His words: "add pdf support to reader and mp3 saving". Built on Fable. Both use an outside library,
+which lies beside `ModernVoicesReader.exe` (flat: the installer copies `reader\*` without subfolders) and
+is NOT in the repo: `tools/Package.ps1` downloads each from GitHub and stops the build if its SHA-256 is
+not the pinned one (`Get-Checked`). If a URL dies, the build breaks there: find the same file elsewhere,
+keep the hash.
+
+1. **PDF** (`Pdf` in Reader.cs): PdfPig 0.1.8 (Apache-2.0; the net47 DLLs from the project's GitHub
+   release; 0.1.8 because later versions need System.Memory and binding redirects). Loaded by
+   reflection (`Assembly.LoadFrom`) so the Reader compiles and starts without it. `Pdf.Pages` gets each
+   page's lines from `ContentOrderTextExtractor.GetText(page, true)` (content order; an empty line where
+   the gap is over 1.7 x the type size). `Pdf.Tidy` (pure, tested without a PDF) makes paragraphs: joins
+   lines, mends words hyphenated at a line's end, ends a paragraph at a sentence-ending line under 3/4
+   of the longest, drops page numbers and first/last lines repeated on most pages, joins a paragraph
+   over a page break. No text at all = "only pictures of pages (a scan?)"; encrypted = "locked with a
+   password". PDFs may be up to 300 MB (other files 30).
+   NOT handled: tables, multi-column pages whose content order is odd, footnotes, scanned PDFs (no OCR
+   of a whole file; the magnifying glass is the way).
+2. **MP3** (`Mp3` in Reader.cs): LAME 3.100, `libmp3lame.64.dll` / `.32.dll` (LGPL; RareWares' builds, the
+   copies in Corey-M/NAudio.Lame at tag v2.1.0; they need only kernel32). Functions found with
+   LoadLibrary / GetProcAddress and called through cdecl delegates. 64 kbit/s constant, mono, no VBR tag
+   (so a player's length = size / rate). Save as audio offers "MP3 | WAV" (`State.AudioKind` keeps the
+   last kind, mp3 first). For an MP3 the voice writes a temporary WAV in %TEMP% (`savingWav`), then
+   `StartEncoding` packs it on a thread-pool thread (`encoding`, `stopEncoding`; `Saving` covers both;
+   the button reads "Stop saving" throughout).
+3. Credits: both in `Credit.All` (About window), README, THIRD-PARTY-NOTICES ("Beside the Reader"),
+   `licenses/LGPL-2.0-lame.txt`.
+
+**Checked here before CI:** my own code ran under mono (see below): `Pdf.Tidy`, the self-test's PDF
+writer (`SelfTest.TestPdf`, read back with pypdf) and `Mp3.Encode` against Linux's libmp3lame (dlopen in
+place of LoadLibrary). The container refused to RUN the downloaded PdfPig DLLs, so reading a real PDF is
+tested on CI only (the Reader's self-test logs each page "as read").
 
 ## 0.15.0 (17 Nov 2026), delivered, not yet confirmed by him: his 16/17 Nov batch
 
@@ -618,8 +652,7 @@ look in dark mode.
 - **Accurate time-left countdown:** run the text through the voice silently in the background and
   measure the real length. Also remember each voice's measured pace for the initial estimate. Agreed in
   principle (the estimate said 1:27 where the real audio was 1:22); Opus-sized.
-- **MP3 export:** needs a bundled encoder. Save as sound is WAV only for now.
-- **PDF and old .doc support** in the Reader.
+- **Old .doc support** in the Reader (PDF and MP3 were done in 0.16.0).
 - **Repair and Test as buttons inside Config** instead of Start menu entries (offered; he kept them).
 - **A "save text to a file" button** in the Reader (it replaced the removed read-later list; Lumoti saves
   files himself for now).

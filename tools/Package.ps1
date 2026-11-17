@@ -43,6 +43,38 @@ if ($Reader -and (Test-Path $Reader)) {
 } else {
     throw 'The Reader (reader\ModernVoicesReader.exe) was not built.'
 }
+# The Reader's two outside libraries, fetched for the kit (not kept in this repository) and checked
+# against the SHA-256 each had when it was chosen: a file that differs stops the build.
+#  - PdfPig 0.1.8 (Apache-2.0, https://github.com/UglyToad/PdfPig): reads the text of PDFs. Its .NET
+#    Framework 4.7 DLLs, from the project's own release.
+#  - LAME 3.100 (LGPL, https://lame.sourceforge.io): makes MP3s. libmp3lame as built by RareWares, the
+#    copies the NAudio.Lame project keeps (https://github.com/Corey-M/NAudio.Lame, tag v2.1.0).
+function Get-Checked([string]$Url, [string]$Sha256, [string]$Into) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    for ($attempt = 1; ; $attempt++) {
+        try { Invoke-WebRequest $Url -OutFile $Into -UseBasicParsing; break }
+        catch { if ($attempt -ge 3) { throw "Could not download $Url ($($_.Exception.Message))." }; Start-Sleep -Seconds 5 }
+    }
+    $got = (Get-FileHash $Into -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($got -ne $Sha256) { Remove-Item $Into -Force; throw "$Url is not the file expected (SHA-256 $got, expected $Sha256)." }
+}
+$fetched = Join-Path (Resolve-Path $Out) 'fetched'
+New-Item $fetched -ItemType Directory -Force | Out-Null
+$nupkg = Join-Path $fetched 'PdfPig.0.1.8.nupkg'
+Get-Checked 'https://github.com/UglyToad/PdfPig/releases/download/v0.1.8/PdfPig.0.1.8.nupkg' '7bf349f7b57d9d91a2fff568bb7828ffc66ff6a65174abbee2c10d7b4d10566c' $nupkg
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$package = [System.IO.Compression.ZipFile]::OpenRead($nupkg)
+try {
+    foreach ($part in 'UglyToad.PdfPig', 'UglyToad.PdfPig.Core', 'UglyToad.PdfPig.Fonts', 'UglyToad.PdfPig.Tokens', 'UglyToad.PdfPig.Tokenization', 'UglyToad.PdfPig.DocumentLayoutAnalysis') {
+        $inside = $package.GetEntry("lib/net47/$part.dll")
+        if (-not $inside) { throw "PdfPig's package has no lib/net47/$part.dll." }
+        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($inside, "$kit\reader\$part.dll", $true)
+    }
+} finally { $package.Dispose() }
+Get-Checked 'https://raw.githubusercontent.com/Corey-M/NAudio.Lame/v2.1.0/NAudio.Lame/libmp3lame.64.dll' '71dba147b6c16d8d0f012b8e657d52e12cb8796a659e1151200d0a6c8b04bce3' "$kit\reader\libmp3lame.64.dll"
+Get-Checked 'https://raw.githubusercontent.com/Corey-M/NAudio.Lame/v2.1.0/NAudio.Lame/libmp3lame.32.dll' '91d3c0cc833265066c51408d940faaf76c5b8fc5bda854540a9cc6c88b1d1f20' "$kit\reader\libmp3lame.32.dll"
+Write-Host "the Reader's libraries: $((Get-ChildItem "$kit\reader\*.dll").Count) DLLs, $([math]::Round(((Get-ChildItem "$kit\reader\*.dll" | Measure-Object Length -Sum).Sum) / 1MB, 1)) MB"
+
 if ($Config -and (Test-Path $Config)) {
     New-Item "$kit\config" -ItemType Directory -Force | Out-Null
     Copy-Item $Config "$kit\config\ModernVoicesConfig.exe"

@@ -71,6 +71,8 @@ This program is a thin layer over years of work by people who actually know how 
 - **Piper** (Michael Hansen and contributors) for the voices and the way of making them.
 - **eSpeak NG** (Jonathan Duddington, Reece H. Dunn and contributors) for pronunciation.
 - **sherpa-onnx** (the k2-fsa project) and **ONNX Runtime** (Microsoft) for running the voices.
+- **PdfPig** (UglyToad and contributors) for reading PDFs in the Reader, and **LAME** (the LAME
+  Project) for saving MP3s.
 - Everyone who recorded their voice for a research collection or an audiobook and let it be used.
 
 The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

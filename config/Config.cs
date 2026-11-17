@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.15.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.16.0.0")]
 
 namespace ModernVoicesConfig
 {
@@ -1073,7 +1073,9 @@ namespace ModernVoicesConfig
             new Credit("Piper (Neural Voices)", "Michael Hansen and contributors", "The voices, and the way of making them.", "https://github.com/rhasspy/piper"),
             new Credit("eSpeak NG", "Jonathan Duddington, Reece H. Dunn and contributors", "Works out how words are pronounced.", "https://github.com/espeak-ng/espeak-ng"),
             new Credit("sherpa-onnx", "Xiaomi Corporation and the k2-fsa contributors", "Runs the voices.", "https://github.com/k2-fsa/sherpa-onnx"),
-            new Credit("ONNX Runtime", "Microsoft Corporation", "Runs the voices' models.", "https://github.com/microsoft/onnxruntime") };
+            new Credit("ONNX Runtime", "Microsoft Corporation", "Runs the voices' models.", "https://github.com/microsoft/onnxruntime"),
+            new Credit("PdfPig", "UglyToad and contributors", "Reads the text of PDFs in the Reader.", "https://github.com/UglyToad/PdfPig"),
+            new Credit("LAME", "The LAME Project", "Makes the Reader's MP3 files.", "https://lame.sourceforge.io") };
         public const string Thanks = "Thanks to everyone who recorded their voice for a research collection or an audiobook and let it be used in this software.";
         public const string Home = "https://github.com/Lumotiverse/modern-voices-for-windows";
         public const string Coding = "All coding done by Anthropic's Fable 5.2, assisted by Opus 5.5. Testing and UX done by Lumoti.";
