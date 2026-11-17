@@ -1770,8 +1770,8 @@ namespace ModernVoicesConfig
             previewLine.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, previewColumn);
             // (A label's words start a little inside it: the sections are set that much to the left, so
             // that the words themselves, not their labels, start at the preview box's edge.)
-            NameInset = Math.Max(0, (TextRenderer.MeasureText("Volume", Font).Width -
-                TextRenderer.MeasureText("Volume", Font, Size.Empty, TextFormatFlags.NoPadding).Width) / 2);
+            // (3 px at 100%, seen in the pictures: it grows with the text. Measuring it with TextRenderer gave 0.)
+            NameInset = Math.Max(1, (int)Math.Round(Font.Height / 5.0));
             int sectionLeft = previewColumn - NameInset;
             labelColumn = 0;
             foreach (string sliderName in new string[] { "Volume", "Boost", "Dictation speed", "Sentence pause", "Comma pause", "Paragraph gap", "Voice variation" })
