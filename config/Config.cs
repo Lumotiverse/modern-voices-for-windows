@@ -5795,13 +5795,6 @@ namespace ModernVoicesConfig
                     "Apply changes adds them: " + after.Count + " voices installed, every one tested");
                 Check(Voices.Gender(gendered) == genderChosen, "the gender chosen for " + gendered + " (" + genderChosen + ", was '" + genderWas +
                     "') is still Windows' after the installer registered the voices again ('" + Voices.Gender(gendered) + "')");
-                // And "neither": none given, even where the installer knows one.
-                ui.ShowPage(0);
-                Settle(50);
-                ui.SelectInstalledId(gendered);
-                ui.SetGender("");
-                ui.ShowPage(3);
-                Settle(50);
                 if (download)
                 {
                     Check(after.Contains("en_GB-alan-medium") && File.Exists(Path.Combine(alanFolder, "model.onnx")) && ui.ProgressSeen >= 90,
@@ -5813,6 +5806,13 @@ namespace ModernVoicesConfig
                     "; ticked: " + string.Join(", ", ui.PickedIds().ToArray()) + "; installed: " + string.Join(", ", ui.Installed.ToArray()));
                 Check(ui.InstalledList.Items.Count == after.Count && ui.PageIndex == 0 && !ui.ApplyButton.Enabled && ui.CloseButton.Enabled && !ui.Progress.Visible,
                     "afterwards the Voice manager shows them (" + ui.InstalledList.Items.Count + " rows), with nothing left to apply");
+                // And "neither": none given, even where the installer knows one.
+                ui.ShowPage(0);
+                Settle(50);
+                ui.SelectInstalledId(gendered);
+                ui.SetGender("");
+                ui.ShowPage(3);
+                Settle(50);
                 ui.SpeakerList.SetItemChecked(extraIndex, false);
                 if (download) { alan.Checked = false; }
                 ui.Apply();
