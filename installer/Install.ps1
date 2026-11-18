@@ -86,7 +86,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 . (Join-Path $Here 'VoiceConvert.ps1')
 . (Join-Path $Here 'Languages.ps1')
 
-$Version = '0.18.1'
+$Version = '0.18.2'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -557,6 +557,19 @@ function Get-Nickname([string]$Id) {
     return [string]$found.$Id
 }
 
+# A gender chosen for a voice in Modern Voices Config (SAPI's Gender attribute: 'Female', 'Male', or '' for
+# neither), kept by voice id like the nicknames. $null when none was chosen: the voice then gets the one in
+# $Genders, if it is there.
+$ChosenGenders = "$Settings\Genders"
+function Get-ChosenGender([string]$Id) {
+    if (-not (Test-Path $ChosenGenders)) { return $null }
+    $found = Get-ItemProperty $ChosenGenders -Name $Id -ErrorAction SilentlyContinue
+    if ($null -eq $found) { return $null }
+    $value = [string]$found.$Id
+    if ($value -eq 'Female' -or $value -eq 'Male') { return $value }
+    return ''
+}
+
 # The name a voice would have with a nickname (none: its accent).
 function Format-DisplayName($Entry, [string]$SpeakerName, [string]$Nick) {
     $what = if ($Nick) { $Nick } else { $Entry.Accent }
@@ -768,7 +781,11 @@ function Register-Voice([string]$TokenRoot, [string]$Id, $Entry, [string]$Speake
     Set-ItemProperty $token -Name 'ModernVoice' -Value 1 -Type DWord
     Set-ItemProperty $token -Name 'VoiceId' -Value $Id
     Set-ItemProperty "$token\Attributes" -Name 'Name' -Value $display
-    if (-not $SpeakerName -and $Genders.ContainsKey($Entry.Name)) {
+    $chosenGender = Get-ChosenGender $Id
+    if ($null -ne $chosenGender) {
+        if ($chosenGender) { Set-ItemProperty "$token\Attributes" -Name 'Gender' -Value $chosenGender }
+    }
+    elseif (-not $SpeakerName -and $Genders.ContainsKey($Entry.Name)) {
         Set-ItemProperty "$token\Attributes" -Name 'Gender' -Value $Genders[$Entry.Name]
     }
     Set-ItemProperty "$token\Attributes" -Name 'Age' -Value 'Adult'

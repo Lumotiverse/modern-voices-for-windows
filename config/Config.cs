@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.1.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.2.0")]
 
 namespace ModernVoicesConfig
 {
@@ -57,6 +57,41 @@ namespace ModernVoicesConfig
         public static extern bool GetNamedPipeClientProcessId(IntPtr pipe, out uint processId);
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool GetNamedPipeServerProcessId(IntPtr pipe, out uint processId);
+
+        // A list's column headings: the little arrow that says which column it is sorted by.
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct HDITEM
+        {
+            public int mask, cxy;
+            public IntPtr pszText, hbm;
+            public int cchTextMax, fmt;
+            public IntPtr lParam;
+            public int iImage, iOrder;
+            public uint type;
+            public IntPtr pvFilter;
+            public uint state;
+        }
+        [DllImport("user32.dll")]
+        public static extern IntPtr SendMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+        public static extern IntPtr SendHeaderItem(IntPtr hwnd, int message, IntPtr index, ref HDITEM item);
+        const int LVM_GETHEADER = 0x101F, HDM_GETITEMW = 0x120B, HDM_SETITEMW = 0x120C, HDI_FORMAT = 0x4, HDF_SORTDOWN = 0x200, HDF_SORTUP = 0x400;
+        // column: the one sorted by (-1: none), down: Z to A.
+        public static void SortArrows(ListView view, int column, bool down)
+        {
+            if (!view.IsHandleCreated) { return; }
+            IntPtr header = SendMessage(view.Handle, LVM_GETHEADER, IntPtr.Zero, IntPtr.Zero);
+            if (header == IntPtr.Zero) { return; }
+            for (int i = 0; i < view.Columns.Count; i++)
+            {
+                HDITEM item = new HDITEM();
+                item.mask = HDI_FORMAT;
+                if (SendHeaderItem(header, HDM_GETITEMW, new IntPtr(i), ref item) == IntPtr.Zero) { continue; }
+                item.fmt &= ~(HDF_SORTDOWN | HDF_SORTUP);
+                if (i == column) { item.fmt |= down ? HDF_SORTDOWN : HDF_SORTUP; }
+                SendHeaderItem(header, HDM_SETITEMW, new IntPtr(i), ref item);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- where the program is
@@ -453,6 +488,50 @@ namespace ModernVoicesConfig
                 if (!string.IsNullOrEmpty(nick)) { key.SetValue(id, nick); }
                 else { key.DeleteValue(id, false); }
             }
+        }
+
+        // A voice's gender as Windows has it (SAPI's Gender attribute, which programs that pick a voice by
+        // gender go by): "Female", "Male", or "" (none given).
+        public static string Gender(string id)
+        {
+            try
+            {
+                using (RegistryKey attributes = Registry.LocalMachine.OpenSubKey(Tokens64 + "\\" + TokenName(id) + @"\Attributes"))
+                {
+                    string value = attributes == null ? null : attributes.GetValue("Gender") as string;
+                    return NormalGender(value);
+                }
+            }
+            catch (Exception) { return ""; }
+        }
+        public static string NormalGender(string value)
+        {
+            if (string.Equals(value, "Female", StringComparison.OrdinalIgnoreCase)) { return "Female"; }
+            if (string.Equals(value, "Male", StringComparison.OrdinalIgnoreCase)) { return "Male"; }
+            return "";
+        }
+
+        // Sets (or, empty, removes) a voice's gender where Windows lists it, for 64- and 32-bit programs, and
+        // keeps the choice (an empty one too) under the program's settings key, so that Repair and updates
+        // give the voice the same. The administrator's to do: the helper's part (see Helper).
+        public static void SetGender(string id, string gender)
+        {
+            gender = NormalGender(gender);
+            bool found = false;
+            foreach (string root in new string[] { Tokens64, Tokens32 })
+            {
+                using (RegistryKey token = Registry.LocalMachine.OpenSubKey(root + "\\" + TokenName(id), true))
+                {
+                    if (token == null) { continue; }
+                    found = true;
+                    using (RegistryKey attributes = token.CreateSubKey("Attributes"))
+                    {
+                        if (gender.Length > 0) { attributes.SetValue("Gender", gender); } else { attributes.DeleteValue("Gender", false); }
+                    }
+                }
+            }
+            if (!found) { throw new InvalidOperationException("That voice is not installed."); }
+            using (RegistryKey key = Registry.LocalMachine.CreateSubKey(OurSettings + @"\Genders")) { key.SetValue(id, gender); }
         }
 
         // SAPI's default voice (what sapi.cpl sets): a token's name, kept for the Windows user.
@@ -1045,6 +1124,35 @@ namespace ModernVoicesConfig
         }
     }
 
+    // How the lists were arranged last time, for the next start (kept for the Windows user, as the theme is):
+    // the Voice manager's column order ("VoiceColumns": the columns' names, left to right) and each list's
+    // sorting ("VoiceSort", "AddSort": a column's name and "up" or "down"; none: as listed). The build's test
+    // keeps its own here and leaves the person's alone.
+    public static class ListLayout
+    {
+        const string OurKey = @"Software\Modern Voices for Windows";
+        public static Dictionary<string, string> Override;
+
+        public static string Get(string name)
+        {
+            if (Override != null) { string held; return Override.TryGetValue(name, out held) ? held : ""; }
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(OurKey)) { return (key == null ? null : key.GetValue(name) as string) ?? ""; }
+            }
+            catch (Exception) { return ""; }
+        }
+        public static void Set(string name, string value)
+        {
+            if (Override != null) { Override[name] = value ?? ""; return; }
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(OurKey)) { key.SetValue(name, value ?? ""); }
+            }
+            catch (Exception) { }
+        }
+    }
+
     // The "Powered by" window is shown the first time Modern Voices Config opens: whether it has been
     // (kept with the theme; uninstalling removes it, so a new install shows the window again).
     public static class Welcome
@@ -1235,6 +1343,112 @@ namespace ModernVoicesConfig
         public string Key, Dir, Title, Speaker;
         public bool Shared;
         public Entry Entry;
+        // What its cells show (and are sorted by): the voice, its nickname, accent and gender, its size, and
+        // whether it is Windows' default. Order: its place in the list as installed (the order with no
+        // sorting); First: the voice's first row (a voice of several speakers shows its name, size and
+        // folder on that row only, while its rows stand together).
+        public string Voice, Nick, Accent, Gender;
+        public long SizeMb;
+        public bool IsDefault, First;
+        public int Order;
+    }
+
+    // Sorts a list by a column (Column -1: as listed), A to Z or (Down) Z to A, by what each row's Key gives
+    // for that column: words, or numbers where the column holds sizes and counts. Rows that come out the
+    // same keep the order they are listed in.
+    public class RowSorter : System.Collections.IComparer
+    {
+        public delegate IComparable KeyOf(ListViewItem item, int column);
+        public delegate int OrderOf(ListViewItem item);
+        public int Column = -1;
+        public bool Down;
+        public KeyOf Key;
+        public OrderOf Order;
+        public string[] Names;      // the columns' names (what is kept for the next start)
+
+        public int Compare(object x, object y)
+        {
+            ListViewItem a = (ListViewItem)x, b = (ListViewItem)y;
+            int c = 0;
+            if (Column >= 0)
+            {
+                IComparable ka = Key(a, Column), kb = Key(b, Column);
+                string sa = ka as string, sb = kb as string;
+                if (sa != null && sb != null) { c = string.Compare(sa, sb, StringComparison.CurrentCultureIgnoreCase); }
+                else if (ka != null && kb != null) { c = ka.CompareTo(kb); }
+                if (Down) { c = -c; }
+            }
+            if (c == 0) { c = Order(a).CompareTo(Order(b)); }
+            return c;
+        }
+
+        // "Accent up": the column's name and which way; "" for as listed.
+        public string Saved
+        {
+            get { return Column < 0 || Column >= Names.Length ? "" : Names[Column] + "|" + (Down ? "down" : "up"); }
+            set
+            {
+                Column = -1; Down = false;
+                string[] parts = (value ?? "").Split('|');
+                if (parts.Length != 2) { return; }
+                Column = Array.IndexOf(Names, parts[0]);
+                Down = parts[1] == "down";
+            }
+        }
+    }
+
+    // The look of a right-click menu when the window is dark (light: Windows' own).
+    public class DarkMenuColours : ProfessionalColorTable
+    {
+        readonly Palette p;
+        public DarkMenuColours(Palette palette) { p = palette; UseSystemColors = false; }
+        public override Color ToolStripDropDownBackground { get { return p.Raised; } }
+        public override Color ImageMarginGradientBegin { get { return p.Raised; } }
+        public override Color ImageMarginGradientMiddle { get { return p.Raised; } }
+        public override Color ImageMarginGradientEnd { get { return p.Raised; } }
+        public override Color MenuBorder { get { return p.Border; } }
+        public override Color MenuItemBorder { get { return p.Selected; } }
+        public override Color MenuItemSelected { get { return p.Selected; } }
+        public override Color MenuItemSelectedGradientBegin { get { return p.Selected; } }
+        public override Color MenuItemSelectedGradientEnd { get { return p.Selected; } }
+        public override Color MenuItemPressedGradientBegin { get { return p.Selected; } }
+        public override Color MenuItemPressedGradientEnd { get { return p.Selected; } }
+        public override Color CheckBackground { get { return p.Raised; } }
+        public override Color CheckSelectedBackground { get { return p.Selected; } }
+        public override Color CheckPressedBackground { get { return p.Selected; } }
+        public override Color SeparatorDark { get { return p.Border; } }
+        public override Color SeparatorLight { get { return p.Border; } }
+    }
+    public class DarkMenuLook : ToolStripProfessionalRenderer
+    {
+        readonly Palette p;
+        public DarkMenuLook(Palette palette) : base(new DarkMenuColours(palette)) { p = palette; RoundedEdges = false; }
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.Enabled ? p.Text : p.Muted;
+            base.OnRenderItemText(e);
+        }
+        protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+        {
+            e.ArrowColor = p.Text;
+            base.OnRenderArrow(e);
+        }
+        // A tick drawn in the text's colour (Windows' own is black, unseen on a dark menu).
+        protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+        {
+            Rectangle r = e.ImageRectangle;
+            System.Drawing.Drawing2D.SmoothingMode was = e.Graphics.SmoothingMode;
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            float w = r.Width, h = r.Height;
+            using (Pen tick = new Pen(e.Item.Enabled ? p.Text : p.Muted, Math.Max(1.6f, w / 9f)))
+            {
+                tick.StartCap = System.Drawing.Drawing2D.LineCap.Round; tick.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+                tick.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
+                e.Graphics.DrawLines(tick, new PointF[] { new PointF(r.X + w * 0.22f, r.Y + h * 0.52f), new PointF(r.X + w * 0.42f, r.Y + h * 0.72f),
+                    new PointF(r.X + w * 0.78f, r.Y + h * 0.30f) });
+            }
+            e.Graphics.SmoothingMode = was;
+        }
     }
 
     // The voice (speaker) of the row selected in the Voice manager: its token and the name programs see.
@@ -1294,6 +1508,17 @@ namespace ModernVoicesConfig
         public ProgressBar Progress;
         public Button ApplyButton, CloseButton, PreviewButton, ResetButton, DefaultButton, NickButton, GlobalPreview, RateReset, WordSave, WordRemove;
         public ListView InstalledList, WordList, AddList;
+        // The Voice manager list's columns (their places as made; the person may drag them into another order).
+        public const int VoiceColumn = 0, SpeakerColumn = 1, NickColumn = 2, AccentColumn = 3, GenderColumn = 4, SizeColumn = 5, DefaultColumn = 6, FolderColumn = 7;
+        public RowSorter InstalledSorter, AddSorter;
+        readonly Dictionary<ListView, RowSorter> sorters = new Dictionary<ListView, RowSorter>();
+        readonly Dictionary<ColumnHeader, int> columnWidths = new Dictionary<ColumnHeader, int>();      // as made (a column no longer last goes back to it)
+        readonly Dictionary<ListView, ColumnHeader> filledColumn = new Dictionary<ListView, ColumnHeader>();
+        readonly HashSet<ListView> firstMade = new HashSet<ListView>();
+        readonly Dictionary<ListViewItem, int> addOrder = new Dictionary<ListViewItem, int>();          // Add or remove voices' rows as listed
+        // The Voice manager list's right-click menu.
+        public ContextMenuStrip VoiceMenu;
+        public ToolStripMenuItem MenuNickname, MenuGender, MenuFemale, MenuMale, MenuOverride, MenuDefault;
         public BigCheckList SpeakerList;
         public TextBox NickBox, PreviewBox, WordFrom, WordTo;
         public CheckBox OwnBox, UsBox, WordWhole, WordCase, OnlyTickedBox;
@@ -1747,8 +1972,31 @@ namespace ModernVoicesConfig
             {
                 DarkHeader(view);
                 // The last column takes the width left over (so that no strip of plain heading shows beside it).
-                view.Columns[view.Columns.Count - 1].Width = -2;
+                foreach (ColumnHeader column in view.Columns) { columnWidths[column] = column.Width; }
+                FillLast(view);
                 view.Resize += ListResized;
+            }
+            // (The sort arrow in a heading, once Windows has made the list.)
+            // (A list sorted before Windows made it is sorted again as it is made; the Voice manager's first
+            // row is the one selected, as it would be.)
+            foreach (ListView view in new ListView[] { InstalledList, AddList })
+            {
+                view.HandleCreated += delegate(object made, EventArgs e)
+                {
+                    ListView list = (ListView)made;
+                    RowSorter sorter = sorters[list];
+                    if (sorter.Column >= 0)
+                    {
+                        bool was = filtering;
+                        filtering = true;
+                        try { list.Sort(); } finally { filtering = was; }
+                        if (list == InstalledList && firstMade.Add(list) && list.Items.Count > 0 && !list.Items[0].Selected)
+                        {
+                            BeginInvoke((MethodInvoker)delegate { SelectInstalledId(null); });
+                        }
+                    }
+                    ShowSortArrow(list);
+                };
             }
             ApplyTheme();
             // Windows' speed can be changed in its Speech settings, and the theme in the Reader, while the
@@ -1760,7 +2008,242 @@ namespace ModernVoicesConfig
         void ListResized(object sender, EventArgs e)
         {
             ListView resized = sender as ListView;
-            if (resized != null && resized.Columns.Count > 0) { resized.Columns[resized.Columns.Count - 1].Width = -2; }
+            if (resized != null && resized.Columns.Count > 0) { FillLast(resized); }
+        }
+
+        // The columns as they stand, left to right.
+        static List<ColumnHeader> ColumnOrder(ListView view)
+        {
+            List<ColumnHeader> order = new List<ColumnHeader>();
+            foreach (ColumnHeader column in view.Columns) { order.Add(column); }
+            order.Sort(delegate(ColumnHeader a, ColumnHeader b) { return a.DisplayIndex.CompareTo(b.DisplayIndex); });
+            return order;
+        }
+        // The column at the right takes the width left over; one that was there before and has been dragged
+        // elsewhere gets its own width back.
+        void FillLast(ListView view)
+        {
+            List<ColumnHeader> order = ColumnOrder(view);
+            if (order.Count == 0) { return; }
+            ColumnHeader last = order[order.Count - 1], before;
+            int width;
+            if (filledColumn.TryGetValue(view, out before) && before != last && columnWidths.TryGetValue(before, out width)) { before.Width = width; }
+            filledColumn[view] = last;
+            last.Width = -2;
+        }
+        // The Voice manager's columns in the order they were left in last time.
+        public void RestoreColumnOrder()
+        {
+            string[] names = ListLayout.Get("VoiceColumns").Split(new char[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
+            int place = 0;
+            foreach (string name in names)
+            {
+                foreach (ColumnHeader column in InstalledList.Columns)
+                {
+                    if (column.Text == name) { column.DisplayIndex = place++; break; }
+                }
+            }
+        }
+
+        // The Voice manager list sorted by a column (that column again: the other way), kept for next time.
+        public void SortInstalled(int column)
+        {
+            if (InstalledSorter.Column == column) { InstalledSorter.Down = !InstalledSorter.Down; }
+            else { InstalledSorter.Column = column; InstalledSorter.Down = false; }
+            ListLayout.Set("VoiceSort", InstalledSorter.Saved);
+            string id = SelectedInstalledId();
+            InstalledList.BeginUpdate();
+            try { InstalledList.Sort(); ShowInstalledCells(); }
+            finally { InstalledList.EndUpdate(); }
+            ShowSortArrow(InstalledList);
+            SelectInstalledId(id);
+        }
+        // Both lists as listed, unsorted (the build's test puts them back so).
+        public void SortInstalledAsListed()
+        {
+            InstalledSorter.Column = -1; InstalledSorter.Down = false;
+            ListLayout.Set("VoiceSort", "");
+            string id = SelectedInstalledId();
+            InstalledList.BeginUpdate();
+            try { InstalledList.Sort(); ShowInstalledCells(); }
+            finally { InstalledList.EndUpdate(); }
+            ShowSortArrow(InstalledList);
+            SelectInstalledId(id);
+        }
+        public void SortAddAsListed()
+        {
+            AddSorter.Column = -1; AddSorter.Down = false;
+            ResortAdd();
+        }
+        public void FillLastColumn(ListView view) { FillLast(view); }
+
+        // Add or remove voices' list sorted the same way (its "Show" box and ticks are as they were).
+        public void SortAdd(int column)
+        {
+            if (AddSorter.Column == column) { AddSorter.Down = !AddSorter.Down; }
+            else { AddSorter.Column = column; AddSorter.Down = false; }
+            ResortAdd();
+        }
+        void ResortAdd()
+        {
+            ListLayout.Set("AddSort", AddSorter.Saved);
+            ListViewItem selected = AddList.SelectedItems.Count > 0 ? AddList.SelectedItems[0] : null;
+            Dictionary<ListViewItem, bool> ticks = new Dictionary<ListViewItem, bool>();
+            foreach (ListViewItem item in VoiceItems) { ticks[item] = item.Checked; }
+            filtering = true;
+            AddList.BeginUpdate();
+            try
+            {
+                AddList.Sort();
+                foreach (ListViewItem item in VoiceItems) { if (item.Checked != ticks[item]) { item.Checked = ticks[item]; } }
+            }
+            finally { AddList.EndUpdate(); filtering = false; }
+            if (selected != null && selected.ListView == AddList) { selected.EnsureVisible(); }
+            ShowSortArrow(AddList);
+        }
+        void ShowSortArrow(ListView view)
+        {
+            RowSorter sorter;
+            if (!sorters.TryGetValue(view, out sorter)) { return; }
+            try { Native.SortArrows(view, sorter.Column, sorter.Down); } catch (Exception) { }
+            if (view.IsHandleCreated && view.OwnerDraw) { view.Invalidate(); }
+        }
+
+        // What the Voice manager list sorts each column by.
+        static IComparable InstalledKey(ListViewItem item, int column)
+        {
+            InstalledRow row = (InstalledRow)item.Tag;
+            switch (column)
+            {
+                case VoiceColumn: return row.Voice;
+                case SpeakerColumn: return row.Speaker ?? "";
+                case NickColumn: return row.Nick;
+                case AccentColumn: return row.Accent;
+                case GenderColumn: return row.Gender;
+                case SizeColumn: return row.SizeMb;
+                case DefaultColumn: return row.IsDefault ? 0 : 1;      // (the default first)
+                default: return row.Key;
+            }
+        }
+        // And Add or remove voices' list.
+        static IComparable AddKey(ListViewItem item, int column)
+        {
+            Entry v = (Entry)item.Tag;
+            switch (column)
+            {
+                case 0: return v.Display;
+                case 1: return Math.Max(1, v.SpeakerNames.Count);
+                case 2: return v.Accent;
+                case 3: return v.Quality == "high" ? 1 : 0;      // (medium, then high)
+                case 4: return v.SizeMb;
+                default: return v.Key;
+            }
+        }
+
+        // The Voice manager's cells. A voice of several speakers shows its name, size and folder on its first
+        // row only while its rows stand together (as installed, or sorted by voice); sorted by anything
+        // else, on every row, so that each row says whose speaker it is.
+        void ShowInstalledCells()
+        {
+            bool grouped = InstalledSorter.Column < 0 || InstalledSorter.Column == VoiceColumn;
+            foreach (ListViewItem item in InstalledList.Items)
+            {
+                InstalledRow row = (InstalledRow)item.Tag;
+                bool all = row.First || !grouped;
+                SetCell(item, VoiceColumn, all ? row.Voice : "");
+                SetCell(item, SizeColumn, all ? row.SizeMb + " MB" : "");
+                SetCell(item, FolderColumn, all ? row.Key : "");
+            }
+        }
+        static void SetCell(ListViewItem item, int column, string text)
+        {
+            if (item.SubItems[column].Text != text) { item.SubItems[column].Text = text; }
+        }
+
+        // ---- the Voice manager list's right-click menu
+
+        void BuildVoiceMenu()
+        {
+            VoiceMenu = new ContextMenuStrip();
+            MenuNickname = new ToolStripMenuItem("Set nickname");
+            MenuGender = new ToolStripMenuItem("Set gender");
+            MenuFemale = new ToolStripMenuItem("Female");
+            MenuMale = new ToolStripMenuItem("Male");
+            MenuGender.DropDownItems.Add(MenuFemale); MenuGender.DropDownItems.Add(MenuMale);
+            MenuGender.ToolTipText = "Click the ticked one again to leave both blank.";
+            MenuOverride = new ToolStripMenuItem("Override defaults");
+            MenuOverride.ToolTipText = "Override pause duration and variation for the selected voice";
+            MenuDefault = new ToolStripMenuItem("Make default voice");
+            VoiceMenu.Items.Add(MenuNickname); VoiceMenu.Items.Add(MenuGender); VoiceMenu.Items.Add(MenuOverride); VoiceMenu.Items.Add(MenuDefault);
+            VoiceMenu.ShowItemToolTips = true;
+            MenuGender.DropDown.ShowItemToolTips = true;
+            InstalledList.ContextMenuStrip = VoiceMenu;
+            // A right click selects the row under the pointer (Windows does), and the menu is its voice's.
+            VoiceMenu.Opening += delegate(object sender, CancelEventArgs e)
+            {
+                if (Busy || InstalledList.SelectedItems.Count == 0) { e.Cancel = true; return; }
+                if (CurrentInstalled != InstalledList.SelectedItems[0].Tag) { UpdateInstalled(); }
+                UpdateVoiceMenu();
+            };
+            MenuNickname.Click += delegate
+            {
+                // (After the menu has closed: it gives the focus back to the list as it goes.)
+                BeginInvoke((MethodInvoker)delegate { if (NickBox.Enabled) { NickBox.Focus(); NickBox.SelectAll(); } });
+            };
+            MenuFemale.Click += delegate { SetGender(MenuFemale.Checked ? "" : "Female"); };
+            MenuMale.Click += delegate { SetGender(MenuMale.Checked ? "" : "Male"); };
+            MenuOverride.Click += delegate
+            {
+                if (!OwnBox.Enabled) { return; }
+                OwnBox.Checked = !OwnBox.Checked;
+                if (OwnBox.Checked) { BeginInvoke((MethodInvoker)delegate { Pages[0].ScrollControlIntoView(PauseFrame); }); }
+            };
+            MenuDefault.Click += delegate { SetDefaultVoice(); };
+        }
+        // The menu's ticks: the selected voice's gender, override and whether it is the default.
+        public void UpdateVoiceMenu()
+        {
+            InstalledRow row = CurrentInstalled;
+            bool on = row != null;
+            CurrentVoice voice = GetCurrentVoice();
+            string gender = voice != null ? Voices.Gender(voice.Id) : "";
+            MenuNickname.Enabled = on && row.Entry != null;
+            MenuGender.Enabled = on;
+            MenuFemale.Checked = gender == "Female"; MenuMale.Checked = gender == "Male";
+            MenuOverride.Enabled = on && OwnBox.Enabled;
+            MenuOverride.Checked = on && OwnBox.Checked;
+            bool isDefault = voice != null && string.Equals(Voices.DefaultToken, voice.Token, StringComparison.OrdinalIgnoreCase);
+            MenuDefault.Checked = isDefault;
+            MenuDefault.Enabled = on && !isDefault;
+        }
+        void ThemeMenu()
+        {
+            if (VoiceMenu == null) { return; }
+            ToolStripRenderer look = palette.Dark ? (ToolStripRenderer)new DarkMenuLook(palette) : new ToolStripProfessionalRenderer();
+            VoiceMenu.Renderer = look;
+            MenuGender.DropDown.Renderer = look;
+            VoiceMenu.Font = Font;
+            MenuGender.DropDown.Font = Font;
+        }
+
+        // Gives the selected row's voice a gender where Windows lists it: "Female", "Male" or "" (neither).
+        // Programs that choose a voice by gender go by it. The administrator's to do (see Elevate).
+        public void SetGender(string gender)
+        {
+            CurrentVoice voice = GetCurrentVoice();
+            if (voice == null) { return; }
+            if (Voices.Gender(voice.Id) == gender) { return; }
+            if (!Elevate()) { return; }
+            try
+            {
+                Answer answer = Elevated.Ask("gender " + B64.To(voice.Id) + " " + B64.To(gender), null);
+                if (answer.Code != 0) { throw new InvalidOperationException(answer.Message ?? "it was refused."); }
+            }
+            catch (Exception e) { MessageBox.Show(this, "Could not set the voice's gender: " + e.Message, App.Name); return; }
+            UpdateInstalledList();
+            SelectInstalledId(voice.Id);
+            StatusLabel.Text = voice.Voice + (gender.Length > 0 ? " is now " + gender.ToLowerInvariant() + " to Windows." : " has no gender given to Windows now.") +
+                " Restart programs that were open to see it.";
         }
 
         void BuildVoiceManager(Panel tab)
@@ -1772,14 +2255,40 @@ namespace ModernVoicesConfig
             InstalledList.Margin = new Padding(3, 0, 3, 3);
             InstalledList.Height = Px(240);
             InstalledList.MinimumSize = new Size(0, Px(240));
-            InstalledList.Columns.Add("Voice", Px(210));
+            InstalledList.Columns.Add("Voice", Px(160));
             InstalledList.Columns.Add("Speaker", Px(80));
-            InstalledList.Columns[1].TextAlign = HorizontalAlignment.Center;
-            InstalledList.Columns.Add("Nickname", Px(190));
+            InstalledList.Columns[SpeakerColumn].TextAlign = HorizontalAlignment.Center;
+            InstalledList.Columns.Add("Nickname", Px(150));
+            InstalledList.Columns.Add("Accent", Px(110));
+            InstalledList.Columns.Add("Gender", Px(75));
             InstalledList.Columns.Add("On disk", Px(75));
             InstalledList.Columns.Add("Windows default", Px(125));
             InstalledList.Columns.Add("Folder", Px(170));
             Row(page, InstalledList);
+            // Its columns can be dragged into another order (kept for next time), and it sorts by the column
+            // whose heading is clicked (clicked again, the other way; kept too).
+            InstalledList.AllowColumnReorder = true;
+            InstalledSorter = new RowSorter();
+            InstalledSorter.Names = new string[] { "Voice", "Speaker", "Nickname", "Accent", "Gender", "On disk", "Windows default", "Folder" };
+            InstalledSorter.Key = InstalledKey;
+            InstalledSorter.Order = delegate(ListViewItem item) { return ((InstalledRow)item.Tag).Order; };
+            InstalledSorter.Saved = ListLayout.Get("VoiceSort");
+            sorters[InstalledList] = InstalledSorter;
+            InstalledList.ListViewItemSorter = InstalledSorter;
+            RestoreColumnOrder();
+            InstalledList.ColumnClick += delegate(object sender, ColumnClickEventArgs e) { SortInstalled(e.Column); };
+            InstalledList.ColumnReordered += delegate(object sender, ColumnReorderedEventArgs e)
+            {
+                // (Raised before the columns move: the new order is worked out from where this one goes.)
+                List<ColumnHeader> order = ColumnOrder(InstalledList);
+                order.Remove(e.Header);
+                order.Insert(Math.Max(0, Math.Min(order.Count, e.NewDisplayIndex)), e.Header);
+                List<string> names = new List<string>();
+                foreach (ColumnHeader column in order) { names.Add(column.Text); }
+                ListLayout.Set("VoiceColumns", string.Join("|", names.ToArray()));
+                BeginInvoke((MethodInvoker)delegate { FillLast(InstalledList); });
+            };
+            BuildVoiceMenu();
 
             // The selected voice (a row for each installed speaker): hear it, make it Windows' default, name it.
             TableLayoutPanel voiceLine = Line("fill", "auto");
@@ -2175,6 +2684,16 @@ namespace ModernVoicesConfig
                 if (item.Checked) { item.Font = listBold; }
                 VoiceItems.Add(item);
             }
+            // It sorts by the column whose heading is clicked, as the Voice manager's does (kept for next time).
+            for (int i = 0; i < VoiceItems.Count; i++) { addOrder[VoiceItems[i]] = i; }
+            AddSorter = new RowSorter();
+            AddSorter.Names = new string[] { "Voice", "Speakers", "Accent or language", "Quality", "Download", "Catalogue key" };
+            AddSorter.Key = AddKey;
+            AddSorter.Order = delegate(ListViewItem item) { int at; return addOrder.TryGetValue(item, out at) ? at : int.MaxValue; };
+            AddSorter.Saved = ListLayout.Get("AddSort");
+            sorters[AddList] = AddSorter;
+            AddList.ListViewItemSorter = AddSorter;
+            AddList.ColumnClick += delegate(object sender, ColumnClickEventArgs e) { SortAdd(e.Column); };
             FillLanguageChoices();
             // "Show" starts on what it was on last time (or what the installer's language choice set), if that is still a choice.
             LanguageChoice showFirst = null;
@@ -2190,6 +2709,7 @@ namespace ModernVoicesConfig
                 Entry listed = (Entry)item.Tag;
                 if (FilterShows(showFirst, listed) && LanguageShown(listed.Family)) { AddList.Items.Add(item); }
             }
+            AddList.Sort();
             // (The Pronunciation tab lists the rules of the first language there is: English, unless it is not listed.)
             LanguageChoice rulesFirst = WordLanguageBox.SelectedItem as LanguageChoice;
             if (rulesFirst != null) { wordFamily = rulesFirst.Family; }
@@ -2464,6 +2984,7 @@ namespace ModernVoicesConfig
                     Entry voice = (Entry)item.Tag;
                     if (FilterShows(filter, voice) && LanguageShown(voice.Family)) { AddList.Items.Add(item); }
                 }
+                AddList.Sort();      // (in the order chosen by clicking a heading)
                 foreach (ListViewItem item in VoiceItems)
                 {
                     if (item.Checked != ticks[item]) { item.Checked = ticks[item]; }
@@ -2593,6 +3114,8 @@ namespace ModernVoicesConfig
             }
             catch (Exception) { }
             foreach (Control child in Controls) { ThemeOn(child, palette); }
+            ThemeMenu();
+            ShowSortArrow(InstalledList); ShowSortArrow(AddList);
             SpeakerList.SelectedBack = palette.Selected;
             SpeakerList.SelectedText = dark ? palette.Text : SystemColors.HighlightText;
             if (ThemeButton.Text.Length > 1) { ThemeButton.Text = dark ? "Light" : "Dark"; }
@@ -2888,6 +3411,20 @@ namespace ModernVoicesConfig
             using (Pen line = new Pen(palette.Border)) { e.Graphics.DrawLine(line, e.Bounds.Right - 1, e.Bounds.Top + 3, e.Bounds.Right - 1, e.Bounds.Bottom - 4); }
             TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis;
             if (e.Header.TextAlign == HorizontalAlignment.Center) { flags |= TextFormatFlags.HorizontalCenter; }
+            // The column sorted by has a small arrow at the top of its heading, as Windows draws it: up for A
+            // to Z, down for Z to A.
+            RowSorter sorter;
+            if (sorters.TryGetValue(view, out sorter) && sorter.Column == e.ColumnIndex)
+            {
+                float mid = e.Bounds.X + e.Bounds.Width / 2f, w = Math.Max(3, Px(4)), top = e.Bounds.Y + Math.Max(1, Px(1)), h = Math.Max(2, Px(3));
+                PointF[] arrow = sorter.Down
+                    ? new PointF[] { new PointF(mid - w, top), new PointF(mid + w, top), new PointF(mid, top + h) }
+                    : new PointF[] { new PointF(mid - w, top + h), new PointF(mid + w, top + h), new PointF(mid, top) };
+                System.Drawing.Drawing2D.SmoothingMode was = e.Graphics.SmoothingMode;
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (SolidBrush mark = new SolidBrush(palette.Muted)) { e.Graphics.FillPolygon(mark, arrow); }
+                e.Graphics.SmoothingMode = was;
+            }
             Rectangle inside = new Rectangle(e.Bounds.X + 4, e.Bounds.Y, e.Bounds.Width - 8, e.Bounds.Height);
             TextRenderer.DrawText(e.Graphics, e.Header.Text, view.Font, inside, palette.Text, flags);
         }
@@ -2895,7 +3432,15 @@ namespace ModernVoicesConfig
         {
             ListView view = (ListView)sender;
             ColumnHeader column = view.Columns[e.ColumnIndex];
-            Rectangle cell = new Rectangle(e.Bounds.X, e.Bounds.Y, column.Width, e.Bounds.Height);
+            int x = e.Bounds.X;
+            // (Windows gives the first column's cell as the whole row: once that column has been dragged
+            // elsewhere, its place is after the columns now left of it.)
+            if (e.ColumnIndex == 0 && column.DisplayIndex > 0)
+            {
+                x = e.Item.Bounds.X;
+                foreach (ColumnHeader other in view.Columns) { if (other.DisplayIndex < column.DisplayIndex) { x += other.Width; } }
+            }
+            Rectangle cell = new Rectangle(x, e.Bounds.Y, column.Width, e.Bounds.Height);
             using (SolidBrush fill = new SolidBrush(e.Item.Selected ? palette.Selected : palette.Input)) { e.Graphics.FillRectangle(fill, cell); }
             int left = cell.X + 4;
             if (e.ColumnIndex == 0 && view.CheckBoxes)
@@ -3034,6 +3579,7 @@ namespace ModernVoicesConfig
             List<string> allVoices = new List<string>();
             InstalledList.BeginUpdate();
             InstalledList.Items.Clear();
+            int order = 0;
             foreach (string key in keys)
             {
                 Entry entry;
@@ -3041,6 +3587,7 @@ namespace ModernVoicesConfig
                 string title = entry != null ? entry.Display + " (" + entry.Accent + ")" : key;
                 List<string> names = speakersOf[key];
                 string dir = Path.Combine(App.VoiceRoot, key);
+                long size = FolderMb(dir);
                 int rows = Math.Max(1, names.Count);
                 for (int r = 0; r < rows; r++)
                 {
@@ -3050,20 +3597,28 @@ namespace ModernVoicesConfig
                     bool isDefault = string.Equals(Voices.TokenName(id), defaultToken, StringComparison.OrdinalIgnoreCase);
                     string shown = entry != null ? Voices.DisplayName(entry, speaker) : key;
                     if (isDefault && defaultName.Length == 0) { defaultName = shown; }
-                    ListViewItem item = new ListViewItem(r == 0 ? title : "");
-                    item.SubItems.Add(speaker ?? "n/a");
-                    item.SubItems.Add(nick.Length > 0 ? "(" + nick + ")" : "");
-                    item.SubItems.Add(r == 0 ? FolderMb(dir) + " MB" : "");
-                    item.SubItems.Add(isDefault ? "yes" : "");
-                    item.SubItems.Add(r == 0 ? key : "");
                     InstalledRow row = new InstalledRow();
                     row.Key = key; row.Dir = dir; row.Title = title; row.Shared = names.Count > 1; row.Speaker = speaker; row.Entry = entry;
+                    // (The accent has a column of its own: the Voice column has the voice's name only.)
+                    row.Voice = entry != null ? entry.Display : key;
+                    row.Nick = nick; row.Accent = entry != null ? entry.Accent : ""; row.Gender = Voices.Gender(id);
+                    row.SizeMb = size; row.IsDefault = isDefault; row.First = r == 0; row.Order = order++;
+                    ListViewItem item = new ListViewItem(row.Voice);
+                    item.SubItems.Add(speaker ?? "n/a");
+                    item.SubItems.Add(nick.Length > 0 ? "(" + nick + ")" : "");
+                    item.SubItems.Add(row.Accent);
+                    item.SubItems.Add(row.Gender);
+                    item.SubItems.Add(size + " MB");
+                    item.SubItems.Add(isDefault ? "yes" : "");
+                    item.SubItems.Add(key);
                     item.Tag = row;
                     InstalledList.Items.Add(item);
                     allVoices.Add(shown);
                     languageOfVoice[shown] = PreviewTexts.LanguageOfKey(key);
                 }
             }
+            InstalledList.Sort();
+            ShowInstalledCells();
             InstalledList.EndUpdate();
             // The Speed and pauses tab's Preview: any installed voice (Windows' default first, if it is one).
             PreviewVoiceBox.Items.Clear();
@@ -3192,13 +3747,27 @@ namespace ModernVoicesConfig
             Sliders["Speed"].Bar.Value = 100;
         }
 
-        void SelectInstalledRow(int index)
+        // The row of a voice (its id) selected again, after the list was made afresh or sorted: wherever it
+        // is now (the first row when it is gone).
+        public void SelectInstalledId(string id)
         {
-            if (InstalledList.Items.Count > index && index >= 0) { InstalledList.Items[index].Selected = true; UpdateInstalled(); }
+            ListViewItem found = null;
+            foreach (ListViewItem item in InstalledList.Items)
+            {
+                InstalledRow row = (InstalledRow)item.Tag;
+                if (id != null && string.Equals(Voices.IdOf(row.Key, row.Speaker), id, StringComparison.OrdinalIgnoreCase)) { found = item; break; }
+            }
+            if (found == null && InstalledList.Items.Count > 0) { found = InstalledList.Items[0]; }
+            if (found == null) { return; }
+            found.Selected = true; found.Focused = true;
+            found.EnsureVisible();
+            UpdateInstalled();
         }
-        int SelectedInstalledIndex()
+        string SelectedInstalledId()
         {
-            return InstalledList.SelectedIndices.Count > 0 ? InstalledList.SelectedIndices[0] : 0;
+            if (InstalledList.SelectedItems.Count == 0) { return null; }
+            InstalledRow row = (InstalledRow)InstalledList.SelectedItems[0].Tag;
+            return Voices.IdOf(row.Key, row.Speaker);
         }
 
         // Makes the selected voice SAPI's default: what programs that don't choose a voice speak with (the
@@ -3209,9 +3778,9 @@ namespace ModernVoicesConfig
             if (voice == null) { return; }
             try { Voices.DefaultToken = voice.Token; }
             catch (Exception e) { MessageBox.Show(this, "Could not set the default voice: " + e.Message, App.Name); return; }
-            int index = SelectedInstalledIndex();
+            string id = voice.Id;
             UpdateInstalledList();
-            SelectInstalledRow(index);
+            SelectInstalledId(id);
         }
 
         // The administrator's part, started if it is not there (Windows asks for permission, once; it then
@@ -3255,9 +3824,8 @@ namespace ModernVoicesConfig
                 if (answer.Code != 0) { throw new InvalidOperationException(answer.Message ?? "it was refused."); }
             }
             catch (Exception e) { MessageBox.Show(this, "Could not rename the voice: " + e.Message, App.Name); return; }
-            int index = SelectedInstalledIndex();
             UpdateInstalledList();
-            SelectInstalledRow(index);
+            SelectInstalledId(voice.Id);
             StatusLabel.Text = "Now named " + wanted + ". Restart programs that were open to see the new name.";
         }
 
@@ -4093,6 +4661,15 @@ namespace ModernVoicesConfig
                 }
                 Voices.SetNickname(id, nick, display);
             }
+            else if (parts.Length == 3 && parts[0] == "gender")
+            {
+                string id = B64.From(parts[1]), gender = B64.From(parts[2]);
+                if (!GoodId.IsMatch(id) || (gender != "" && gender != "Female" && gender != "Male"))
+                {
+                    throw new ArgumentException("That is not a gender a voice can be given.");
+                }
+                Voices.SetGender(id, gender);
+            }
             else if (parts.Length == 3 && parts[0] == "apply")
             {
                 List<string> ids = new List<string>();
@@ -4385,6 +4962,8 @@ namespace ModernVoicesConfig
             string problem;
             // (No additional languages to begin with, whatever the person at this PC has chosen: theirs is left alone.)
             Languages.Override = "";
+            // (The lists as made, unsorted, in their first column order; the person's own arrangement is left alone.)
+            ListLayout.Override = new Dictionary<string, string>();
             List<Entry> everything = Catalogue.Load(out problem);
             List<Entry> catalogue = everything.FindAll(delegate(Entry v) { return v.Family == "en"; });
             Check(catalogue.Count > 20 && everything.Count > catalogue.Count, "the catalogue is read: " + catalogue.Count + " English voices, " +
@@ -5036,6 +5615,8 @@ namespace ModernVoicesConfig
                 Check(named.EndsWith("(Test Name)", StringComparison.Ordinal) && listed && boxShows == "Test Name" && restored == plain && Voices.OurNames().Contains(plain),
                     "nickname: " + plain + " -> " + named + " (Windows lists it: " + listed + "; box shows '" + boxShows + "') -> " + restored);
 
+                ListsAndGender(ui, folder, pictures);
+
                 // A pronunciation rule: added, changed, switched off and removed, each saved to the dictionary file.
                 ui.ShowPage(2);
                 Settle(100);
@@ -5154,7 +5735,7 @@ namespace ModernVoicesConfig
                 string token = ui.GetCurrentVoice().Token;
                 ui.SetDefaultVoice();
                 string defaultNow = Voices.DefaultTokenId;
-                string marked = ui.InstalledList.Items[0].SubItems[4].Text;
+                string marked = ui.InstalledList.Items[0].SubItems[ConfigForm.DefaultColumn].Text;
                 Check(defaultNow == @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\" + token && marked == "yes",
                     "default voice: " + defaultNow + " (marked '" + marked + "'); " + ui.DefaultLabel.Text);
                 Voices.DefaultTokenId = defaultWas;
@@ -5192,6 +5773,16 @@ namespace ModernVoicesConfig
                 if (download) { alan.Checked = true; }
                 string alanFolder = Path.Combine(App.VoiceRoot, "en_GB-alan-medium");
                 int more = download ? 2 : 1;
+                // A gender chosen in the Voice manager is kept when the installer registers the voices again.
+                string gendered = had[0];
+                string genderWas = Voices.Gender(gendered);
+                string genderChosen = genderWas == "Male" ? "Female" : "Male";
+                ui.ShowPage(0);
+                Settle(50);
+                ui.SelectInstalledId(gendered);
+                ui.SetGender(genderChosen);
+                ui.ShowPage(3);
+                Settle(50);
                 ui.UpdateApply();
                 Check(ui.ApplyButton.Enabled, "a second speaker and another voice ticked: Apply changes is lit (" + ui.SizeLabel.Text + ")");
                 ui.Apply();
@@ -5202,12 +5793,21 @@ namespace ModernVoicesConfig
                 foreach (string line in ui.ApplyLines) { if (!line.StartsWith("##progress", StringComparison.Ordinal)) { Note("    | " + line); } }
                 Check(finished && after.Count == had.Count + more && after.Contains(extra) && ui.StatusLabel.Text.StartsWith("Done", StringComparison.Ordinal),
                     "Apply changes adds them: " + after.Count + " voices installed, every one tested");
+                Check(Voices.Gender(gendered) == genderChosen, "the gender chosen for " + gendered + " (" + genderChosen + ", was '" + genderWas +
+                    "') is still Windows' after the installer registered the voices again ('" + Voices.Gender(gendered) + "')");
+                // And "neither": none given, even where the installer knows one.
+                ui.ShowPage(0);
+                Settle(50);
+                ui.SelectInstalledId(gendered);
+                ui.SetGender("");
+                ui.ShowPage(3);
+                Settle(50);
                 if (download)
                 {
                     Check(after.Contains("en_GB-alan-medium") && File.Exists(Path.Combine(alanFolder, "model.onnx")) && ui.ProgressSeen >= 90,
                         "the new voice was downloaded, with the bar moving (it reached " + ui.ProgressSeen + "%)");
                 }
-                Check(Voices.DefaultToken == Voices.TokenName(after[0]) && ui.InstalledList.Items[0].SubItems[4].Text == "yes",
+                Check(Voices.DefaultToken == Voices.TokenName(after[0]) && ui.InstalledList.Items[0].SubItems[ConfigForm.DefaultColumn].Text == "yes",
                     "Windows' default was one of its own voices: the first voice of the list is now the default (" + ui.DefaultLabel.Text + ")");
                 Check(ui.InstalledList.Items.Count == after.Count && ui.PageIndex == 0 && !ui.ApplyButton.Enabled && ui.CloseButton.Enabled && !ui.Progress.Visible,
                     "afterwards the Voice manager shows them (" + ui.InstalledList.Items.Count + " rows), with nothing left to apply");
@@ -5219,6 +5819,8 @@ namespace ModernVoicesConfig
                 Note("apply (remove them again): " + ui.ApplyLines.Count + " lines from the installer; status: " + ui.StatusLabel.Text);
                 Check(finished && after.Count == had.Count && !after.Contains(extra) && !after.Contains("en_GB-alan-medium") && ui.StatusLabel.Text.StartsWith("Done", StringComparison.Ordinal),
                     "Apply changes removes them again: " + after.Count + " voices installed");
+                Check(Voices.Gender(gendered) == "", "a voice given neither gender has none after the installer registered the voices again ('" + Voices.Gender(gendered) + "')");
+                ForgetGender(gendered, genderWas);
                 if (download) { Check(!Directory.Exists(alanFolder), "the removed voice's files are gone"); }
                 Check(Voices.DefaultToken == Voices.TokenName(after[0]), "the default voice was one of those removed: the first voice left is the default now (" + ui.DefaultLabel.Text + ")");
                 // A Modern Voice that is the default stays so when voices are added.
@@ -5240,6 +5842,197 @@ namespace ModernVoicesConfig
             ui.StopTimers();
             ui.Close();
             ui.Dispose();
+        }
+
+        // The Voice manager's columns, sorting both lists, the column order kept, the right-click menu and a
+        // voice's gender (set through the administrator's part, as a person would; put back afterwards).
+        static void ListsAndGender(ConfigForm ui, string folder, bool pictures)
+        {
+            ui.ShowPage(0);
+            Settle(50);
+            ListView list = ui.InstalledList;
+            List<string> names = new List<string>();
+            foreach (ColumnHeader column in list.Columns) { names.Add(column.Text); }
+            Check(string.Join("|", names.ToArray()) == "Voice|Speaker|Nickname|Accent|Gender|On disk|Windows default|Folder" && list.AllowColumnReorder,
+                "the Voice manager's columns: " + string.Join(", ", names.ToArray()) + " (they can be dragged into another order: " + list.AllowColumnReorder + ")");
+            bool cellsRight = list.Items.Count > 0;
+            foreach (ListViewItem item in list.Items)
+            {
+                InstalledRow row = (InstalledRow)item.Tag;
+                string id = Voices.IdOf(row.Key, row.Speaker);
+                if (row.Entry != null && item.SubItems[ConfigForm.AccentColumn].Text != row.Entry.Accent) { cellsRight = false; }
+                if (item.SubItems[ConfigForm.GenderColumn].Text != Voices.Gender(id)) { cellsRight = false; }
+            }
+            Check(cellsRight, "each row's accent is the catalogue's, as Add or remove voices shows it, and its gender is the one Windows has now (" +
+                (list.Items.Count > 0 ? list.Items[0].SubItems[ConfigForm.AccentColumn].Text + ", '" + list.Items[0].SubItems[ConfigForm.GenderColumn].Text + "'" : "") + ")");
+
+            // A gender: set and cleared through the administrator's part, for 64- and 32-bit programs, and kept.
+            list.Items[0].Selected = true;
+            ui.UpdateInstalled();
+            CurrentVoice voice = ui.GetCurrentVoice();
+            string was = Voices.Gender(voice.Id);
+            string wanted = was == "Female" ? "Male" : "Female";
+            ui.SetGender(wanted);
+            string now = Voices.Gender(voice.Id), now32 = Gender32(voice.Token), kept = KeptGender(voice.Id);
+            string cell = ui.InstalledList.SelectedItems.Count > 0 ? ui.InstalledList.SelectedItems[0].SubItems[ConfigForm.GenderColumn].Text : "(none selected)";
+            Check(now == wanted && (now32 == null || now32 == wanted) && kept == wanted && cell == wanted,
+                "gender: " + voice.Voice + " set to " + wanted + ": Windows has '" + now + "' (32-bit: '" + now32 + "'), kept '" + kept + "', the list shows '" + cell + "'");
+            ui.UpdateVoiceMenu();
+            bool menuTicks = (wanted == "Female" ? ui.MenuFemale.Checked && !ui.MenuMale.Checked : ui.MenuMale.Checked && !ui.MenuFemale.Checked);
+            ui.SetGender("");
+            now = Voices.Gender(voice.Id); now32 = Gender32(voice.Token); kept = KeptGender(voice.Id);
+            ui.UpdateVoiceMenu();
+            Check(now == "" && (now32 == null || now32 == "") && kept == "" && menuTicks && !ui.MenuFemale.Checked && !ui.MenuMale.Checked,
+                "gender cleared: Windows has none (32-bit: '" + now32 + "'), kept as '' (so the installer gives it none); the menu ticked the one set (" + menuTicks + "), and now neither");
+            ForgetGender(voice.Id, was);
+            Check(Voices.Gender(voice.Id) == was && KeptGender(voice.Id) == null, "and put back as it was ('" + was + "'), with no choice kept");
+
+            // The right-click menu: its four choices, the selected voice's state ticked.
+            ui.UpdateVoiceMenu();
+            List<string> offered = new List<string>();
+            foreach (ToolStripItem item in ui.VoiceMenu.Items) { offered.Add(item.Text); }
+            bool isDefault = string.Equals(Voices.DefaultToken, voice.Token, StringComparison.OrdinalIgnoreCase);
+            Check(string.Join("|", offered.ToArray()) == "Set nickname|Set gender|Override defaults|Make default voice" &&
+                ui.MenuGender.DropDownItems.Count == 2 && ui.MenuDefault.Checked == isDefault && ui.MenuDefault.Enabled == !isDefault && ui.MenuOverride.Checked == ui.OwnBox.Checked,
+                "the right-click menu offers " + string.Join(", ", offered.ToArray()) + " (Female and Male under Set gender); default ticked " + ui.MenuDefault.Checked);
+            bool ownWas = ui.OwnBox.Checked;
+            ui.MenuOverride.PerformClick();
+            bool flipped = ui.OwnBox.Checked != ownWas && ui.OwnPausesShown == ui.OwnBox.Checked;
+            ui.MenuOverride.PerformClick();
+            ui.SaveSettings();
+            ui.StopTimers();
+            Check(flipped && ui.OwnBox.Checked == ownWas, "the menu's Override defaults ticks and unticks the override box (" + flipped + ")");
+            ui.MenuNickname.PerformClick();
+            Settle(100);
+            Check(ui.NickBox.Focused || !ui.ContainsFocus, "the menu's Set nickname puts the cursor in the nickname box (focused: " + ui.NickBox.Focused + ")");
+            if (pictures)
+            {
+                foreach (string look in new string[] { "light", "dark" })
+                {
+                    try
+                    {
+                        Theme.Override = look;
+                        ui.ApplyTheme();
+                        ui.UpdateVoiceMenu();
+                        ui.VoiceMenu.Show(list, new Point(Math.Min(list.Width / 3, 200), 30));
+                        ui.MenuGender.ShowDropDown();
+                        Settle(200);
+                        SaveControl(ui.VoiceMenu, Path.Combine(folder, "voice-menu-" + look + ".png"));
+                        SaveControl(ui.MenuGender.DropDown, Path.Combine(folder, "voice-menu-gender-" + look + ".png"));
+                    }
+                    catch (Exception e) { Note("(no picture of the right-click menu, " + look + ": " + e.Message + ")"); }
+                    finally { ui.VoiceMenu.Close(); }
+                }
+                Theme.Override = null;
+                ui.ApplyTheme();
+            }
+
+            // Sorting the Voice manager: by gender, then the other way, by size as numbers; each kept for next time.
+            ui.SortInstalled(ConfigForm.GenderColumn);
+            bool up = Sorted(list, ConfigForm.GenderColumn, false);
+            string keptUp = ListLayout.Get("VoiceSort");
+            ui.SortInstalled(ConfigForm.GenderColumn);
+            bool down = Sorted(list, ConfigForm.GenderColumn, true);
+            Check(up && down && keptUp == "Gender|up" && ListLayout.Get("VoiceSort") == "Gender|down",
+                "the Voice manager sorts by Gender A to Z (" + up + "), clicked again Z to A (" + down + "); kept as '" + ListLayout.Get("VoiceSort") + "'");
+            bool everyRowNamed = true;
+            foreach (ListViewItem item in list.Items) { if (item.Text.Length == 0) { everyRowNamed = false; } }
+            ui.SortInstalled(ConfigForm.SizeColumn);
+            bool bySize = Sorted(list, ConfigForm.SizeColumn, false);
+            Check(bySize && everyRowNamed, "sorted by On disk the sizes go up as numbers (" + bySize + "); sorted by anything but the voice, every row names its voice (" + everyRowNamed + ")");
+            if (pictures) { ui.Picture(Path.Combine(folder, "voice-manager-sorted.png")); }
+            ui.SortInstalledAsListed();
+            bool grouped = true;
+            foreach (ListViewItem item in list.Items) { if (((InstalledRow)item.Tag).First != (item.Text.Length > 0)) { grouped = false; } }
+            Check(grouped && ListLayout.Get("VoiceSort") == "", "as installed again, a voice of several speakers names itself on its first row only (" + grouped + ")");
+
+            // The column order: as it was left last time (Nickname dragged to the left), the last one filling the row.
+            ListLayout.Set("VoiceColumns", "Nickname|Voice|Speaker|Accent|Gender|On disk|Windows default|Folder");
+            ui.RestoreColumnOrder();
+            ui.FillLastColumn(list);
+            bool nickFirst = list.Columns[ConfigForm.NickColumn].DisplayIndex == 0 && list.Columns[ConfigForm.VoiceColumn].DisplayIndex == 1;
+            if (pictures) { ui.Picture(Path.Combine(folder, "voice-manager-nickname-first.png")); }
+            ListLayout.Set("VoiceColumns", string.Join("|", names.ToArray()));
+            ui.RestoreColumnOrder();
+            ui.FillLastColumn(list);
+            bool back = true;
+            for (int i = 0; i < list.Columns.Count; i++) { if (list.Columns[i].DisplayIndex != i) { back = false; } }
+            Check(nickFirst && back, "the columns come up in the order they were left in: Nickname first (" + nickFirst + "), and back again (" + back + ")");
+
+            // Add or remove voices: sorted by download size, then the other way; ticks and the "Show" choice untouched.
+            ui.ShowPage(3);
+            Settle(50);
+            int tickedBefore = 0, shownBefore = ui.AddList.Items.Count;
+            foreach (ListViewItem item in ui.VoiceItems) { if (item.Checked) { tickedBefore++; } }
+            ui.SortAdd(4);
+            bool addUp = AddSorted(ui.AddList, false);
+            ui.SortAdd(4);
+            bool addDown = AddSorted(ui.AddList, true);
+            int tickedAfter = 0;
+            foreach (ListViewItem item in ui.VoiceItems) { if (item.Checked) { tickedAfter++; } }
+            ui.ApplyVoiceFilter();      // (refilled, as a change of the "Show" box does: still sorted)
+            bool keptSorted = AddSorted(ui.AddList, true);
+            Check(addUp && addDown && keptSorted && tickedAfter == tickedBefore && ui.AddList.Items.Count == shownBefore && ListLayout.Get("AddSort") == "Download|down",
+                "Add or remove voices sorts by Download as numbers, up (" + addUp + ") and down (" + addDown + "), still sorted after the list is refilled (" + keptSorted +
+                "); " + tickedAfter + " ticked before and after, " + ui.AddList.Items.Count + " shown");
+            if (pictures) { ui.Picture(Path.Combine(folder, "add-sorted.png")); }
+            ui.SortAddAsListed();
+            ui.ShowPage(0);
+            Settle(50);
+            ui.SelectInstalledId(voice.Id);
+        }
+        static bool Sorted(ListView list, int column, bool down)
+        {
+            for (int i = 1; i < list.Items.Count; i++)
+            {
+                InstalledRow a = (InstalledRow)list.Items[i - 1].Tag, b = (InstalledRow)list.Items[i].Tag;
+                int c = column == ConfigForm.SizeColumn ? a.SizeMb.CompareTo(b.SizeMb) : string.Compare(a.Gender, b.Gender, StringComparison.CurrentCultureIgnoreCase);
+                if (down ? c < 0 : c > 0) { return false; }
+            }
+            return true;
+        }
+        static bool AddSorted(ListView list, bool down)
+        {
+            for (int i = 1; i < list.Items.Count; i++)
+            {
+                int c = ((Entry)list.Items[i - 1].Tag).SizeMb.CompareTo(((Entry)list.Items[i].Tag).SizeMb);
+                if (down ? c < 0 : c > 0) { return false; }
+            }
+            return true;
+        }
+        // The gender the 32-bit programs' token has (null: no such token).
+        static string Gender32(string token)
+        {
+            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Speech\Voices\Tokens\" + token + @"\Attributes"))
+            {
+                return key == null ? null : Voices.NormalGender(key.GetValue("Gender") as string);
+            }
+        }
+        // The choice kept for the installer (null: none).
+        static string KeptGender(string id)
+        {
+            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Modern Voices for Windows\Genders"))
+            {
+                return key == null ? null : key.GetValue(id) as string;
+            }
+        }
+        // A voice's gender put back as it was before the test, with no choice kept (the test runs as an administrator).
+        static void ForgetGender(string id, string was)
+        {
+            try
+            {
+                Voices.SetGender(id, was);
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Modern Voices for Windows\Genders", true)) { if (key != null) { key.DeleteValue(id, false); } }
+            }
+            catch (Exception e) { Note("(the test's gender was not put back: " + e.Message + ")"); }
+        }
+        static void SaveControl(Control control, string file)
+        {
+            using (Bitmap shot = new Bitmap(Math.Max(1, control.Width), Math.Max(1, control.Height)))
+            {
+                control.DrawToBitmap(shot, new Rectangle(Point.Empty, shot.Size));
+                shot.Save(file, ImageFormat.Png);
+            }
         }
 
         // Pictures of the window's tabs: as it opens, dark, and made small.

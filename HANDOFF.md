@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.1 (18 Nov 2026), with the plan for 0.18.2 (see NEXT). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.2 (18 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -11,52 +11,57 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
-## NEXT: 0.18.2, to build on Opus 5.5 (agreed 18 Nov 2026)
+## 0.18.2 (18 Nov 2026), delivered, not yet confirmed by him: the rest of his 18 Nov batch
 
-Lumoti asked for these on 18 Nov; we agreed Opus 5.5 suits them (ordinary interface work with patterns
-to follow in the code). Confirm the model with him as usual, then build. His words are in quotes.
+Built on Opus 5.5. His words in quotes.
+1. **Voice manager columns** (logical order, constants `ConfigForm.VoiceColumn` .. `FolderColumn`): Voice,
+   Speaker, Nickname, Accent, Gender, On disk, Windows default, Folder. The Voice column now shows the
+   voice's name only (`row.Voice` = `Entry.Display`), since Accent has its own column (`Entry.Accent`, the
+   same words as Add or remove voices). `InstalledRow` now carries every cell's value (Voice, Nick, Accent,
+   Gender, SizeMb, IsDefault, First, Order). **Use the column constants, never a SubItems number.**
+2. **Gender** ("the 1st to leave empty, then female then male"; read as: blank, Female, Male): the column
+   shows what Windows has (`Voices.Gender(id)`: the 64-bit token's `Attributes\Gender`).
+   `Voices.SetGender` writes both token roots and keeps the choice in HKLM `...\Genders` (by voice id; "" =
+   neither chosen). Done by the helper's new third command, `gender <id64> <gender64>` (validated: GoodId,
+   "", Female or Male); one permission prompt, as for a nickname. Install.ps1's `Get-ChosenGender` is read
+   first in `Register-Voice`: a kept choice wins ("" = no Gender value), else the `$Genders` table as before.
+   Set from the right-click menu only (no box on the page).
+3. **Sorting** both lists (`RowSorter`: a column's key per row, ties keep the order as listed; numbers for
+   sizes and speaker counts; Windows default sorts the default first; Quality medium then high). Click a
+   heading, again to reverse. Kept in HKCU (`ListLayout`, values `VoiceSort` / `AddSort`: "Name|up").
+   Arrows: Windows' own in light (`Native.SortArrows`, HDF_SORTUP/DOWN), drawn in `DrawHeading` when dark.
+   Voice manager: while sorted by anything but Voice, every row shows its voice, size and folder
+   (`ShowInstalledCells`); as listed or by Voice, a voice of several speakers names itself on its first row
+   only, as before. Selection is kept by voice id (`SelectInstalledId`; SetNickname, SetDefaultVoice and
+   SetGender use it now, as the row can move). Add or remove voices: `ApplyVoiceFilter` sorts after refilling;
+   ticks are saved and put back around a sort as around a filter (`filtering` set). It has no ListView groups.
+4. **Column reorder** (Voice manager only, `AllowColumnReorder`): saved on `ColumnReordered` (raised before
+   the move, so the new order is worked out) as HKCU `VoiceColumns` (headings joined by "|"),
+   `RestoreColumnOrder` at start. The last DISPLAYED column fills the row (`FillLast`; a column dragged
+   away from the end gets its made width back, `columnWidths`). Dark rows: Windows gives the first
+   column's cell as the whole row, so `DrawCell` works out its x once it has been dragged elsewhere.
+5. **Right-click menu** (`VoiceMenu`, `BuildVoiceMenu`, `UpdateVoiceMenu` on Opening): Set nickname (focus to
+   `NickBox`, after the menu closes), Set gender > Female / Male (ticked = current; clicking the ticked one
+   clears it: "leave both blank"), Override defaults (toggles `OwnBox`, scrolls to the section when ticked),
+   Make default voice (ticked and greyed when it already is). Dark look: `DarkMenuLook` /
+   `DarkMenuColours` (its own tick, as Windows' is black); light: Windows' professional renderer.
+6. Self-test `ListsAndGender` (columns, cells, gender set/clear in both roots and kept, menu items and
+   Override, sorting both lists, column order restored), and in the `--apply` run: a chosen gender, and a
+   chosen "neither", survive the installer re-registering every voice. Pictures: voice-menu-light/dark.png,
+   voice-menu-gender-light/dark.png, voice-manager-sorted.png, voice-manager-nickname-first.png,
+   add-sorted.png. `ListLayout.Override` keeps the test's arrangement out of the person's registry.
+7. kit/README.txt (the list, the menu) and README.md's table.
 
-1. **Accent column in the Voice manager list** (`InstalledList`, built around `BuildVoiceManager`;
-   columns now: Voice, Speaker, Nickname, On disk, Windows default, Folder). The accent comes from the
-   catalogue entry, as Add or remove voices' "Accent or language" column already shows it (reuse that
-   code; e.g. British, American, or the language's name for other languages).
-2. **Gender column in the Voice manager list**: blank, Female or Male, "the 1st to leave empty, then
-   female then male". Agreed: it ALSO tells Windows (SAPI's `Gender` attribute in the voice's token,
-   `<token>\Attributes`, value `Female` / `Male`; blank = remove the value), so programs that pick
-   voices by gender find it.
-   - Write it the way nicknames are written: `Voices.SetNickname` is the pattern (both token roots,
-     `Tokens64` and `Tokens32`), done by the elevated helper (`Helper.Do`: add a "gender" command next
-     to "nick", validated the same way), so it costs one admin prompt per change, as a rename does.
-   - Keep the choice in our settings (like `...\Nicknames`: e.g. a `Genders` key, HKLM) so Repair and
-     updates keep it. Install.ps1 writes `Gender` from its `$Genders` table (about 20 English voices it
-     knows, line ~771): change it so a voice with a chosen gender gets that one (blank chosen = none),
-     and only otherwise falls back to `$Genders`.
-   - The column starts showing what Windows has now (so the ~20 known voices are not blank).
-3. **Sorting by any column** in the Voice manager list AND the Add or remove voices list (`AddList`):
-   click a header to sort, again to reverse. ("so can arrange the order the names appear in by accent,
-   voice name, nickname, etc.") Sizes ("On disk") should sort as numbers, not text. AddList groups
-   voices (check how its groups and the "Show" filter behave with a sorter).
-4. **Drag columns to reorder in the Voice manager list** (ListView `AllowColumnReorder`), "so user
-   could move nickname to 1st column". Keep the order (and the sort) for next time (HKCU, like
-   `Languages.Show`).
-5. **Right-click a voice in the Voice manager list**, a menu with:
-   - "Set nickname": selects the voice and puts the cursor in the nickname box (`NickBox`).
-   - "Set gender": a choice of Male / Female / neither (ticks; "leave both blank").
-   - "Override defaults": ticks or unticks "Override pause duration and variation for the selected
-     voice" (`OwnBox`).
-   - "Make default voice": makes it Windows' default voice (the code behind the Reader's radio dots
-     and Config's default voice already exists: `DefaultToken`).
-   Theme the menu (dark / light) like the rest.
-6. Update the self-test (Config's), the user's guide (`kit/README.txt`) and the GitHub README for all of
-   it, version 0.18.2 (see the version rule below), and add a 0.18.2 section here.
+Not covered by CI: a real drag of a heading (the test sets the saved order and restores it), a real
+right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.1.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.2.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 
-He split his batch: these on Opus 5.5 first; the rest is planned for 0.18.2 on Opus (see NEXT), apart from
+He split his batch: these on Opus 5.5 first; the rest was built as 0.18.2, apart from
 the ignore list, now only an idea (see Ideas discussed but not built).
 1. Voice variation default 75% -> 60% (`text::DEFAULT_VARIATION_PERCENT`, `Store.VariationDefault`).
    Only saved once moved, so everyone who never moved it gets 60 with no migration.
@@ -550,8 +555,8 @@ new session, attach it with add_repo (Lumotiverse/modern-voices-for-windows) and
   until the window closes: `Elevated` (window side, owns the pipe) and `Helper` (elevated side). Lines over
   the pipe: `nick <id64> <nick64> <display64>` or `apply <0|1 US tags> <ids64>` one way; `say <line64>` and
   `done <code> [message64]` back. Both ends check the other's process id (GetNamedPipeClient/ServerProcessId),
-  the helper also that the window is the same exe, and it validates ids against a pattern. Keep it to
-  those two commands.
+  the helper also that the window is the same exe, and it validates ids against a pattern. Since 0.18.2 a
+  third: `gender <id64> <gender64>`. Keep it to those.
 - On CI everything is already elevated with UAC off, so `runas` starts the helper with no prompt: the
   pipe path is tested, the UAC prompt itself never is.
 - It is DPI-aware (the PowerShell window was not: Windows stretched it, so `Px()` scaling at 125% and

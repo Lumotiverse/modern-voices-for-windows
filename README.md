@@ -89,7 +89,7 @@ The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES
 
 | Program | What it is for |
 |---|---|
-| **Modern Voices Config** | Choose and download voices, set how each one sounds (volume, speed, pauses), teach it how to pronounce names and words, and pick Windows' default voice. |
+| **Modern Voices Config** | Choose and download voices, set how each one sounds (volume, speed, pauses), teach it how to pronounce names and words, and pick Windows' default voice. Give a voice a nickname or a gender (Windows is told both), and sort and rearrange the list of voices to suit you. |
 | **Modern Voices Reader** | Reads text aloud: pasted or copied text, documents (Word, PDF, rich text, web pages, plain text), and text on the screen. It can save the reading as an MP3 or WAV file. See [The Reader](#the-reader). |
 | **Modern Voices Repair** | Registers the voices with Windows again, if a large Windows update makes them vanish from programs. |
 | **Modern Voices Test** | Speaks with each voice and shows what the engine reports, to find out whether a problem is with the voices or with the program using them. |

@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.18.1
+Modern Voices for Windows 0.18.2
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -108,6 +108,20 @@ gap); pressed while that voice is speaking, it stops it, and pressed with anothe
 stops the one speaking and starts that one. Reset puts back 100%, 1.5x, 100%. Each installed speaker of a voice has its own row (the
 voice named on the first): Preview, Make default voice and Nickname act on the row selected. A voice's speakers share its sliders (add or remove speakers on "Add or remove
 voices"). A program's own volume and speed still adjust from there.
+
+The list of installed voices shows each voice's name, speaker, nickname, accent (or language), gender,
+size on disk, whether it is Windows' default and its folder. Click a column's heading to sort the list
+by it, and again to sort it the other way (sizes sort as numbers). Drag a heading left or right to move
+its column: put Nickname first, say. The order and the sorting are kept for next time.
+
+Right-click a voice in the list for:
+  Set nickname        puts the cursor in the nickname box (see below).
+  Set gender          Female or Male (click the ticked one again to leave both blank). This tells
+                      Windows too, so programs that choose a voice by gender find it. Windows asks for
+                      permission, as for a nickname, and programs already open see it after a restart.
+                      Repair and updates keep it.
+  Override defaults   ticks or unticks "Override pause duration and variation for the selected voice".
+  Make default voice  as the button (see below).
 
 Set nickname gives the selected row's voice the name typed in the box beside it, shown in brackets in
 the voice's name in place of its accent: "VCTK p262 (Irish Female)" for "VCTK p262 (British)". It
