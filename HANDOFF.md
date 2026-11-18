@@ -11,6 +11,12 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
+## After 0.18.2 (18 Nov 2026, not built yet)
+
+- His ask: a notice that the voices vary in quality (some excellent, some robotic), and to sample them
+  before choosing. Added near the top of README.md (bold paragraph after the intro) and kit/README.txt
+  (after its first paragraph). Pushed with [skip ci]: kit/README.txt goes out with the next build.
+
 ## 0.18.2 (18 Nov 2026), delivered, not yet confirmed by him: the rest of his 18 Nov batch
 
 Built on Opus 5.5. His words in quotes.

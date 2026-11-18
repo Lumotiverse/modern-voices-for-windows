@@ -6,6 +6,13 @@ Windows' installed voices but can't use Narrator's natural voices. The voices ar
 (English for now), each running on your own PC: no internet needed once installed, and nothing
 sent anywhere.
 
+Not every voice is as good as the best. The Piper voices vary a lot in quality: the best are
+excellent, natural-sounding neural voices; others sound robotic and unnatural, mostly down to how
+each one was trained. The settings here change a voice's loudness, speed and pauses, but they can't
+make a robotic voice natural. So listen before you choose: on "Add or remove voices", select a voice
+and press Play sample (for a voice with several speakers, click each speaker's name), and install
+only the ones you like.
+
 They show up in Windows' Speech settings (Control Panel > Speech) and in programs that use
 Windows' installed voices: text readers like Balabolka, screen readers in their SAPI 5 mode (NVDA,
 JAWS), games and apps with text to speech, Chromium-based browsers'

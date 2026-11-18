@@ -15,6 +15,14 @@ pages and plain text) and text on the screen, and can save what it reads as an M
 
 Modern Voices for Windows is free to use and open source.
 
+**Not every voice is as good as the best.** The Piper voices vary a lot in quality. The best are
+excellent: natural-sounding neural voices that are easy to listen to for hours. Others sound robotic
+and unnatural, mostly down to how each one was trained (how many hours of recordings it learned from,
+and how clear they were). Modern Voices can adjust a voice's loudness, speed and pauses, but it can't
+turn a robotic voice into a natural one. So listen before you choose: in Modern Voices Config, on
+**Add or remove voices**, select a voice and press **Play sample** (for a voice with several speakers,
+click each speaker's name), and install only the ones you like.
+
 **Better voices for Balabolka, and other text to speech programs.** If you are looking for more natural
 voices for [Balabolka](https://www.cross-plus-a.com/balabolka.htm), or any other reader that lists
 Windows' SAPI 5 voices, these appear in its voice list as soon as they are installed, in place of the
