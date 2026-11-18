@@ -5809,6 +5809,8 @@ namespace ModernVoicesConfig
                 }
                 Check(Voices.DefaultToken == Voices.TokenName(after[0]) && ui.InstalledList.Items[0].SubItems[ConfigForm.DefaultColumn].Text == "yes",
                     "Windows' default was one of its own voices: the first voice of the list is now the default (" + ui.DefaultLabel.Text + ")");
+                Note("after apply: page " + ui.PageIndex + ", Apply changes lit " + ui.ApplyButton.Enabled + ", Close " + ui.CloseButton.Enabled + ", progress shown " + ui.Progress.Visible +
+                    "; ticked: " + string.Join(", ", ui.PickedIds().ToArray()) + "; installed: " + string.Join(", ", ui.Installed.ToArray()));
                 Check(ui.InstalledList.Items.Count == after.Count && ui.PageIndex == 0 && !ui.ApplyButton.Enabled && ui.CloseButton.Enabled && !ui.Progress.Visible,
                     "afterwards the Voice manager shows them (" + ui.InstalledList.Items.Count + " rows), with nothing left to apply");
                 ui.SpeakerList.SetItemChecked(extraIndex, false);
