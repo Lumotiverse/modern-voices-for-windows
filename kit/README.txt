@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.18.2
+Modern Voices for Windows 0.18.3
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -37,7 +37,8 @@ Install
    a "Powered by" window over it names what the program is made from: click it to close it. While no
    voice is installed, a note then says where to start (OK or its X closes it), in the language
    chosen when installing too. On "Add or remove
-   voices", tick the voices you want. Select one and press Play sample to hear it first (press it
+   voices", tick the voices you want. Select one and press Play sample to hear it first (some voices
+   sound much more natural than others, so it is worth it; press it
    again, "Stop sample" meanwhile, to stop). Voices with
    several speakers (VCTK, LibriTTS, ...) list their speakers in name order: click a name to hear
    that speaker (Play sample plays it again); tick a speaker's box to install it. Each ticked speaker
@@ -199,7 +200,7 @@ these voices (the Reader, a screen reader...).
   * Each language has its own rules ("Rules for", at the top: English, and each additional
     language chosen). A voice uses the rules of its own language only. "Use these rules" unticked
     switches the whole list off without removing anything. Other languages' lists start empty.
-  * Type the word or phrase and how to say it, spelt as it sounds (Niamh as Neev; GIF as jif), then
+  * Type the word or phrase and how to say it, spelt as it sounds (Thx as "Thanks"; GIF as jif), then
     Add rule. Hear it says the "Say it as" text with the voice selected on the Voice manager, to try
     a spelling before saving.
   * The list starts with rules for smileys (:) is said as "smiley face") and for chat and trade
@@ -207,6 +208,8 @@ these voices (the Reader, a screen reader...).
     remove them as you like. Four are there but unticked, as they are ordinary abbreviations too:
     rn, np, wp and lf.
   * To change a rule, select it, edit, and Save rule. Untick a rule to switch it off; Remove deletes it.
+  * To have something not read at all, add it with "Say it as" left empty: *** is then skipped, for
+    example, instead of being read as "star star star". The list shows such a rule as "(not read)".
   * Whole words only (the usual): "cat" changes "the cat's" but not "catalogue". Unticked, parts of
     words change too. Match capitals: "US" but not "us".
   * Where two rules fit, the longer is used; a rule never changes another rule's result.

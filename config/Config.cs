@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.2.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.3.0")]
 
 namespace ModernVoicesConfig
 {
@@ -1528,6 +1528,7 @@ namespace ModernVoicesConfig
         public ComboBox VoiceFilterBox;
         bool filtering;                                     // the list is being refilled for the "Show" box
         public Button LanguagesButton;
+        public Label QualityNote;      // (the voices vary in quality: hear them first)
         public ComboBox WordLanguageBox;                    // whose rules the Pronunciation tab lists
         public CheckBox WordListOnBox;                      // that list in use, or switched off as a whole
         string wordFamily = "en";
@@ -2623,10 +2624,14 @@ namespace ModernVoicesConfig
             foreach (Control c in new Control[] { WordWhole, WordCase, WordSave, wordNew, WordRemove, HearButton }) { wordTools.Controls.Add(c); }
             Row(page, wordTools);
             KeepWidth(HearButton);
-            Row(page, Words("To add a rule, type a word and how it should sound (for example Niamh as Neev), then press Add rule. " +
-                "To change a rule, select it, edit it and press Save rule. Untick a rule to turn it off. " +
-                "Hear it plays your spelling, so you can try it first.", true));
-            Row(page, Words("Whole words only: \"cat\" won't change \"catalogue\". Match capitals: \"US\" won't change \"us\".", true));
+            // One instruction a paragraph, with an empty line between them, so that each can be read on its own.
+            Row(page, Words("To add a rule, type a word and how it should sound (for example Thx as \"Thanks\"), then press Add rule.\r\n\r\n" +
+                "To change a rule, select it, edit it and press Save rule.\r\n\r\n" +
+                "To have something not read at all, type it as the word or phrase and leave \"Say it as\" empty, then press Add rule " +
+                "(for example *** is then skipped).\r\n\r\n" +
+                "Untick a rule to turn it off.\r\n\r\n" +
+                "Hear it plays your spelling, so you can try it first.\r\n\r\n" +
+                "Whole words only: \"cat\" won't change \"catalogue\". Match capitals: \"US\" won't change \"us\".", true));
 
             WordList.SelectedIndexChanged += delegate { UpdateWordFields(); };
             WordList.ItemChecked += WordTicked;
@@ -2654,6 +2659,11 @@ namespace ModernVoicesConfig
             LanguagesButton.Anchor = AnchorStyles.Left; LanguagesButton.Margin = new Padding(Px(12), 0, 0, 0);
             LanguagesButton.Click += delegate { ChooseLanguages(); };
             filterLine.Controls.Add(Beside("Show"), 0, 0); filterLine.Controls.Add(VoiceFilterBox, 1, 0); filterLine.Controls.Add(LanguagesButton, 2, 0);
+            // In the room to the right: the voices vary in quality, so hear them first.
+            QualityNote = Words("Some voices sound much more natural than others. Play a sample before you install a voice.", true);
+            QualityNote.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            QualityNote.Margin = new Padding(Px(12), 0, 3, 0);
+            filterLine.Controls.Add(QualityNote, 3, 0);
             Row(addGrid, filterLine);
             // The instructions under them, with room above.
             Label addHow = Words("Tick the voices to install and untick the ones to remove, then press Apply changes.");
@@ -3924,10 +3934,13 @@ namespace ModernVoicesConfig
         {
             return (rule.Whole ? "whole words" : "parts of words too") + (rule.Case ? ", with these capitals" : "");
         }
+        // What a rule's "Said as" cell shows: nothing to say means it is not read at all.
+        public const string NotRead = "(not read)";
+        static string SaidAs(string to) { return string.IsNullOrEmpty(to) ? NotRead : to; }
         ListViewItem AddWordRow(Rule rule)
         {
             ListViewItem item = new ListViewItem(rule.From);
-            item.SubItems.Add(rule.To);
+            item.SubItems.Add(SaidAs(rule.To));
             item.SubItems.Add(WordMatch(rule));
             item.Tag = rule;
             item.Checked = rule.On;
@@ -3983,7 +3996,7 @@ namespace ModernVoicesConfig
             WordSave.Text = selected ? "Save rule" : "Add rule";
             WordRemove.Enabled = selected;
         }
-        void ClearWordFields()
+        public void ClearWordFields()
         {
             List<ListViewItem> chosen = new List<ListViewItem>();
             foreach (ListViewItem item in WordList.SelectedItems) { chosen.Add(item); }
@@ -4020,7 +4033,7 @@ namespace ModernVoicesConfig
                     int at = wordRules.IndexOf(old);
                     if (at >= 0) { wordRules[at] = rule; } else { wordRules.Add(rule); }
                     target.Tag = rule;
-                    target.Text = from; target.SubItems[1].Text = to; target.SubItems[2].Text = WordMatch(rule);
+                    target.Text = from; target.SubItems[1].Text = SaidAs(to); target.SubItems[2].Text = WordMatch(rule);
                 }
                 else
                 {
@@ -5642,6 +5655,15 @@ namespace ModernVoicesConfig
                 Check(changed.Count == 1 && changed[0].To == "Neeve" && changed[0].Case, "pronunciation: the selected rule is changed, not added again");
                 Check(selected && off.Count == 1 && !off[0].On, "pronunciation: unticking a rule switches it off");
                 Check(rulesAfter == rulesBefore && Rules("Niamh").Count == 0, "pronunciation: Remove takes the rule out (" + rulesBefore + " -> " + rulesAfter + " rules)");
+                // A rule with nothing to say: kept as such, listed as not read.
+                ui.ClearWordFields();
+                ui.WordFrom.Text = "***"; ui.WordTo.Text = "";
+                ui.SaveWord();
+                List<Rule> skip = Rules("***");
+                string skipShown = ui.WordList.SelectedItems.Count == 1 ? ui.WordList.SelectedItems[0].SubItems[1].Text : "(none selected)";
+                ui.RemoveWord();
+                Check(skip.Count == 1 && skip[0].To == "" && skip[0].On && skipShown == ConfigForm.NotRead && Rules("***").Count == 0,
+                    "pronunciation: a rule with \"Say it as\" empty is saved with nothing to say, listed as '" + skipShown + "', and removed again");
                 ui.ShowPage(0);
 
                 // Preview: the selected voice by the name programs see; the Speed and pauses tab lists every voice.

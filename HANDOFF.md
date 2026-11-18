@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.2 (18 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.3 (18 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -11,11 +11,20 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
-## After 0.18.2 (18 Nov 2026, not built yet)
+## 0.18.3 (18 Nov 2026), delivered, not yet confirmed by him
 
-- His ask: a notice that the voices vary in quality (some excellent, some robotic), and to sample them
-  before choosing. Added near the top of README.md (bold paragraph after the intro) and kit/README.txt
-  (after its first paragraph). Pushed with [skip ci]: kit/README.txt goes out with the next build.
+Built on Opus 5.5. His asks after 0.18.2:
+1. **Voices vary in quality**: a notice near the top of README.md and kit/README.txt (some voices are
+   excellent, some robotic; Modern Voices can't make a robotic one natural; play samples first), and in
+   Config to the right of "Additional languages..." (`QualityNote`, grey): "Some voices sound much more
+   natural than others. Play a sample before you install a voice."
+2. **Not reading something**: a rule with "Say it as" empty (always worked: Config, VoiceConvert.ps1 and the
+   engine all keep an empty replacement, and the engine drops the text). The list shows it as
+   "(not read)" (`ConfigForm.NotRead`, `SaidAs`). Self-test adds, checks and removes a "***" rule.
+3. **Pronunciation tab instructions**: one per paragraph with an empty line between (one label, \r\n\r\n):
+   add (example now his 'Thx as "Thanks"'), change, not read (his placement: after "Save rule"), untick,
+   Hear it, Whole words / Match capitals. The self-test still uses Niamh/Neev: "thx" is a default rule
+   (chat1), so the test would edit and remove the real one.
 
 ## 0.18.2 (18 Nov 2026), delivered, not yet confirmed by him: the rest of his 18 Nov batch
 
@@ -63,7 +72,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.2.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.3.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 

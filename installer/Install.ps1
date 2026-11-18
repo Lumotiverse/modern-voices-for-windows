@@ -86,7 +86,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 . (Join-Path $Here 'VoiceConvert.ps1')
 . (Join-Path $Here 'Languages.ps1')
 
-$Version = '0.18.2'
+$Version = '0.18.3'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
