@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.1 (18 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.1 (18 Nov 2026), with the plan for 0.18.2 (see NEXT). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -10,6 +10,45 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
+
+## NEXT: 0.18.2, to build on Opus 5.5 (agreed 18 Nov 2026)
+
+Lumoti asked for these on 18 Nov; we agreed Opus 5.5 suits them (ordinary interface work with patterns
+to follow in the code). Confirm the model with him as usual, then build. His words are in quotes.
+
+1. **Accent column in the Voice manager list** (`InstalledList`, built around `BuildVoiceManager`;
+   columns now: Voice, Speaker, Nickname, On disk, Windows default, Folder). The accent comes from the
+   catalogue entry, as Add or remove voices' "Accent or language" column already shows it (reuse that
+   code; e.g. British, American, or the language's name for other languages).
+2. **Gender column in the Voice manager list**: blank, Female or Male, "the 1st to leave empty, then
+   female then male". Agreed: it ALSO tells Windows (SAPI's `Gender` attribute in the voice's token,
+   `<token>\Attributes`, value `Female` / `Male`; blank = remove the value), so programs that pick
+   voices by gender find it.
+   - Write it the way nicknames are written: `Voices.SetNickname` is the pattern (both token roots,
+     `Tokens64` and `Tokens32`), done by the elevated helper (`Helper.Do`: add a "gender" command next
+     to "nick", validated the same way), so it costs one admin prompt per change, as a rename does.
+   - Keep the choice in our settings (like `...\Nicknames`: e.g. a `Genders` key, HKLM) so Repair and
+     updates keep it. Install.ps1 writes `Gender` from its `$Genders` table (about 20 English voices it
+     knows, line ~771): change it so a voice with a chosen gender gets that one (blank chosen = none),
+     and only otherwise falls back to `$Genders`.
+   - The column starts showing what Windows has now (so the ~20 known voices are not blank).
+3. **Sorting by any column** in the Voice manager list AND the Add or remove voices list (`AddList`):
+   click a header to sort, again to reverse. ("so can arrange the order the names appear in by accent,
+   voice name, nickname, etc.") Sizes ("On disk") should sort as numbers, not text. AddList groups
+   voices (check how its groups and the "Show" filter behave with a sorter).
+4. **Drag columns to reorder in the Voice manager list** (ListView `AllowColumnReorder`), "so user
+   could move nickname to 1st column". Keep the order (and the sort) for next time (HKCU, like
+   `Languages.Show`).
+5. **Right-click a voice in the Voice manager list**, a menu with:
+   - "Set nickname": selects the voice and puts the cursor in the nickname box (`NickBox`).
+   - "Set gender": a choice of Male / Female / neither (ticks; "leave both blank").
+   - "Override defaults": ticks or unticks "Override pause duration and variation for the selected
+     voice" (`OwnBox`).
+   - "Make default voice": makes it Windows' default voice (the code behind the Reader's radio dots
+     and Config's default voice already exists: `DefaultToken`).
+   Theme the menu (dark / light) like the rest.
+6. Update the self-test (Config's), the user's guide (`kit/README.txt`) and the GitHub README for all of
+   it, version 0.18.2 (see the version rule below), and add a 0.18.2 section here.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
@@ -27,15 +66,6 @@ He split his batch: these on Opus 5.5 first; the rest (below) waits for Fable as
    installs on: earlier installs have none, so English only). Picture: select-voices-es.png.
 4. Reader: triangles (U+25C0 / U+25B6, Segoe UI Symbol) left of the voice list, `StepVoice(+-1)`,
    wrapping. The "about 3:20 left" counter is gone (the progress bar stays; `Pace()` kept, now unused).
-
-**Waiting for Fable (0.18.2), his words, 18 Nov:**
-- Accent column and Gender column (blank / female / male; I proposed also writing SAPI's Gender attribute
-  so programs can pick by gender: he didn't answer yet) in the Voice manager list; sort by any column
-  in the Voice manager and Add or remove voices lists; drag Voice manager columns to reorder (kept).
-- Right-click a voice in the Voice manager: Set nickname (to the nickname box), Set gender, Override
-  defaults (ticks the override box on/off), Make default voice.
-- Pronunciation tab: an "ignore list" under everything: entries are not read at all, in every program
-  (engine-wide like the rules; my reading: per language, skipped not paused).
 
 ## 0.18.0 (17 Nov 2026), delivered, not yet confirmed by him
 
@@ -711,6 +741,13 @@ pasting from real browsers keeping paragraphs and bullets; the volume slider cha
 look in dark mode.
 
 ## Ideas discussed but not built (only when Lumoti asks)
+
+- **Pronunciation "ignore list"** (his idea, 18 Nov 2026; he will ask if he wants it built): a list
+  under everything on the Pronunciation tab, working like the pronunciation rules but anything on it
+  is not read at all (e.g. "***" is read as "star star star": add it, and it is skipped). It would
+  have to work in every program, like the rules, so it changes the engine's text handling (Rust,
+  `engine/src/text.rs` and the rules code): I judged it Fable-sized, best in a fresh chat. My reading if
+  built: one list per language, entries skipped (not replaced by a pause).
 
 - **Accurate time-left countdown:** run the text through the voice silently in the background and
   measure the real length. Also remember each voice's measured pace for the initial estimate. Agreed in
