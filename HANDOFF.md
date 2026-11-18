@@ -56,7 +56,8 @@ new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml,
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 
-He split his batch: these on Opus 5.5 first; the rest (below) waits for Fable as 0.18.2.
+He split his batch: these on Opus 5.5 first; the rest is planned for 0.18.2 on Opus (see NEXT), apart from
+the ignore list, now only an idea (see Ideas discussed but not built).
 1. Voice variation default 75% -> 60% (`text::DEFAULT_VARIATION_PERCENT`, `Store.VariationDefault`).
    Only saved once moved, so everyone who never moved it gets 60 with no migration.
 2. Apply changes stops a sample that is playing (`Apply` calls `Sample.Stop()` first).
