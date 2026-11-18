@@ -25,6 +25,11 @@ Built on Opus 5.5. His asks after 0.18.2:
    add (example now his 'Thx as "Thanks"'), change, not read (his placement: after "Save rule"), untick,
    Hear it, Whole words / Match capitals. The self-test still uses Niamh/Neev: "thx" is a default rule
    (chat1), so the test would edit and remove the real one.
+4. **Fixed: 0.18.2 crashed at start once a sort was saved** (he hit it: NullReferenceException in the
+   lists' HandleCreated handler). It sorted and read `Items[0]` while Windows was still making the list
+   (rows half there: see Pitfalls). Now `ListMade` runs by BeginInvoke after the handle exists. Self-test
+   opens a second window first with VoiceSort, AddSort and VoiceColumns saved (the case CI never had).
+   Workaround for 0.18.2: delete HKCU\Software\Modern Voices for Windows\VoiceSort (and AddSort).
 
 ## 0.18.2 (18 Nov 2026), delivered, not yet confirmed by him: the rest of his 18 Nov batch
 

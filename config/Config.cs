@@ -1978,25 +1978,15 @@ namespace ModernVoicesConfig
                 view.Resize += ListResized;
             }
             // (The sort arrow in a heading, once Windows has made the list.)
-            // (A list sorted before Windows made it is sorted again as it is made; the Voice manager's first
-            // row is the one selected, as it would be.)
+            // (A list sorted before Windows made it is sorted again once it is made: after, not while Windows
+            // makes it, when its rows are only half there. The Voice manager's first row is then the one
+            // selected, as it would be.)
             foreach (ListView view in new ListView[] { InstalledList, AddList })
             {
                 view.HandleCreated += delegate(object made, EventArgs e)
                 {
                     ListView list = (ListView)made;
-                    RowSorter sorter = sorters[list];
-                    if (sorter.Column >= 0)
-                    {
-                        bool was = filtering;
-                        filtering = true;
-                        try { list.Sort(); } finally { filtering = was; }
-                        if (list == InstalledList && firstMade.Add(list) && list.Items.Count > 0 && !list.Items[0].Selected)
-                        {
-                            BeginInvoke((MethodInvoker)delegate { SelectInstalledId(null); });
-                        }
-                    }
-                    ShowSortArrow(list);
+                    try { BeginInvoke((MethodInvoker)delegate { ListMade(list); }); } catch (Exception) { }
                 };
             }
             ApplyTheme();
@@ -2004,6 +1994,24 @@ namespace ModernVoicesConfig
             // window is open: looked at again whenever it comes to the front.
             Activated += delegate { UpdateWindowsRate(); UpdateOutput(); ApplyTheme(); };
             ShowPage(InstalledList.Items.Count == 0 ? 3 : 0);
+        }
+
+        void ListMade(ListView list)
+        {
+            if (list.IsDisposed || !list.IsHandleCreated) { return; }
+            RowSorter sorter = sorters[list];
+            if (sorter.Column >= 0)
+            {
+                bool was = filtering;
+                filtering = true;
+                try { list.Sort(); } finally { filtering = was; }
+                if (list == InstalledList) { ShowInstalledCells(); }
+                if (list == InstalledList && firstMade.Add(list) && list.Items.Count > 0 && list.Items[0] != null && !list.Items[0].Selected)
+                {
+                    SelectInstalledId(null);
+                }
+            }
+            ShowSortArrow(list);
         }
 
         void ListResized(object sender, EventArgs e)
@@ -4983,6 +4991,29 @@ namespace ModernVoicesConfig
                 (everything.Count - catalogue.Count) + " of other languages" + (problem == null ? "" : " (" + problem + ")"));
             List<string> real = Voices.InstalledIds();
             List<string> ids = real.Count > 0 ? real : new List<string>(new string[] { "en_GB-alba-medium", "en_GB-vctk-medium#p239" });
+            // Opening with both lists sorted as left last time (0.18.2 failed so, as Windows made the list).
+            if (real.Count > 1)
+            {
+                ListLayout.Override["VoiceSort"] = "On disk|down";
+                ListLayout.Override["AddSort"] = "Download|up";
+                ListLayout.Override["VoiceColumns"] = "Nickname|Voice|Speaker|Accent|Gender|On disk|Windows default|Folder";
+                using (ConfigForm sortedFirst = new ConfigForm(everything, ids, Voices.UsEnglishTags))
+                {
+                    sortedFirst.Show();
+                    Settle(300);
+                    IntPtr listMade = sortedFirst.AddList.Handle;
+                    Settle(200);
+                    bool byDisk = Sorted(sortedFirst.InstalledList, ConfigForm.SizeColumn, true), byDownload = AddSorted(sortedFirst.AddList, false);
+                    bool firstSelected = sortedFirst.InstalledList.Items.Count > 0 && sortedFirst.InstalledList.Items[0].Selected;
+                    bool nickFirst = sortedFirst.InstalledList.Columns[ConfigForm.NickColumn].DisplayIndex == 0;
+                    Check(byDisk && byDownload && firstSelected && nickFirst, "opened with the lists sorted and the columns moved as left last time: the Voice manager by On disk, Z to A (" +
+                        byDisk + "), its first row selected (" + firstSelected + "), Nickname first (" + nickFirst + "); Add or remove voices by Download (" + byDownload + ")");
+                    sortedFirst.StopTimers();
+                    sortedFirst.Close();
+                }
+                ListLayout.Override.Clear();
+                Settle(100);
+            }
             DateTime started = DateTime.UtcNow;
             ConfigForm ui = new ConfigForm(everything, ids, Voices.UsEnglishTags);
             Check(ui.InstalledList.Items.Count > 0 ? ui.DefaultLabel.Text != ConfigForm.NoVoicesDefault : ui.DefaultLabel.Text == ConfigForm.NoVoicesDefault,
