@@ -5929,6 +5929,17 @@ namespace ModernVoicesConfig
                 ui.ApplyTheme();
             }
 
+            // (Pictures from here on: the window at its usual size, dark, each tab at its top.)
+            Rectangle boundsWere = ui.Bounds;
+            if (pictures)
+            {
+                Theme.Override = "dark";
+                ui.ApplyTheme();
+                ui.Bounds = ConfigForm.WindowBounds(ConfigForm.ScreenScale());
+                ui.Pages[0].AutoScrollPosition = Point.Empty;
+                Settle(100);
+            }
+
             // Sorting the Voice manager: by gender, then the other way, by size as numbers; each kept for next time.
             ui.SortInstalled(ConfigForm.GenderColumn);
             bool up = Sorted(list, ConfigForm.GenderColumn, false);
@@ -5977,7 +5988,16 @@ namespace ModernVoicesConfig
             Check(addUp && addDown && keptSorted && tickedAfter == tickedBefore && ui.AddList.Items.Count == shownBefore && ListLayout.Get("AddSort") == "Download|down",
                 "Add or remove voices sorts by Download as numbers, up (" + addUp + ") and down (" + addDown + "), still sorted after the list is refilled (" + keptSorted +
                 "); " + tickedAfter + " ticked before and after, " + ui.AddList.Items.Count + " shown");
-            if (pictures) { ui.Picture(Path.Combine(folder, "add-sorted.png")); }
+            if (pictures)
+            {
+                ui.Pages[3].AutoScrollPosition = Point.Empty;
+                ui.SortAdd(2);      // (by accent: a column in view, so its arrow shows)
+                Settle(100);
+                ui.Picture(Path.Combine(folder, "add-sorted.png"));
+                Theme.Override = null;
+                ui.ApplyTheme();
+                ui.Bounds = boundsWere;
+            }
             ui.SortAddAsListed();
             ui.ShowPage(0);
             Settle(50);
