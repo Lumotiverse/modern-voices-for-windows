@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.3.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.4.0")]
 
 namespace ModernVoicesConfig
 {
@@ -1475,6 +1475,7 @@ namespace ModernVoicesConfig
         public Button ReaderButton, PlayButton;
         public Label MuteIcon, AboutButton;
         public Label SavedNote;
+        public FlowLayoutPanel DefaultBox;      // Windows' default voice, in its box
         public TableLayoutPanel SoundFrame, PauseFrame, GlobalGrid, AdvancedGrid;      // the framed sections, and the Speed tab's sliders
         public TableLayoutPanel OutLine;
         public int NameInset;
@@ -1746,8 +1747,13 @@ namespace ModernVoicesConfig
             {
                 if (grid.GetColumn(c) == 2 && c is Label) { c.MinimumSize = Size.Empty; c.MaximumSize = new Size(ValueLabelWidth, 0); }
             }
-            frame.Padding = new Padding(frame.Padding.Left, frame.Padding.Top, FramePadRight, frame.Padding.Bottom);
-            frame.Margin = new Padding(sectionLeft - FramePad, top, Math.Max(0, valueColumn - FramePadRight - ValueFit), 0);
+            // The frame's line is in the middle of the page (as far from its left edge as from its right),
+            // while what is inside it stays where it was: the line moves by 'shift', the room inside it the
+            // other way. (His ask in 0.18.4; until then the line was FrameGap from the words on both sides.)
+            int left = sectionLeft - FramePad, right = Math.Max(0, valueColumn - FramePadRight - ValueFit);
+            int margin = (left + right) / 2, shift = left - margin;
+            frame.Padding = new Padding(FramePad + shift, frame.Padding.Top, Math.Max(0, FramePadRight - shift), frame.Padding.Bottom);
+            frame.Margin = new Padding(margin, top, margin, 0);
         }
         // The sliders of both tabs stand in one column, in the middle of the window: their names start where
         // the Voice manager's preview box starts, and the sliders end where its output volume slider ends.
@@ -2364,7 +2370,8 @@ namespace ModernVoicesConfig
             FlowLayoutPanel defaultBox = Flow();
             defaultBox.WrapContents = false; defaultBox.Dock = DockStyle.None; defaultBox.Anchor = AnchorStyles.Left; defaultBox.Tag = "box";
             defaultBox.Padding = new Padding(Px(8), Px(5), Px(8), Px(5));
-            defaultBox.Margin = new Padding(3, 0, Px(18), 0);
+            defaultBox.Margin = new Padding(3, 0, Px(18), 0);      // (its left: the frames' line, once they are made)
+            DefaultBox = defaultBox;
             defaultBox.Paint += delegate(object sender, PaintEventArgs e)
             {
                 if (palette == null) { return; }
@@ -2454,6 +2461,9 @@ namespace ModernVoicesConfig
             gapGrid.Visible = false;
             PauseFrame = Frame();
             FrameSliders(PauseFrame, gapGrid, sectionLeft, Px(16));
+            // The default voice's box starts where the frames' lines do; the speaker and the output volume
+            // slider move with it (the slider still ends where the sliders below end).
+            DefaultBox.Margin = new Padding(PauseFrame.Margin.Left, 0, DefaultBox.Margin.Right, 0);
             Row(PauseFrame, OwnBox);
             Row(PauseFrame, gapGrid);
             Row(page, PauseFrame);
@@ -5201,8 +5211,16 @@ namespace ModernVoicesConfig
                 int rightGap = frameRight - valueEnd;
                 int pauseLeft = ui.PauseFrame.PointToScreen(Point.Empty).X;
                 Note("the frames' gaps: " + leftGap + " px on the left, " + rightGap + " px on the right (after \"" + ui.WidestValue + "\"); meant to be " + ui.FrameGap);
-                Check(Math.Abs(leftGap - ui.FrameGap) <= 1 && Math.Abs(rightGap - ui.FrameGap) <= 1 && pauseLeft == frameLeft && ui.PauseFrame.Width == ui.SoundFrame.Width,
-                    "each frame's line is as far from the words inside it on its right as on its left");
+                // (Since 0.18.4 the lines are in the middle of the page, the words inside where they were.)
+                Control pageGrid = ui.SoundFrame.Parent;
+                int pageLeft = pageGrid.PointToScreen(Point.Empty).X, pageRight = pageLeft + pageGrid.ClientSize.Width;
+                int boxLeft2 = ui.DefaultBox.PointToScreen(Point.Empty).X;
+                Check(Math.Abs((frameLeft - pageLeft) - (pageRight - frameRight)) <= 1 && pauseLeft == frameLeft && ui.PauseFrame.Width == ui.SoundFrame.Width &&
+                    leftGap >= ui.FrameGap && rightGap > 0,
+                    "the frames' lines are in the middle of the page (" + (frameLeft - pageLeft) + " px from its left, " + (pageRight - frameRight) + " px from its right), the words inside them " +
+                    leftGap + " and " + rightGap + " px from them");
+                Check(boxLeft2 == frameLeft && ui.MuteIcon.PointToScreen(Point.Empty).X > boxLeft2 + ui.DefaultBox.Width,
+                    "the default voice's box starts where the frames' lines do (" + boxLeft2 + " and " + frameLeft + "), the speaker after it");
                 Check(ui.SoundFrame.Contains(volumeBar) && ui.SoundFrame.Contains(ui.ResetButton) && ui.PauseFrame.Contains(ui.OwnBox) &&
                     ui.PauseFrame.Contains(ui.OwnVariation.Bar) && ui.PauseFrame.Top - ui.SoundFrame.Bottom >= 10,
                     "\"How it sounds\" and the override section each have a frame, with a gap between them");
