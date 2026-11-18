@@ -748,12 +748,11 @@ look in dark mode.
 
 ## Ideas discussed but not built (only when Lumoti asks)
 
-- **Pronunciation "ignore list"** (his idea, 18 Nov 2026; he will ask if he wants it built): a list
-  under everything on the Pronunciation tab, working like the pronunciation rules but anything on it
-  is not read at all (e.g. "***" is read as "star star star": add it, and it is skipped). It would
-  have to work in every program, like the rules, so it changes the engine's text handling (Rust,
-  `engine/src/text.rs` and the rules code): I judged it Fable-sized, best in a fresh chat. My reading if
-  built: one list per language, entries skipped (not replaced by a pause).
+- **Pronunciation "ignore list": not wanted** (18 Nov 2026). He uses an ordinary rule instead: "***" said
+  as "," (or with "Say it as" left empty, which drops it; the engine allows an empty replacement). Note,
+  told him: rules are applied AFTER the text is split at commas (`clauses` in lib.rs runs on the original
+  text, `Dictionary::apply` per piece in `say_piece`), so a comma a rule puts in gets only Piper's own
+  short pause, not the Comma pause setting. Making it honour the setting is engine work (Fable-sized).
 
 - **Accurate time-left countdown:** run the text through the voice silently in the background and
   measure the real length. Also remember each voice's measured pace for the initial estimate. Agreed in
