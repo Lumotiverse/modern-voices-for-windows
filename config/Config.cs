@@ -4799,7 +4799,9 @@ namespace ModernVoicesConfig
                     {
                         File.WriteAllText(choiceFile, "de");
                         Languages.TakeInstallChoice();
-                        Check(!File.Exists(choiceFile) && !Languages.English && Languages.Enabled.Contains("de"), "the installer's language file is taken up, and deleted");
+                        Check(!File.Exists(choiceFile) && !Languages.English && Languages.Enabled.Contains("de") && Languages.InstallLanguage == "de",
+                            "the installer's language file is taken up (and remembered for the start note), and deleted");
+                        Languages.InstallLanguage = "";
                         Languages.Override = "";
                         Languages.English = true; Languages.Show = "";
                     }
