@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.1.0")]
 
 namespace ModernVoicesConfig
 {
@@ -712,7 +712,7 @@ namespace ModernVoicesConfig
 
         // How much of Piper's own variation the voices use, in % (settings.json's variation_percent: 100 is
         // Piper's own; 75 unless set). The engine loads a voice with it.
-        public const int VariationDefault = 75, VariationLimit = 150;
+        public const int VariationDefault = 60, VariationLimit = 150;
         public static double GetVariation(string path)
         {
             double? found = Read(ReadAll(path), "variation_percent");
@@ -1014,6 +1014,15 @@ namespace ModernVoicesConfig
             return true;
         }
 
+        // The language chosen when installing ("" before 0.18.1, or for an install that chose none): the
+        // "select voices" note is shown in it too.
+        static string installInTest = "";
+        public static string InstallLanguage
+        {
+            get { return Override != null ? installInTest : (Kept("InstallLanguage") ?? ""); }
+            set { if (Override != null) { installInTest = value ?? ""; } else { Keep("InstallLanguage", value ?? ""); } }
+        }
+
         // The choice the installer left (a fresh install's first window), taken up the first time the
         // program opens after it: install-language.txt in the settings folder, deleted once read. (The
         // installer runs as an administrator, perhaps another account: it can't set this person's own.)
@@ -1030,7 +1039,7 @@ namespace ModernVoicesConfig
                 // (Should the file not go, it is still taken up only once.)
                 if (Kept("InstallChoice") == stamp) { return; }
                 Keep("InstallChoice", stamp);
-                Apply(choice);
+                if (Apply(choice)) { InstallLanguage = choice.Trim(); }
             }
             catch (Exception) { }
         }
@@ -2008,7 +2017,7 @@ namespace ModernVoicesConfig
             Button pausesReset = Btn("Reset to defaults");
             resetLine.Controls.Add(pausesReset, 0, 0);
             // (Its words level with the button's: in the middle of the row's height.)
-            Label defaultsNote = Words("Defaults: speed 100%, sentence 500 ms, comma 60 ms, paragraph 1200 ms, variation 75%. Changes are saved straight away.", true);
+            Label defaultsNote = Words("Defaults: speed 100%, sentence 500 ms, comma 60 ms, paragraph 1200 ms, variation 60%. Changes are saved straight away.", true);
             defaultsNote.Dock = DockStyle.None; defaultsNote.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             defaultsNote.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             resetLine.Controls.Add(defaultsNote, 1, 0);
@@ -2023,7 +2032,7 @@ namespace ModernVoicesConfig
             VariationBar = variation.Bar;
             variation.Value.Font = boldFont;
             AddNote(advancedGrid, Words("How much a voice changes its tone and rhythm each time it speaks. Lower is steadier and more even, higher is " +
-                "livelier but less predictable. 100% is how the voices were made; 75% is this program's default.", true));
+                "livelier but less predictable. 100% is how the voices were made; 60% is this program's default.", true));
             AddNote(advancedGrid, Words("Preview uses the new value straight away. Programs that are already open use it after you restart them.", true));
             Centre(advancedGrid, 0);
             advancedGrid.Margin = new Padding(sectionLeft, 0, 0, 0);
@@ -2743,6 +2752,41 @@ namespace ModernVoicesConfig
         // Over Add or remove voices whenever Config opens with no voice installed (after "Powered by", the
         // first time): where to start. OK, its X, Enter or Esc closes it.
         public const string FirstVoicesWords = "Select the voices you wish to download and install, then click Apply changes.";
+        // The same in the language chosen when installing (shown above the English; Claude's translations,
+        // not checked by a speaker of each, like the installer's note). The button's name stays English, as
+        // the button is.
+        public static readonly Dictionary<string, string> FirstVoicesTranslated = new Dictionary<string, string>
+        {
+            { "bg", "Изберете гласовете, които искате да изтеглите и инсталирате, след което щракнете върху „Apply changes“." },
+            { "ca", "Seleccioneu les veus que voleu baixar i instal·lar i, després, feu clic a «Apply changes»." },
+            { "cs", "Vyberte hlasy, které chcete stáhnout a nainstalovat, a potom klikněte na „Apply changes“." },
+            { "cy", "Dewiswch y lleisiau rydych am eu llwytho i lawr a'u gosod, yna cliciwch “Apply changes”." },
+            { "da", "Vælg de stemmer, du vil hente og installere, og klik derefter på »Apply changes«." },
+            { "de", "Wählen Sie die Stimmen aus, die Sie herunterladen und installieren möchten, und klicken Sie dann auf „Apply changes“." },
+            { "el", "Επιλέξτε τις φωνές που θέλετε να κατεβάσετε και να εγκαταστήσετε και, στη συνέχεια, κάντε κλικ στο «Apply changes»." },
+            { "es", "Seleccione las voces que desea descargar e instalar y, después, haga clic en «Apply changes»." },
+            { "eu", "Hautatu deskargatu eta instalatu nahi dituzun ahotsak, eta egin klik «Apply changes» botoian." },
+            { "fi", "Valitse äänet, jotka haluat ladata ja asentaa, ja napsauta sitten ”Apply changes”." },
+            { "fr", "Sélectionnez les voix que vous souhaitez télécharger et installer, puis cliquez sur « Apply changes »." },
+            { "gl", "Seleccione as voces que desexa descargar e instalar e, despois, prema en «Apply changes»." },
+            { "hu", "Jelölje ki a letölteni és telepíteni kívánt hangokat, majd kattintson az „Apply changes” gombra." },
+            { "is", "Veldu raddirnar sem þú vilt sækja og setja upp og smelltu svo á „Apply changes“." },
+            { "it", "Seleziona le voci che vuoi scaricare e installare, poi fai clic su «Apply changes»." },
+            { "lb", "Wielt d'Stëmmen aus, déi Dir eroflueden an installéiere wëllt, a klickt dann op „Apply changes“." },
+            { "lv", "Atlasiet balsis, kuras vēlaties lejupielādēt un instalēt, un pēc tam noklikšķiniet uz „Apply changes”." },
+            { "nl", "Selecteer de stemmen die u wilt downloaden en installeren en klik daarna op ‘Apply changes’." },
+            { "no", "Velg stemmene du vil laste ned og installere, og klikk deretter på «Apply changes»." },
+            { "pl", "Zaznacz głosy, które chcesz pobrać i zainstalować, a następnie kliknij „Apply changes”." },
+            { "pt", "Selecione as vozes que pretende transferir e instalar e, depois, clique em «Apply changes»." },
+            { "ro", "Selectați vocile pe care doriți să le descărcați și să le instalați, apoi faceți clic pe „Apply changes”." },
+            { "ru", "Выберите голоса, которые хотите загрузить и установить, а затем нажмите «Apply changes»." },
+            { "sk", "Vyberte hlasy, ktoré chcete stiahnuť a nainštalovať, a potom kliknite na „Apply changes“." },
+            { "sl", "Izberite glasove, ki jih želite prenesti in namestiti, nato kliknite »Apply changes«." },
+            { "sr", "Izaberite glasove koje želite da preuzmete i instalirate, a zatim kliknite na „Apply changes“." },
+            { "sv", "Markera de röster du vill hämta och installera och klicka sedan på ”Apply changes”." },
+            { "tr", "İndirip yüklemek istediğiniz sesleri seçin, ardından “Apply changes” düğmesine tıklayın." },
+            { "uk", "Виберіть голоси, які хочете завантажити та встановити, а потім натисніть «Apply changes»." }
+        };
         public Form FirstVoicesWindow()
         {
             Form window = new Form();
@@ -2755,11 +2799,15 @@ namespace ModernVoicesConfig
                 using (Pen edge = new Pen(palette.TabOn, Px(2))) { e.Graphics.DrawRectangle(edge, Px(1), Px(1), window.ClientSize.Width - Px(2), window.ClientSize.Height - Px(2)); }
             };
             int width = Px(340);
+            // (Another language chosen when installing: its words first, then the English.)
+            string own;
+            string text = FirstVoicesTranslated.TryGetValue(Languages.InstallLanguage, out own) ? own + "\r\n\r\n" + FirstVoicesWords : FirstVoicesWords;
+            if (text != FirstVoicesWords) { width = Px(400); }
             Label words = new Label();
             words.Name = "words"; words.UseMnemonic = false;
-            words.Text = FirstVoicesWords; words.AutoSize = false; words.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            words.Text = text; words.AutoSize = false; words.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
             words.Font = new Font(Font.FontFamily, Font.Size + 1.5f); words.ForeColor = palette.Text; words.BackColor = palette.Input;
-            words.Size = new Size(width, TextRenderer.MeasureText(FirstVoicesWords, words.Font, new Size(width, 0), TextFormatFlags.WordBreak | TextFormatFlags.HorizontalCenter).Height + Px(4));
+            words.Size = new Size(width, TextRenderer.MeasureText(text, words.Font, new Size(width, 0), TextFormatFlags.WordBreak | TextFormatFlags.HorizontalCenter).Height + Px(4));
             words.Location = new Point(Px(30), Px(40));
             window.Controls.Add(words);
             Button ok = Btn("OK");
@@ -3639,7 +3687,7 @@ namespace ModernVoicesConfig
             return ids;
         }
 
-        bool NothingToApply(List<string> wanted, bool us)
+        public bool NothingToApply(List<string> wanted, bool us)
         {
             List<string> a = new List<string>(wanted), b = new List<string>(Installed);
             a.Sort(StringComparer.OrdinalIgnoreCase); b.Sort(StringComparer.OrdinalIgnoreCase);
@@ -3662,6 +3710,8 @@ namespace ModernVoicesConfig
         public void Apply()
         {
             if (Busy) { return; }
+            // (A sample still playing stops: Apply changes is pressed when the choosing is done.)
+            Sample.Stop();
             SaveSpeakers();
             List<string> wanted = PickedIds();
             bool us = UsBox.Checked;
@@ -4583,6 +4633,15 @@ namespace ModernVoicesConfig
                     Settle(300);
                     Note("Play sample: said \"" + (saysStop ? "Stop sample" : "Play sample") + "\" while playing; now \"" + ui.PlayButton.Text + "\"");
                     Check(saysStop && !Sample.Playing && ui.PlayButton.Text == "Play sample", "Play sample says Stop sample while one plays, and pressed then, stops it");
+                    // Apply changes stops it too (with nothing to change, it does nothing else).
+                    Sample.Play(fakeSample);
+                    Settle(300);
+                    bool playedAgain = Sample.Playing;
+                    bool nothing = ui.NothingToApply(ui.PickedIds(), ui.UsBox.Checked);
+                    if (nothing) { ui.Apply(); }
+                    Settle(100);
+                    Note("Apply changes while a sample played: " + (nothing ? (Sample.Playing ? "still playing" : "stopped") : "not tried (there were changes to apply)"));
+                    Check(!nothing || (playedAgain && !Sample.Playing), "Apply changes stops a sample that is playing");
                     ui.ShowPage(samplePage);
                     Settle(50);
                 }
@@ -4762,7 +4821,7 @@ namespace ModernVoicesConfig
                     PreviewTexts.IsOneOfThem(App.OldPreviewText) && !PreviewTexts.IsOneOfThem("my own words"), "a voice's language picks its preview text; typed text is kept");
             }
 
-            // Voice variation (Speed and pauses, Advanced): 75% unless set; moved, it is saved for the engine.
+            // Voice variation (Speed and pauses, Advanced): 60% unless set; moved, it is saved for the engine.
             {
                 bool hadSettings = File.Exists(App.SettingsFile);
                 string settingsWere = hadSettings ? File.ReadAllText(App.SettingsFile) : null;
@@ -4806,6 +4865,32 @@ namespace ModernVoicesConfig
                         "its X is in the top right corner, over the rest");
                     if (pictures) { SavePicture(powered, Path.Combine(folder, "powered-by.png")); }
                 }
+                // In the language chosen when installing, above the English (each one offered has its words).
+                string installWas = Languages.InstallLanguage;
+                string overrideWas = Languages.Override;
+                Languages.Override = Languages.Override ?? "";
+                Languages.InstallLanguage = "es";
+                using (Form translated = ui.FirstVoicesWindow())
+                {
+                    Control translatedWords = translated.Controls["words"], translatedOk = translated.Controls["ok"];
+                    translated.Show(); Application.DoEvents();
+                    Note("select voices, Spanish chosen: " + translatedWords.Text.Replace("\r\n\r\n", " / ") + "; words " + translatedWords.Bounds + ", OK " + translatedOk.Bounds);
+                    Check(translatedWords.Text.StartsWith(ConfigForm.FirstVoicesTranslated["es"]) && translatedWords.Text.EndsWith(ConfigForm.FirstVoicesWords) &&
+                        translatedOk.Top >= translatedWords.Bottom + 10 && translatedOk.Bottom < translated.ClientSize.Height,
+                        "with Spanish chosen when installing, the note is in Spanish above the English, and fits");
+                    bool everyOne = true;
+                    foreach (string offered in Catalogue.Offered) { if (offered != "en" && !ConfigForm.FirstVoicesTranslated.ContainsKey(offered)) { everyOne = false; Note("  no words for " + offered); } }
+                    Check(everyOne, "every language offered when installing has its words");
+                    if (pictures) { SavePicture(translated, Path.Combine(folder, "select-voices-es.png")); }
+                    translated.Hide();
+                }
+                Languages.InstallLanguage = "en_GB";
+                using (Form english = ui.FirstVoicesWindow())
+                {
+                    Check(english.Controls["words"].Text == ConfigForm.FirstVoicesWords, "English chosen when installing: the note is in English only");
+                }
+                Languages.InstallLanguage = installWas;
+                Languages.Override = overrideWas;
                 using (Form start = ui.FirstVoicesWindow())
                 {
                     Control startWords = start.Controls["words"], startOk = start.Controls["ok"], startX = start.Controls["close"];

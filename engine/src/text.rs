@@ -262,9 +262,9 @@ pub fn global_speed(info: &str) -> f32 {
 }
 
 /// How much of Piper's own variation the voices use (the settings file's `variation_percent`, 0 to 150:
-/// 100 is Piper's own), as a factor. Without one, 0.75: Piper's own is a little strong, each saying of
+/// 100 is Piper's own), as a factor. Without one, 0.6: Piper's own is a little strong, each saying of
 /// a sentence wandering further in tone and timing than sounds natural.
-pub const DEFAULT_VARIATION_PERCENT: f32 = 75.0;
+pub const DEFAULT_VARIATION_PERCENT: f32 = 60.0;
 pub fn variation(info: &str) -> f32 {
     number(info, "variation_percent", DEFAULT_VARIATION_PERCENT).clamp(0.0, 150.0) / 100.0
 }
@@ -801,7 +801,7 @@ mod tests {
 
     #[test]
     fn variation_setting() {
-        assert_eq!(variation(""), 0.75);
+        assert_eq!(variation(""), 0.6);
         assert_eq!(variation(r#"{ "speed_percent": 100, "variation_percent": 100 }"#), 1.0);
         assert_eq!(variation(r#"{ "variation_percent": 0 }"#), 0.0);
         assert_eq!(variation(r#"{ "variation_percent": 400 }"#), 1.5);
@@ -811,7 +811,7 @@ mod tests {
         assert_eq!(own_variation(r#"{ "pauses": { "own_pauses": 1 } }"#), None);
         assert_eq!(own_variation(r#"{ "own_variation_percent": 0, "pauses": { "own_pauses": 1 } }"#), Some(0.0));
         // (The key for every voice is not found in a voice's own, nor the other way round.)
-        assert_eq!(variation(r#"{ "own_variation_percent": 120 }"#), 0.75);
+        assert_eq!(variation(r#"{ "own_variation_percent": 120 }"#), 0.6);
     }
 
     #[test]

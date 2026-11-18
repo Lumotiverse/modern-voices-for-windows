@@ -347,8 +347,8 @@ fn make_room(keep: &str) {
 const NOISE_SCALE: f32 = 0.6;
 const NOISE_W: f32 = 0.65;
 /// How much of that variation is used, whatever sets it (a voice.json has its model's own, Piper's 0.667
-/// and 0.8 for most), is the settings file's `variation_percent` (`text::variation`; 75% without: 0.667
-/// and 0.8 become 0.5 and 0.6). A model is loaded with it, so a change is heard from the next time a
+/// and 0.8 for most), is the settings file's `variation_percent` (`text::variation`; 60% without: 0.667
+/// and 0.8 become 0.4 and 0.48). A model is loaded with it, so a change is heard from the next time a
 /// program takes up a voice (a model loaded with another amount is another model here).
 fn load_model(model_dir: &str, data_dir: &str, settings_file: Option<&str>) -> Option<Arc<Model>> {
     // (A voice that overrides the settings for every voice can have its own: its own settings file's.)

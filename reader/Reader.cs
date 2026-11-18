@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.0.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.1.0")]
 
 namespace ModernVoicesReader
 {
@@ -1328,6 +1328,7 @@ namespace ModernVoicesReader
         public readonly float Dpi;
 
         ComboBox voiceBox;
+        Button previousVoice, nextVoice;     // the triangles left of the voice list: the voice before or after
         TrackBar volumeBar;              // how loud the Reader speaks
         TextBox nickBox;                 // a new nickname for the voice chosen
         Button nickButton;
@@ -1383,9 +1384,8 @@ namespace ModernVoicesReader
         }
         Label configButton;              // a cog to click: opens Modern Voices Config
         string shownTheme;               // the theme the window wears (Config changes it: the tick follows)
-        int alignedFor;                  // the time's width the line under the buttons was laid out for
         TrackBar rateBar;
-        Label rateLabel, timeLabel, statusLabel;
+        Label rateLabel, statusLabel;
         PasteBox box;
         Button playButton, stopButton, startButton;
         Button clipboardButton, clearButton, fileButton, audioButton, undoButton, redoButton;
@@ -1515,7 +1515,7 @@ namespace ModernVoicesReader
         }
 
         // The line under the buttons is placed against them: the progress bar as wide as the first two
-        // buttons, the time after it, "Instantly read copy" starting where Paste and read does, "Don't
+        // buttons, "Instantly read copy" starting where Paste and read does, "Don't
         // read links" where Save as audio does, and "Save text on close" where Undo does.
         bool aligning;
         void AlignLine()
@@ -1528,12 +1528,10 @@ namespace ModernVoicesReader
                 int start = leftOf(startButton);
                 progress.Left = start;
                 progress.Width = Math.Max(Px(50), leftOf(playButton) + playButton.Width - start);     // as wide as the first two buttons
-                timeLabel.Left = progress.Right + Px(8);
                 autoBox.Left = leftOf(clipboardButton);
                 tidyBox.Left = leftOf(audioButton);
                 saveBox.Left = leftOf(undoButton);
-                foreach (Control c in new Control[] { progress, timeLabel, autoBox, tidyBox, saveBox }) { c.Top = Math.Max(0, (underPanel.Height - c.Height) / 2); }
-                alignedFor = timeLabel.Width;
+                foreach (Control c in new Control[] { progress, autoBox, tidyBox, saveBox }) { c.Top = Math.Max(0, (underPanel.Height - c.Height) / 2); }
             }
             finally { aligning = false; }
         }
@@ -1846,6 +1844,7 @@ namespace ModernVoicesReader
         {
             base.OnShown(e);
             nickBox.Height = voiceBox.Height; nickButton.Size = new Size(voiceBox.Height, voiceBox.Height);     // (as the list is, once drawn)
+            previousVoice.Size = nickButton.Size; nextVoice.Size = nickButton.Size;
             AlignLine();
         }
 
@@ -1898,8 +1897,8 @@ namespace ModernVoicesReader
             Controls.Add(page);
             int row = 0;
 
-            // The voice (left) and the speed (right).
-            TableLayoutPanel top = NewLine(false, false, false, false, true, false, false, false);
+            // The voice (left, after the triangles that go back and forward through the list) and the speed (right).
+            TableLayoutPanel top = NewLine(false, false, false, false, false, false, true, false, false, false);
             voiceBox = new ComboBox();
             voiceBox.DropDownStyle = ComboBoxStyle.DropDownList; voiceBox.Width = Px(260); voiceBox.Anchor = AnchorStyles.Left;
             voiceBox.SelectedIndexChanged += delegate { if (!loading) { VoiceChosen(); } };
@@ -1928,8 +1927,24 @@ namespace ModernVoicesReader
                 }
                 else if (dotTip != null) { dotTip.HideTip(); }
             };
-            top.Controls.Add(voiceBox, 0, 0);
-            top.Controls.Add(NewLabel("Voice", false), 1, 0);
+            previousVoice = NewButton("\u25C0", delegate { StepVoice(-1); });
+            nextVoice = NewButton("\u25B6", delegate { StepVoice(1); });
+            tips.SetToolTip(previousVoice, "The voice before this one in the list");
+            tips.SetToolTip(nextVoice, "The voice after this one in the list");
+            foreach (Button arrow in new Button[] { previousVoice, nextVoice })
+            {
+                // (Squares as tall as the voice list, the triangle in the middle.)
+                arrow.Font = new Font("Segoe UI Symbol", 7.5f);
+                arrow.AutoSize = false; arrow.Padding = new Padding(0); arrow.Anchor = AnchorStyles.Left;
+                arrow.Size = new Size(voiceBox.Height, voiceBox.Height);
+                arrow.TextAlign = ContentAlignment.MiddleCenter;
+            }
+            previousVoice.Margin = new Padding(3, 3, 0, 3);
+            nextVoice.Margin = new Padding(Px(2), 3, Px(4), 3);
+            top.Controls.Add(previousVoice, 0, 0);
+            top.Controls.Add(nextVoice, 1, 0);
+            top.Controls.Add(voiceBox, 2, 0);
+            top.Controls.Add(NewLabel("Voice", false), 3, 0);
             // A nickname for the voice chosen (its box says what it is for, in grey, while empty).
             nickBox = new TextBox();
             nickBox.Width = Px(170); nickBox.MaxLength = 40; nickBox.Anchor = AnchorStyles.Left;
@@ -1947,19 +1962,19 @@ namespace ModernVoicesReader
             nickButton.AutoSize = false; nickButton.Padding = new Padding(0); nickButton.Anchor = AnchorStyles.Left;
             nickButton.Size = new Size(voiceBox.Height, voiceBox.Height);
             if (symbols) { nickButton.Font = new Font("Segoe MDL2 Assets", 8.5f); }
-            top.Controls.Add(nickBox, 2, 0);
-            top.Controls.Add(nickButton, 3, 0);
-            top.Controls.Add(NewLabel("Speed", false), 5, 0);
+            top.Controls.Add(nickBox, 4, 0);
+            top.Controls.Add(nickButton, 5, 0);
+            top.Controls.Add(NewLabel("Speed", false), 7, 0);
             rateBar = new TrackBar();
             rateBar.Minimum = -10; rateBar.Maximum = 10; rateBar.TickFrequency = 5; rateBar.LargeChange = 1;
             rateBar.AutoSize = false; rateBar.Width = Px(150); rateBar.Height = Px(30); rateBar.Anchor = AnchorStyles.Left;
             rateBar.Margin = new Padding(3, Px(13), 3, 0);     // (its bar is drawn above its middle: lowered to line up with the labels)
             rateBar.TickStyle = TickStyle.None;
             rateBar.ValueChanged += delegate { RateChanged(); };
-            top.Controls.Add(rateBar, 6, 0);
+            top.Controls.Add(rateBar, 8, 0);
             rateLabel = NewLabel("0", false);
             rateLabel.MinimumSize = new Size(Px(26), 0);
-            top.Controls.Add(rateLabel, 7, 0);
+            top.Controls.Add(rateLabel, 9, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(top, 0, row++);
 
             // The text.
@@ -2052,7 +2067,7 @@ namespace ModernVoicesReader
             buttonLine.Controls.Add(ends, 1, 0);
             page.RowStyles.Add(new RowStyle(SizeType.AutoSize)); page.Controls.Add(buttonLine, 0, row++);
 
-            // How far, how long is left; what is read.
+            // How far it has read; what is read.
             TableLayoutPanel under = NewLine(true);
             Font lineFont = new Font("Segoe UI", 10f);     // (this line a little larger than the buttons' words)
             progress = new ProgressBar();
@@ -2061,9 +2076,6 @@ namespace ModernVoicesReader
             progress.RightToLeft = RightToLeft.Yes; progress.RightToLeftLayout = true;
             progress.Maximum = 1000; progress.Width = Px(120); progress.Height = Px(18); progress.Anchor = AnchorStyles.Left;
             progress.Margin = new Padding(3, Px(6), Px(6), Px(6));
-            timeLabel = NewLabel("", false);
-            timeLabel.Font = lineFont;
-            timeLabel.MinimumSize = new Size(Px(104), 0);
             autoBox = new CheckBox();
             autoBox.Text = "Instantly read copy"; autoBox.AutoSize = true; autoBox.Anchor = AnchorStyles.Left; autoBox.Font = lineFont;
             autoBox.Margin = new Padding(Px(4), 3, Px(4), 3);
@@ -2085,7 +2097,7 @@ namespace ModernVoicesReader
             // (Placed by AlignLine, against the buttons above.)
             underPanel = new Panel();
             underPanel.Dock = DockStyle.Fill; underPanel.Margin = new Padding(0);
-            foreach (Control c in new Control[] { progress, timeLabel, autoBox, tidyBox, saveBox }) { c.Anchor = AnchorStyles.Left | AnchorStyles.Top; underPanel.Controls.Add(c); }
+            foreach (Control c in new Control[] { progress, autoBox, tidyBox, saveBox }) { c.Anchor = AnchorStyles.Left | AnchorStyles.Top; underPanel.Controls.Add(c); }
             underPanel.Height = Math.Max(autoBox.PreferredSize.Height, progress.Height) + Px(8);
             under.Controls.Add(underPanel, 0, 0);
             ends.LocationChanged += delegate { AlignLine(); };
@@ -2161,6 +2173,23 @@ namespace ModernVoicesReader
         }
 
         public int VoiceCount { get { return voiceBox.Items.Count; } }
+        // The voice before (-1) or after (1) the one chosen; past either end, round to the other.
+        public void StepVoice(int by)
+        {
+            int count = voiceBox.Items.Count;
+            if (count == 0) { return; }
+            int at = voiceBox.SelectedIndex < 0 ? 0 : voiceBox.SelectedIndex;
+            voiceBox.SelectedIndex = ((at + by) % count + count) % count;
+        }
+        public int ChosenVoice { get { return voiceBox.SelectedIndex; } }
+        public bool ArrowsPlaced
+        {
+            get
+            {
+                return previousVoice.Right <= nextVoice.Left && nextVoice.Right <= voiceBox.Left && previousVoice.Height == voiceBox.Height &&
+                    nextVoice.Width == voiceBox.Height && previousVoice.Text == "\u25C0" && nextVoice.Text == "\u25B6";
+            }
+        }
         public int OurVoiceCount
         {
             get { int n = 0; foreach (VoiceChoice c in voiceBox.Items) { if (c.Ours) { n++; } } return n; }
@@ -2517,14 +2546,9 @@ namespace ModernVoicesReader
         void UpdateTime()
         {
             int length = box.TextLength;
-            if (length == 0) { timeLabel.Text = ""; progress.Value = 0; return; }
-            int remaining;
-            if (mode != Mode.Stopped && prepared != null) { remaining = prepared.Text.Length - spokenAt; }
-            else { remaining = length - Math.Min(length, position); }
+            if (length == 0) { progress.Value = 0; return; }
             int left = finished ? 0 : 1000 - (int)(1000.0 * Math.Min(length, position) / length);
             progress.Value = Math.Max(0, Math.Min(1000, left));
-            timeLabel.Text = "about " + Clock(remaining / Pace()) + " left";
-            if (timeLabel.Width != alignedFor) { AlignLine(); }     // (a longer time: the bar gives way)
         }
 
         void ShowPlace()
@@ -3466,6 +3490,24 @@ namespace ModernVoicesReader
                 form.FadeStatus(5.7);
                 Check(there && fading && form.StatusText == "", "a message on the last line is there for five seconds, fades, and is gone");
                 Check(form.TopRowEven, "the nickname box and its tick are as tall as the voice list (" + form.TopRow + ")");
+                // The triangles left of the voice list go through the voices, round from one end to the other.
+                Check(form.ArrowsPlaced, "two triangles, left and right, stand left of the voice list, as tall as it");
+                if (form.VoiceCount >= 2)
+                {
+                    int voiceWas = form.ChosenVoice;
+                    form.StepVoice(1);
+                    int afterNext = form.ChosenVoice;
+                    form.StepVoice(-1);
+                    int back = form.ChosenVoice;
+                    for (int i = 0; i < form.VoiceCount; i++) { form.StepVoice(1); }
+                    int round = form.ChosenVoice;
+                    form.StepVoice(-1 - voiceWas);
+                    int wrapped = form.ChosenVoice;
+                    log.AppendLine("voice arrows: from " + voiceWas + ", next " + afterNext + ", back " + back + ", round the list " + round + ", past the start " + wrapped + " of " + form.VoiceCount);
+                    Check(afterNext == (voiceWas + 1) % form.VoiceCount && back == voiceWas && round == voiceWas && wrapped == form.VoiceCount - 1,
+                        "the triangles go to the next and the previous voice, and round from the last to the first");
+                    while (form.ChosenVoice != voiceWas) { form.StepVoice(1); }
+                }
                 Check(MainForm.CleanNickname("  My (best)\r\n voice ") == "My best voice", "a nickname is tidied (no brackets or line ends)");
                 // Text in a picture (where this PC has Windows' text recognition).
                 string picture = Path.Combine(made, "words.png");

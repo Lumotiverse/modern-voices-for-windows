@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.0 (17 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.1 (18 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -10,6 +10,32 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
+
+**Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
+new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
+(0.18.1.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+
+## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
+
+He split his batch: these on Opus 5.5 first; the rest (below) waits for Fable as 0.18.2.
+1. Voice variation default 75% -> 60% (`text::DEFAULT_VARIATION_PERCENT`, `Store.VariationDefault`).
+   Only saved once moved, so everyone who never moved it gets 60 with no migration.
+2. Apply changes stops a sample that is playing (`Apply` calls `Sample.Stop()` first).
+3. "Select voices" note in the language chosen when installing, above the English
+   (`ConfigForm.FirstVoicesTranslated`, 29 languages, Claude's, unchecked; "Apply changes" kept English).
+   The language is remembered by `Languages.TakeInstallChoice` as HKCU `InstallLanguage` (from 0.18.1
+   installs on: earlier installs have none, so English only). Picture: select-voices-es.png.
+4. Reader: triangles (U+25C0 / U+25B6, Segoe UI Symbol) left of the voice list, `StepVoice(+-1)`,
+   wrapping. The "about 3:20 left" counter is gone (the progress bar stays; `Pace()` kept, now unused).
+
+**Waiting for Fable (0.18.2), his words, 18 Nov:**
+- Accent column and Gender column (blank / female / male; I proposed also writing SAPI's Gender attribute
+  so programs can pick by gender: he didn't answer yet) in the Voice manager list; sort by any column
+  in the Voice manager and Add or remove voices lists; drag Voice manager columns to reorder (kept).
+- Right-click a voice in the Voice manager: Set nickname (to the nickname box), Set gender, Override
+  defaults (ticks the override box on/off), Make default voice.
+- Pronunciation tab: an "ignore list" under everything: entries are not read at all, in every program
+  (engine-wide like the rules; my reading: per language, skipped not paused).
 
 ## 0.18.0 (17 Nov 2026), delivered, not yet confirmed by him
 

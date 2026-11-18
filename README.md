@@ -100,8 +100,8 @@ select the voices you want to add from the list, and everything should work.
 To install, download `ModernVoicesForWindows<version>.zip` from
 [Releases](../../releases), unzip it and run `Install.cmd`. The installer's first window asks where to
 install and which language's voices you want to choose from. Modern Voices Config then opens on
-**Add or remove voices** with a short note saying where to start: tick the voices you want and press
-**Apply changes**. To update, do the same with the new version: your voices and settings stay, and
+**Add or remove voices** with a short note saying where to start (in the language you chose too):
+tick the voices you want and press **Apply changes**. To update, do the same with the new version: your voices and settings stay, and
 nothing is asked. `README.txt` in the zip is the user's guide.
 
 ## The Reader
@@ -118,7 +118,7 @@ Modern Voices Reader is a small window for reading text aloud with any of the in
   recognition).
 - **Save as audio:** the text as an **MP3** (about half a megabyte a minute) or a **WAV** file, made
   as fast as the voice can, without playing it.
-- Pick a voice from the list, give it a nickname, set it as Windows' default voice, and set the
+- Pick a voice from the list (or step through the voices with the triangles beside it), give it a nickname, set it as Windows' default voice, and set the
   speed and volume. Undo and redo for the text, and the text can be kept for next time.
 
 **A note on PDFs.** A PDF doesn't store sentences and paragraphs, only where each letter sits on a

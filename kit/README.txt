@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.18.0
+Modern Voices for Windows 0.18.1
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -28,7 +28,8 @@ Install
    Updating an installed version does not ask.
 3. The Modern Voices Config window opens (if you can't see it, it's on the taskbar). The first time,
    a "Powered by" window over it names what the program is made from: click it to close it. While no
-   voice is installed, a note then says where to start (OK or its X closes it). On "Add or remove
+   voice is installed, a note then says where to start (OK or its X closes it), in the language
+   chosen when installing too. On "Add or remove
    voices", tick the voices you want. Select one and press Play sample to hear it first (press it
    again, "Stop sample" meanwhile, to stop). Voices with
    several speakers (VCTK, LibriTTS, ...) list their speakers in name order: click a name to hear
@@ -140,7 +141,7 @@ On the Speed and pauses tab, for every voice:
 (A voice can have its own variation too: tick "Override pause duration and variation for the
 selected voice" on the Voice manager.) Advanced setting, at the bottom of the tab: Voice variation. How much a voice changes its tone and
 rhythm each time it speaks: lower is steadier, higher is livelier. 100% is how the voices were made,
-75% is the default. Programs already open use a new value after they are restarted.
+60% is the default (75% before 0.18.1). Programs already open use a new value after they are restarted.
 
 Each pause is silence added to the voice's own, in milliseconds at 100% dictation speed and a program's
 speech rate 0. Faster speech uses a smaller share of it and slower a larger share, in step with the
@@ -218,15 +219,14 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     added or removed in Modern Voices Config shows in the Reader's list when you come back to it. (To remove a
     nickname, use Modern Voices Config.)
   * Voice lists the Modern Voices (by nickname, where one has a nickname), then Windows' other
-    voices. Speed is the program's own rate (as other programs have), on top of the Dictation speed.
+    voices. The two triangles left of it go to the voice before or after the one chosen (round from
+    the last to the first). Speed is the program's own rate (as other programs have), on top of the Dictation speed.
   * The slider with the small speaker (between Save as audio and undo) is how loud the Reader
     speaks: the Reader's own volume, on top of each voice's Volume in Modern Voices Config. It
     changes the sound at once, while reading too (it is the Reader's level in Windows' Volume
     Mixer), and applies to Save as audio too.
   * The bar under the play buttons is what is left to read: full as reading starts, emptying
     towards the right, empty when the reading has finished.
-  * "about 3:20 left" is an estimate: from a typical pace at first, then from how fast the voice is
-    actually reading.
   * "Instantly read copy": while the Reader is open (minimised is fine), anything copied in
     another program is read straight away.
   * "Don't read links" (which also leaves out code and symbols): web addresses are read as "link", blocks of code are
