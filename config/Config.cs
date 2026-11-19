@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.6.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.7.0")]
 
 namespace ModernVoicesConfig
 {
@@ -2802,7 +2802,13 @@ namespace ModernVoicesConfig
             AddList.ItemChecked += delegate(object sender, ItemCheckedEventArgs e)
             {
                 if (Filling || filtering || !listsReady.Contains(AddList)) { return; }
-                if (e.Item != null && ((Entry)e.Item.Tag).Several && (tickByHand || PointerOnBox(e.Item))) { AllSpeakers(e.Item, e.Item.Checked); }
+                if (e.Item != null && ((Entry)e.Item.Tag).Several && (tickByHand || PointerOnBox(e.Item)))
+                {
+                    // Ticked: with more than two speakers, asked first (after the click, not inside it).
+                    ListViewItem ticked = e.Item;
+                    if (ticked.Checked && ((Entry)ticked.Tag).SpeakerNames.Count > 2) { BeginInvoke((MethodInvoker)delegate { AskAllSpeakers(ticked); }); }
+                    else { AllSpeakers(ticked, ticked.Checked); }
+                }
                 UpdateSummary();
                 // The selected voice's speaker box follows its tick: a one-speaker voice's box is the voice's own
                 // tick, and the filtered list gains or loses the voice's speakers. After the event, not inside it.
@@ -4298,6 +4304,70 @@ namespace ModernVoicesConfig
             }
             catch (Exception) { return false; }
         }
+        // A voice of more than two speakers ticked by hand: "Select all" ticks them all; "Choose" (or closing
+        // the window) leaves the voice unticked and selected, its speakers below to tick one by one.
+        public delegate bool AllSpeakersQuestion(Entry voice);
+        public AllSpeakersQuestion AskAll;      // (the build's test answers it; else the window below)
+        void AskAllSpeakers(ListViewItem item)
+        {
+            if (!item.Checked || item.ListView != AddList) { return; }
+            Entry v = (Entry)item.Tag;
+            bool all;
+            if (AskAll != null) { all = AskAll(v); }
+            else { using (Form ask = AllSpeakersWindow(v)) { all = ask.ShowDialog(this) == DialogResult.Yes; } }
+            if (all) { AllSpeakers(item, true); return; }
+            item.Checked = false;
+            if (!item.Selected) { item.Selected = true; }
+            item.EnsureVisible();
+            BeginInvoke((MethodInvoker)delegate { if (SpeakerList.Enabled) { SpeakerList.Focus(); } });
+        }
+        public static string AllSpeakersWords(Entry v)
+        {
+            int n = v.SpeakerNames.Count;
+            return "Ticking " + v.Display + " (" + v.Accent + ") installs all " + n + " of its speakers, each as a voice of its own: " + n +
+                " more voices in every program's list, and programs can be slow to open with so many.\r\n\r\n" +
+                "We recommend choosing the speakers you want from the list below instead.";
+        }
+        public Form AllSpeakersWindow(Entry v)
+        {
+            Form window = new Form();
+            window.Text = App.Name; window.Font = Font;
+            window.FormBorderStyle = FormBorderStyle.FixedDialog; window.MaximizeBox = false; window.MinimizeBox = false;
+            window.ShowInTaskbar = false; window.StartPosition = FormStartPosition.CenterParent;
+            window.BackColor = palette.Back; window.ForeColor = palette.Text;
+            int width = Px(420);
+            Label words = new Label();
+            words.Name = "words"; words.UseMnemonic = false; words.AutoSize = false;
+            words.Text = AllSpeakersWords(v);
+            words.ForeColor = palette.Text; words.BackColor = palette.Back;
+            words.Size = new Size(width, TextRenderer.MeasureText(words.Text, Font, new Size(width, 0), TextFormatFlags.WordBreak).Height + Px(4));
+            words.Location = new Point(Px(20), Px(20));
+            window.Controls.Add(words);
+            Button all = Btn("Select all"), choose = Btn("Choose");
+            all.Name = "all"; choose.Name = "choose";
+            all.DialogResult = DialogResult.Yes; choose.DialogResult = DialogResult.No;
+            foreach (Button b in new Button[] { all, choose })
+            {
+                ThemeOn(b, palette);
+                window.Controls.Add(b);
+                Size preferred = b.PreferredSize;
+                b.Size = new Size(Math.Max(preferred.Width, Px(100)), preferred.Height);
+            }
+            // (Choose, the recommended one, on the right and the default: Enter and Esc both choose it.)
+            choose.Location = new Point(Px(20) + width - choose.Width, words.Bottom + Px(18));
+            all.Location = new Point(choose.Left - Px(10) - all.Width, choose.Top);
+            window.AcceptButton = choose; window.CancelButton = choose;
+            window.ClientSize = new Size(width + Px(40), choose.Bottom + Px(18));
+            window.Shown += delegate { choose.Focus(); };
+            // (A dark title bar when the window is dark, as the main window has.)
+            window.HandleCreated += delegate
+            {
+                int on = palette.Dark ? 1 : 0;
+                try { if (Native.DwmSetWindowAttribute(window.Handle, 20, ref on, 4) != 0) { Native.DwmSetWindowAttribute(window.Handle, 19, ref on, 4); } } catch (Exception) { }
+            };
+            return window;
+        }
+
         // (For the build's test: a voice's box clicked by hand.)
         public void TickByHand(ListViewItem item, bool on)
         {
@@ -5162,8 +5232,34 @@ namespace ModernVoicesConfig
                 ui.VoiceNameClicked(vctk);
                 bool vctkSilent = !Sample.Playing;
                 if (vctk.Checked) { ui.TickByHand(vctk, false); Settle(50); }
+                // Asked first (more than two speakers): "Choose" leaves it unticked, nothing ticked.
+                string asked = null;
+                ui.AskAll = delegate(Entry v) { asked = v.Key; return false; };
                 ui.TickByHand(vctk, true);
                 Settle(100);
+                bool chose = asked == vctkEntry.Key && !vctk.Checked && TickedSpeakers(ui).Count == 0 && vctk.Selected;
+                Check(chose, "VCTK's box ticked by hand asks first (" + (asked ?? "not asked") + "); \"Choose\" leaves it unticked, selected, no speaker ticked");
+                using (Form ask = ui.AllSpeakersWindow(vctkEntry))
+                {
+                    Control askAll = ask.Controls["all"], askChoose = ask.Controls["choose"];
+                    Check(askAll != null && askAll.Text == "Select all" && askChoose != null && askChoose.Text == "Choose" && ask.AcceptButton == askChoose &&
+                        ask.CancelButton == askChoose && ask.Controls["words"].Text.Contains("all " + vctkEntry.SpeakerNames.Count + " of its speakers"),
+                        "its question: \"" + ConfigForm.AllSpeakersWords(vctkEntry).Replace("\r\n\r\n", " ") + "\" with Select all and Choose (Enter and Esc: Choose)");
+                    if (pictures)
+                    {
+                        ask.Show(); Settle(200);
+                        using (Bitmap shot = new Bitmap(ask.Width, ask.Height))
+                        {
+                            ask.DrawToBitmap(shot, new Rectangle(Point.Empty, shot.Size));
+                            shot.Save(Path.Combine(folder, "all-speakers-question.png"), ImageFormat.Png);
+                        }
+                        ask.Close();
+                    }
+                }
+                // "Select all": all of them.
+                ui.AskAll = delegate(Entry v) { return true; };
+                ui.TickByHand(vctk, true);
+                Settle(150);
                 int allTicked = TickedSpeakers(ui).Count, allPicked = 0;
                 foreach (string id in ui.PickedIds()) { if (id.StartsWith("en_GB-vctk-medium#", StringComparison.Ordinal)) { allPicked++; } }
                 ui.TickByHand(vctk, false);
@@ -5173,6 +5269,7 @@ namespace ModernVoicesConfig
                 Check(vctkSilent && allTicked == vctkEntry.SpeakerNames.Count && allPicked == vctkEntry.SpeakerNames.Count && noneTicked == 0 && nonePicked == 0,
                     "VCTK's box ticked by hand ticks all " + allTicked + " of its speakers (" + allPicked + " picked), unticked none (" + noneTicked +
                     "); its name clicked plays nothing (" + vctkSilent + ")");
+                ui.AskAll = null;
                 if (speakersWas == null) { ui.Speakers.Remove(vctkEntry.Key); } else { ui.Speakers[vctkEntry.Key] = speakersWas; }
                 ui.Current = null;
                 vctk.Checked = vctkWas;

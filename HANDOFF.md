@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.6 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.7 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -13,10 +13,21 @@ run #109 was refused for billing). Builds are free again. Anything pushed is vis
 
 ## State for a new chat (18 Nov 2026, evening)
 
-Nothing he asked for is outstanding. 0.18.2 to 0.18.6 were all built on Opus 5.5 in one chat and
+Nothing he asked for is outstanding. 0.18.2 to 0.18.7 were all built on Opus 5.5 in one chat and
 delivered; he had tried 0.18.2 (hit the crash fixed in 0.18.3), not yet said anything about 0.18.3/0.18.4.
-Start by asking how 0.18.6 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
+Start by asking how 0.18.7 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
 rule with "Say it as" empty does it; comma pause for a rule-made comma would be engine work, Fable).
+
+## 0.18.7 (19 Nov 2026), delivered, not yet confirmed by him
+
+Built on Opus 5.5. His answer to the many-speakers warning: a several-speaker voice with MORE THAN TWO
+speakers, ticked by hand, asks first (`AskAllSpeakers`, after the click by BeginInvoke; window
+`AllSpeakersWindow`, words `AllSpeakersWords`): it says all N speakers become N voices in every program's
+list and programs can be slow to open, and recommends choosing speakers below. "Select all" ticks all;
+"Choose" (default: Enter, Esc, closing) unticks the voice, selects it and focuses its speaker list. He said
+"large and slow": I left out "large", as speakers share one model file (no extra download), and told him.
+Self-test answers through `AskAll` (Choose, then Select all) and pictures the window
+(all-speakers-question.png). Unticking by hand still unticks all, without asking.
 
 ## 0.18.6 (19 Nov 2026), delivered, not yet confirmed by him
 
@@ -31,7 +42,7 @@ Built on Opus 5.5. Add or remove voices:
    (`AllSpeakers`). By hand = `tickByHand` (MouseDown on the state image, or Space) or `PointerOnBox`
    (Windows may toggle the box before WinForms reports the press). Ticks made by code (SpeakerTicking
    ticking the voice, Apply, start) must not: they don't pass either test. Warned him: VCTK has 109
-   speakers, LibriTTS ~900 (each a Windows voice); he hasn't answered about a limit yet.
+   speakers, LibriTTS ~900 (each a Windows voice): answered in 0.18.7.
 3. Self-test: VCTK ticked/unticked by hand (all/none), its name silent; a one-speaker voice's name plays.
 
 ## 0.18.5 (19 Nov 2026), delivered, not yet confirmed by him
@@ -127,7 +138,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.6.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.7.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 
