@@ -5756,9 +5756,11 @@ namespace ModernVoicesConfig
                 foreach (string offered in Catalogue.Offered)
                 {
                     string text;
-                    if (!PreviewTexts.ByLanguage.TryGetValue(offered, out text) || text.Split('\n').Length != 3 || text.IndexOf(',') < 0) { allThree = false; }
+                    // (Three lines, and since 0.18.8 an empty one before the last.)
+                    if (!PreviewTexts.ByLanguage.TryGetValue(offered, out text) || text.Split('\n').Length != 4 || text.Split('\n')[2].Trim().Length != 0 ||
+                        text.IndexOf(',') < 0) { allThree = false; }
                 }
-                Check(allThree && PreviewTexts.ByLanguage.Count == Catalogue.Offered.Length + 1, "a preview text in each language offered, in three lines with commas");
+                Check(allThree && PreviewTexts.ByLanguage.Count == Catalogue.Offered.Length + 1, "a preview text in each language offered, in three lines (an empty one before the last) with commas");
                 Check(PreviewTexts.For("de").StartsWith("Hier", StringComparison.Ordinal) && PreviewTexts.For("xx") == App.PreviewText &&
                     PreviewTexts.LanguageOfKey("de_DE-thorsten-medium") == "de" && PreviewTexts.IsOneOfThem(PreviewTexts.For("fr")) &&
                     PreviewTexts.IsOneOfThem(App.OldPreviewText) && !PreviewTexts.IsOneOfThem("my own words"), "a voice's language picks its preview text; typed text is kept");
