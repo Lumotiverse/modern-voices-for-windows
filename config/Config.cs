@@ -2082,6 +2082,18 @@ namespace ModernVoicesConfig
         {
             try
             {
+                // "Preview says:" evened out between the Preview button and the box, as measured (its row
+                // can come out a little taller than the label).
+                if (PreviewLabel != null && PreviewButton != null && PreviewBox != null)
+                {
+                    int buttonBottom = PointToClient(PreviewButton.PointToScreen(new Point(0, PreviewButton.Height))).Y;
+                    int labelTop = PointToClient(PreviewLabel.PointToScreen(Point.Empty)).Y;
+                    int labelBottom = labelTop + PreviewLabel.Height;
+                    int boxTop = PointToClient(PreviewBox.PointToScreen(Point.Empty)).Y;
+                    int off = (boxTop - labelBottom) - (labelTop - buttonBottom);
+                    int top = PreviewBox.Margin.Top - off;
+                    if (off != 0 && top >= 0) { PreviewBox.Margin = new Padding(PreviewBox.Margin.Left, top, PreviewBox.Margin.Right, PreviewBox.Margin.Bottom); }
+                }
                 if (TabFlow != null && InstalledList != null && TabButtons.Count > 0)
                 {
                     int listX = PointToClient(InstalledList.PointToScreen(Point.Empty)).X;
