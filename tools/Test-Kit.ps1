@@ -158,9 +158,13 @@ Check ($rulesText.Contains("1`tw`ti`tty`tthank you") -and $rulesText.Contains("1
 Check (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows') 'Installed apps entry'
 $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"
-Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 1,') 'voice.json: loudness set (100%, 1.5x)'
+Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 0,') 'voice.json: loudness set (Amplify off, 1.5x: the defaults since 0.18.9)'
 $settingsText = Get-Content $settingsFile -Raw
-Check ($settingsText -match '"speed_percent": 100' -and $settingsText -match '"sentence_ms": 500' -and $settingsText -match '"paragraph_ms": 1200') 'settings.json: speed 100%, sentence 500 ms, paragraph 1200 ms'
+Check ($settingsText -match '"speed_percent": 100' -and $settingsText -match '"sentence_ms": 500' -and $settingsText -match '"paragraph_ms": 1200' -and $settingsText -match '"output_percent": 50') 'settings.json: speed 100%, sentence 500 ms, paragraph 1200 ms, output volume 50%'
+# (The loudness checks below measure against a known level: every voice amplified to MAX, the output at 100%.)
+. (Join-Path $App 'installer\VoiceConvert.ps1')
+foreach ($voiceDir in Get-ChildItem (Split-Path $albaDir) -Directory) { Set-VoiceSettings $voiceDir.FullName 1 1.5 1 }
+Set-OutputVolume $settingsFile 100
 
 Step 'Speaking through System.Speech (SAPI 5), at the set loudness'
 $normal = Test-Speech $PS64 64 3

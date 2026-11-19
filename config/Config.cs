@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.8.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.9.0")]
 
 namespace ModernVoicesConfig
 {
@@ -100,7 +100,8 @@ namespace ModernVoicesConfig
     {
         public const string Name = "Modern Voices for Windows";
         public const string BaseUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0";   // v1.0.0: the voices as tested
-        public const double DefaultPeak = 1;
+        public const double DefaultPeak = 0;      // Amplify off (as Piper made the voice): the default since 0.18.9
+        public const double MaxBoost = 2.5;       // Boost's most (4 until 0.18.9)
         public const double DefaultBoost = 1.5;
         public static string PreviewText { get { return PreviewTexts.For("en"); } }
         public const string OldPreviewText = "Speaking a preview of the selected voice, to hear how natural it sounds.\r\n" +
@@ -1715,9 +1716,8 @@ namespace ModernVoicesConfig
         // label's own margin and the room before its words.
         public int FrameGap { get { return 2 * (Px(10) + 3 + NameInset); } }
         int FramePad { get { return FrameGap - 3 - NameInset; } }
-        // The value column of a framed section: the widest value its sliders show (a value wider than that,
-        // the Volume's "off (as Piper made it)", goes onto a second line).
-        public static readonly string[] ValueSamples = { "100%", "150%", "200%", "4.0x", "none", "+3000 ms", "none added", "none (as said)" };
+        // The value column of a framed section: the widest value its sliders show.
+        public static readonly string[] ValueSamples = { "MAX", "off (Default)", "150%", "200%", "2.5x", "none", "+3000 ms", "none added", "none (as said)" };
         public string WidestValue
         {
             get
@@ -2427,7 +2427,7 @@ namespace ModernVoicesConfig
             NameInset = Math.Max(1, (int)Math.Round(Font.Height / 5.0));
             int sectionLeft = previewColumn - NameInset;
             labelColumn = 0;
-            foreach (string sliderName in new string[] { "Volume", "Boost", "Dictation speed", "Sentence pause", "Comma pause", "Paragraph gap", "Voice variation" })
+            foreach (string sliderName in new string[] { "Amplify", "Boost", "Dictation speed", "Sentence pause", "Comma pause", "Paragraph gap", "Voice variation" })
             {
                 labelColumn = Math.Max(labelColumn, TextRenderer.MeasureText(sliderName, Font).Width);
             }
@@ -2492,11 +2492,12 @@ namespace ModernVoicesConfig
             ResetButton.Margin = new Padding(Px(10), ResetButton.Margin.Top, ResetButton.Margin.Right, ResetButton.Margin.Bottom);
             soundLine.Controls.Add(SoundLabel, 0, 0); soundLine.Controls.Add(ResetButton, 1, 0);
             TableLayoutPanel soundGrid = Line("auto", "fill", "auto");
-            Sliders["Volume"] = AddSlider(soundGrid, "Volume", 0, (int)(Store.MaxPeak * 100), 10, 10, 10, true);
-            Sliders["Boost"] = AddSlider(soundGrid, "Boost", 10, 40, 1, 5, 5, true);
+            // (Named Amplify since 0.18.9; still "Volume" in Sliders, and peak in the voice's file.)
+            Sliders["Volume"] = AddSlider(soundGrid, "Amplify", 0, (int)(Store.MaxPeak * 100), 10, 10, 10, true);
+            Sliders["Boost"] = AddSlider(soundGrid, "Boost", 10, (int)(App.MaxBoost * 10), 1, 5, 5, true);
             Sliders["Speed"] = AddSlider(soundGrid, "Dictation speed", 25, 200, 1, 5, 25, true);
             // (What each does is said when the pointer rests on the slider or its name.)
-            Describe(Sliders["Volume"], "How loud this voice is.");
+            Describe(Sliders["Volume"], "Makes this voice louder: its loudest moments are raised to this level (MAX: as loud as speech goes). Off leaves it as Piper made it.");
             Describe(Sliders["Boost"], "Makes the voice's quieter parts louder.");
             Describe(Sliders["Speed"], "Makes this voice faster or slower than the others.\r\nThe speed for all voices is on the Speed and pauses tab.");
             SoundFrame = Frame();
@@ -3597,7 +3598,7 @@ namespace ModernVoicesConfig
         {
             if (SpeedBar == null || Sliders.Count < 6 || GlobalBars.Count < 3) { return; }
             int volume = Sliders["Volume"].Bar.Value;
-            Sliders["Volume"].Value.Text = volume == 0 ? "off (as Piper made it)" : volume + "%";
+            Sliders["Volume"].Value.Text = volume == 0 ? "off (Default)" : volume >= 100 ? "MAX" : volume + "%";
             double boost = Sliders["Boost"].Bar.Value / 10.0;
             Sliders["Boost"].Value.Text = boost <= 1.0 ? "none" : boost.ToString("0.0", CultureInfo.InvariantCulture) + "x";
             Sliders["Speed"].Value.Text = Sliders["Speed"].Bar.Value + "%";
@@ -3819,7 +3820,7 @@ namespace ModernVoicesConfig
                 OwnVariation.Bar.Value = Clamp(Math.Round((ownVaried ?? Store.GetVariation(App.SettingsFile)) / 5.0) * 5, 0, Store.VariationLimit);
                 OwnVariation.Value.Text = OwnVariation.Bar.Value + "%";
                 Sliders["Volume"].Bar.Value = Clamp(Math.Round(peak * 10, MidpointRounding.AwayFromZero) * 10, 0, (int)(Store.MaxPeak * 100));
-                Sliders["Boost"].Bar.Value = Clamp(Math.Round(boost * 10), 10, 40);
+                Sliders["Boost"].Bar.Value = Clamp(Math.Round(boost * 10), 10, (int)(App.MaxBoost * 10));
                 Sliders["Speed"].Bar.Value = Clamp(Math.Round(100 / lengthScale), 25, 200);
                 UpdateSliderLabels();
             }
@@ -5890,6 +5891,13 @@ namespace ModernVoicesConfig
                 Check(now.Peak == 0.6 && now.Boost == 2 && now.LengthScale == 1.25,
                     "sliders: " + ui.CurrentInstalled.Title + " -> peak " + now.Peak + ", boost " + now.Boost + ", length_scale " + now.LengthScale);
                 Check(ui.Sliders["Volume"].Bar.Maximum == 100, "the Volume slider ends at " + ui.Sliders["Volume"].Bar.Maximum + "%");
+                // (Since 0.18.9: named Amplify, off is the default, 100% says MAX; Boost ends at 2.5x.)
+                ui.Sliders["Volume"].Bar.Value = 100; string atMax = ui.Sliders["Volume"].Value.Text;
+                ui.Sliders["Volume"].Bar.Value = 0; string atOff = ui.Sliders["Volume"].Value.Text;
+                ui.Sliders["Volume"].Bar.Value = 60;
+                Check(ui.Sliders["Volume"].Name.Text == "Amplify" && atMax == "MAX" && atOff == "off (Default)" && App.DefaultPeak == 0 &&
+                    ui.Sliders["Boost"].Bar.Maximum == 25, "Amplify: '" + atOff + "' (the default) to '" + atMax + "'; Boost up to " + ui.Sliders["Boost"].Bar.Maximum / 10.0 + "x");
+                ui.StopTimers();
                 // A voice left above 100% by 0.12.0 shows as 100%.
                 File.WriteAllText(App.VoiceFile(dir), File.ReadAllText(App.VoiceFile(dir)).Replace("\"peak\": 0.6", "\"peak\": 1.7"));
                 ui.UpdateInstalled();

@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.18.8
+Modern Voices for Windows 0.18.9
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -93,17 +93,17 @@ How each voice sounds
 ---------------------
 In the Modern Voices Config window, on "Voice manager", select a voice:
 
-  Volume   how loud the voice is: 100% = as loud as speech goes (the default). 0 = as Piper made
-           it (quieter: the model's own level). Every line comes out as loud as the next. It moves
-           in steps of 10%.
+  Amplify  makes the voice louder: off (the default) leaves it as Piper made it; 10% to MAX raise
+           its loudest moments to that level (MAX = as loud as speech goes), every line as loud as
+           the next. It moves in steps of 10%.
   Boost    lifts the quieter parts more than the loud ones, so the voice sounds louder overall without
-           clipping. None, 1.5x (the default), up to 4x; higher sounds more compressed, like radio.
+           clipping. None, 1.5x (the default), up to 2.5x; higher sounds more compressed, like radio.
   Dictation speed  adjusts this voice from the speed for every voice (Speed and pauses): 100% = that
                    speed.
 
 Output volume (the slider with the speaker, beside Windows' default voice) is for every voice, in
-every program: how loud they come out, of what each voice's own Volume makes. 100% unless you turn it
-down; 0 = silent (the speech still runs, without sound). Click the speaker to mute, and again to
+every program: how loud they come out, of what each voice's own settings make. 50% when first
+installed; 0 = silent (the speech still runs, without sound). Click the speaker to mute, and again to
 unmute. Unlike the other settings it works while a
 voice is speaking, within a moment. It turns down what the voices hand to a program: a program's own
 volume control still works on top. (settings.json's "output_percent", 0 to 100, in the settings folder:
@@ -249,7 +249,7 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     voices. The two triangles left of it go to the voice before or after the one chosen (round from
     the last to the first). Speed is the program's own rate (as other programs have), on top of the Dictation speed.
   * The slider with the small speaker (between Save as audio and undo) is how loud the Reader
-    speaks: the Reader's own volume, on top of each voice's Volume in Modern Voices Config. It
+    speaks: the Reader's own volume, on top of each voice's settings in Modern Voices Config. It
     changes the sound at once, while reading too (it is the Reader's level in Windows' Volume
     Mixer), and applies to Save as audio too.
   * The bar under the play buttons is what is left to read: full as reading starts, emptying
