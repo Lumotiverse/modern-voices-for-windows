@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.7.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.8.0")]
 
 namespace ModernVoicesConfig
 {
@@ -106,6 +106,9 @@ namespace ModernVoicesConfig
         public const string OldPreviewText = "Speaking a preview of the selected voice, to hear how natural it sounds.\r\n" +
             "Change the dictation speed, and 'Comma pause' values, to adjust the sound to your liking.\r\n" +
             "Change the 'Paragraph gap', to adjust the wait before a new paragraph.";
+        public const string PreviewText0187 = "Speaking a preview of the selected voice, to hear how natural it sounds.\r\n" +
+            "You can change the volume, dictation speed, and 'pause' values, to modify each voice sound to your liking.\r\n" +
+            "Change the 'Paragraph gap', to adjust the wait time before a new paragraph starts.";
 
         public static string Folder, VoiceRoot, SettingsFolder, SettingsFile, DictionaryFile, Installer;
 
@@ -900,94 +903,94 @@ namespace ModernVoicesConfig
         public static readonly Dictionary<string, string> ByLanguage = new Dictionary<string, string>
         {
             { "en", "Speaking a preview of the selected voice, to hear how natural it sounds.\r\n" +
-                "You can change the volume, dictation speed, and 'pause' values, to modify each voice sound to your liking.\r\n" +
-                "Change the 'Paragraph gap', to adjust the wait time before a new paragraph starts." },
+                "You can change the volume, dictation speed, and 'pause' values, to modify each voice sound to your liking.\r\n\r\n" +
+                "Change the 'Paragraph gap', to adjust the wait time before reading the next line." },
             { "bg", "Това е преглед на избрания глас, за да чуете колко естествено звучи.\r\n" +
-                "Можете да промените силата на звука, скоростта на диктовка, и стойностите за 'пауза', за да настроите звученето на всеки глас по ваш вкус.\r\n" +
+                "Можете да промените силата на звука, скоростта на диктовка, и стойностите за 'пауза', за да настроите звученето на всеки глас по ваш вкус.\r\n\r\n" +
                 "Променете 'Paragraph gap', за да настроите времето за изчакване преди началото на нов абзац." },
             { "ca", "Aquesta és una previsualització de la veu seleccionada, per escoltar com de natural sona.\r\n" +
-                "Podeu canviar el volum, la velocitat de dictat, i els valors de 'pausa', per ajustar el so de cada veu al vostre gust.\r\n" +
+                "Podeu canviar el volum, la velocitat de dictat, i els valors de 'pausa', per ajustar el so de cada veu al vostre gust.\r\n\r\n" +
                 "Canvieu el 'Paragraph gap', per ajustar el temps d'espera abans que comenci un paràgraf nou." },
             { "cs", "Toto je ukázka vybraného hlasu, abyste slyšeli, jak přirozeně zní.\r\n" +
-                "Můžete změnit hlasitost, rychlost diktování, a hodnoty 'pauzy', abyste zvuk každého hlasu upravili podle svých představ.\r\n" +
+                "Můžete změnit hlasitost, rychlost diktování, a hodnoty 'pauzy', abyste zvuk každého hlasu upravili podle svých představ.\r\n\r\n" +
                 "Změňte 'Paragraph gap', abyste upravili čekací dobu před začátkem nového odstavce." },
             { "cy", "Dyma ragolwg o'r llais a ddewiswyd, i glywed pa mor naturiol mae'n swnio.\r\n" +
-                "Gallwch newid lefel y sain, cyflymder arddweud, a gwerthoedd 'saib', i addasu sain pob llais at eich dant.\r\n" +
+                "Gallwch newid lefel y sain, cyflymder arddweud, a gwerthoedd 'saib', i addasu sain pob llais at eich dant.\r\n\r\n" +
                 "Newidiwch y 'Paragraph gap', i addasu'r amser aros cyn i baragraff newydd ddechrau." },
             { "da", "Dette er en forhåndsvisning af den valgte stemme, så du kan høre, hvor naturlig den lyder.\r\n" +
-                "Du kan ændre lydstyrken, dikteringshastigheden, og 'pause'-værdierne, for at tilpasse hver stemmes lyd efter din smag.\r\n" +
+                "Du kan ændre lydstyrken, dikteringshastigheden, og 'pause'-værdierne, for at tilpasse hver stemmes lyd efter din smag.\r\n\r\n" +
                 "Skift 'Paragraph gap', for at justere ventetiden, før et nyt afsnit begynder." },
             { "de", "Hier hören Sie eine Vorschau der ausgewählten Stimme, damit Sie hören, wie natürlich sie klingt.\r\n" +
-                "Sie können die Lautstärke, die Diktiergeschwindigkeit, und die 'Pausen'-Werte ändern, um den Klang jeder Stimme nach Ihren Wünschen anzupassen.\r\n" +
+                "Sie können die Lautstärke, die Diktiergeschwindigkeit, und die 'Pausen'-Werte ändern, um den Klang jeder Stimme nach Ihren Wünschen anzupassen.\r\n\r\n" +
                 "Ändern Sie den 'Paragraph gap', um die Wartezeit vor einem neuen Absatz einzustellen." },
             { "el", "Αυτή είναι μια προεπισκόπηση της επιλεγμένης φωνής, για να ακούσετε πόσο φυσικά ακούγεται.\r\n" +
-                "Μπορείτε να αλλάξετε την ένταση, την ταχύτητα υπαγόρευσης, και τις τιμές 'παύσης', για να προσαρμόσετε τον ήχο κάθε φωνής όπως σας αρέσει.\r\n" +
+                "Μπορείτε να αλλάξετε την ένταση, την ταχύτητα υπαγόρευσης, και τις τιμές 'παύσης', για να προσαρμόσετε τον ήχο κάθε φωνής όπως σας αρέσει.\r\n\r\n" +
                 "Αλλάξτε το 'Paragraph gap', για να ρυθμίσετε τον χρόνο αναμονής πριν ξεκινήσει μια νέα παράγραφος." },
             { "es", "Esta es una vista previa de la voz seleccionada, para escuchar lo natural que suena.\r\n" +
-                "Puede cambiar el volumen, la velocidad de dictado, y los valores de 'pausa', para ajustar el sonido de cada voz a su gusto.\r\n" +
+                "Puede cambiar el volumen, la velocidad de dictado, y los valores de 'pausa', para ajustar el sonido de cada voz a su gusto.\r\n\r\n" +
                 "Cambie el 'Paragraph gap', para ajustar el tiempo de espera antes de que empiece un nuevo párrafo." },
             { "eu", "Hau hautatutako ahotsaren aurrebista bat da, zein natural entzuten den entzuteko.\r\n" +
-                "Bolumena, diktaketa-abiadura, eta 'eten' balioak alda ditzakezu, ahots bakoitzaren soinua zure gustura egokitzeko.\r\n" +
+                "Bolumena, diktaketa-abiadura, eta 'eten' balioak alda ditzakezu, ahots bakoitzaren soinua zure gustura egokitzeko.\r\n\r\n" +
                 "Aldatu 'Paragraph gap', paragrafo berri bat hasi aurreko itxaronaldia doitzeko." },
             { "fi", "Tämä on valitun äänen esikatselu, jotta kuulet, kuinka luonnolliselta se kuulostaa.\r\n" +
-                "Voit muuttaa äänenvoimakkuutta, sanelunopeutta, ja 'tauko'-arvoja, säätääksesi jokaisen äänen mieleiseksesi.\r\n" +
+                "Voit muuttaa äänenvoimakkuutta, sanelunopeutta, ja 'tauko'-arvoja, säätääksesi jokaisen äänen mieleiseksesi.\r\n\r\n" +
                 "Muuta 'Paragraph gap' -arvoa, säätääksesi odotusaikaa ennen uuden kappaleen alkua." },
             { "fr", "Voici un aperçu de la voix sélectionnée, pour entendre à quel point elle semble naturelle.\r\n" +
-                "Vous pouvez modifier le volume, la vitesse de dictée, et les valeurs de 'pause', pour adapter le son de chaque voix à votre goût.\r\n" +
+                "Vous pouvez modifier le volume, la vitesse de dictée, et les valeurs de 'pause', pour adapter le son de chaque voix à votre goût.\r\n\r\n" +
                 "Modifiez le 'Paragraph gap', pour régler le temps d'attente avant le début d'un nouveau paragraphe." },
             { "gl", "Esta é unha vista previa da voz seleccionada, para escoitar o natural que soa.\r\n" +
-                "Pode cambiar o volume, a velocidade de ditado, e os valores de 'pausa', para axustar o son de cada voz ao seu gusto.\r\n" +
+                "Pode cambiar o volume, a velocidade de ditado, e os valores de 'pausa', para axustar o son de cada voz ao seu gusto.\r\n\r\n" +
                 "Cambie o 'Paragraph gap', para axustar o tempo de espera antes de que comece un novo parágrafo." },
             { "hu", "Ez a kiválasztott hang előnézete, hogy meghallja, milyen természetesen szól.\r\n" +
-                "Módosíthatja a hangerőt, a diktálási sebességet, és a 'szünet' értékeit, hogy minden hang hangzását ízlése szerint alakítsa.\r\n" +
+                "Módosíthatja a hangerőt, a diktálási sebességet, és a 'szünet' értékeit, hogy minden hang hangzását ízlése szerint alakítsa.\r\n\r\n" +
                 "Módosítsa a 'Paragraph gap' értékét, hogy beállítsa a várakozási időt egy új bekezdés kezdete előtt." },
             { "is", "Þetta er sýnishorn af valinni rödd, svo þú heyrir hversu eðlileg hún hljómar.\r\n" +
-                "Þú getur breytt hljóðstyrk, upplestrarhraða, og 'hlé'-gildum, til að laga hljóm hverrar raddar að þínum smekk.\r\n" +
+                "Þú getur breytt hljóðstyrk, upplestrarhraða, og 'hlé'-gildum, til að laga hljóm hverrar raddar að þínum smekk.\r\n\r\n" +
                 "Breyttu 'Paragraph gap', til að stilla biðtímann áður en ný málsgrein hefst." },
             { "it", "Questa è un'anteprima della voce selezionata, per sentire quanto suona naturale.\r\n" +
-                "Puoi modificare il volume, la velocità di dettatura, e i valori di 'pausa', per regolare il suono di ogni voce come preferisci.\r\n" +
+                "Puoi modificare il volume, la velocità di dettatura, e i valori di 'pausa', per regolare il suono di ogni voce come preferisci.\r\n\r\n" +
                 "Cambia il 'Paragraph gap', per regolare l'attesa prima che inizi un nuovo paragrafo." },
             { "lb", "Dëst ass eng Virschau vun der gewielter Stëmm, fir ze héieren, wéi natierlech se klénkt.\r\n" +
-                "Dir kënnt de Volume, d'Diktéiergeschwindegkeet, an d'Wäerter vun der 'Paus' änneren, fir de Klang vun all Stëmm no Ärem Goût unzepassen.\r\n" +
+                "Dir kënnt de Volume, d'Diktéiergeschwindegkeet, an d'Wäerter vun der 'Paus' änneren, fir de Klang vun all Stëmm no Ärem Goût unzepassen.\r\n\r\n" +
                 "Ännert de 'Paragraph gap', fir d'Waardezäit virun engem neien Abschnitt unzepassen." },
             { "lv", "Šis ir izvēlētās balss priekšskatījums, lai dzirdētu, cik dabiski tā skan.\r\n" +
-                "Varat mainīt skaļumu, diktēšanas ātrumu, un 'pauzes' vērtības, lai pielāgotu katras balss skanējumu pēc savas gaumes.\r\n" +
+                "Varat mainīt skaļumu, diktēšanas ātrumu, un 'pauzes' vērtības, lai pielāgotu katras balss skanējumu pēc savas gaumes.\r\n\r\n" +
                 "Mainiet 'Paragraph gap', lai pielāgotu gaidīšanas laiku pirms jaunas rindkopas sākuma." },
             { "nl", "Dit is een voorbeeld van de geselecteerde stem, om te horen hoe natuurlijk die klinkt.\r\n" +
-                "Je kunt het volume, de dicteersnelheid, en de 'pauze'-waarden wijzigen, om het geluid van elke stem naar wens aan te passen.\r\n" +
+                "Je kunt het volume, de dicteersnelheid, en de 'pauze'-waarden wijzigen, om het geluid van elke stem naar wens aan te passen.\r\n\r\n" +
                 "Wijzig de 'Paragraph gap', om de wachttijd voor een nieuwe alinea in te stellen." },
             { "no", "Dette er en forhåndsvisning av den valgte stemmen, så du kan høre hvor naturlig den høres ut.\r\n" +
-                "Du kan endre volumet, dikteringshastigheten, og 'pause'-verdiene, for å tilpasse lyden til hver stemme etter ønske.\r\n" +
+                "Du kan endre volumet, dikteringshastigheten, og 'pause'-verdiene, for å tilpasse lyden til hver stemme etter ønske.\r\n\r\n" +
                 "Endre 'Paragraph gap', for å justere ventetiden før et nytt avsnitt begynner." },
             { "pl", "To jest podgląd wybranego głosu, aby usłyszeć, jak naturalnie brzmi.\r\n" +
-                "Możesz zmienić głośność, szybkość dyktowania, oraz wartości 'pauzy', aby dostosować brzmienie każdego głosu do swoich upodobań.\r\n" +
+                "Możesz zmienić głośność, szybkość dyktowania, oraz wartości 'pauzy', aby dostosować brzmienie każdego głosu do swoich upodobań.\r\n\r\n" +
                 "Zmień 'Paragraph gap', aby dostosować czas oczekiwania przed rozpoczęciem nowego akapitu." },
             { "pt", "Esta é uma amostra da voz selecionada, para ouvir quão natural ela soa.\r\n" +
-                "Pode alterar o volume, a velocidade de ditado, e os valores de 'pausa', para ajustar o som de cada voz ao seu gosto.\r\n" +
+                "Pode alterar o volume, a velocidade de ditado, e os valores de 'pausa', para ajustar o som de cada voz ao seu gosto.\r\n\r\n" +
                 "Altere o 'Paragraph gap', para ajustar o tempo de espera antes do início de um novo parágrafo." },
             { "ro", "Aceasta este o previzualizare a vocii selectate, pentru a auzi cât de natural sună.\r\n" +
-                "Puteți modifica volumul, viteza de dictare, și valorile de 'pauză', pentru a ajusta sunetul fiecărei voci după preferințe.\r\n" +
+                "Puteți modifica volumul, viteza de dictare, și valorile de 'pauză', pentru a ajusta sunetul fiecărei voci după preferințe.\r\n\r\n" +
                 "Modificați 'Paragraph gap', pentru a ajusta timpul de așteptare înainte de începerea unui paragraf nou." },
             { "ru", "Это предварительное прослушивание выбранного голоса, чтобы услышать, насколько естественно он звучит.\r\n" +
-                "Вы можете изменить громкость, скорость диктовки, и значения 'пауз', чтобы настроить звучание каждого голоса по своему вкусу.\r\n" +
+                "Вы можете изменить громкость, скорость диктовки, и значения 'пауз', чтобы настроить звучание каждого голоса по своему вкусу.\r\n\r\n" +
                 "Измените 'Paragraph gap', чтобы настроить время ожидания перед началом нового абзаца." },
             { "sk", "Toto je ukážka vybraného hlasu, aby ste počuli, ako prirodzene znie.\r\n" +
-                "Môžete zmeniť hlasitosť, rýchlosť diktovania, a hodnoty 'pauzy', aby ste zvuk každého hlasu upravili podľa svojich predstáv.\r\n" +
+                "Môžete zmeniť hlasitosť, rýchlosť diktovania, a hodnoty 'pauzy', aby ste zvuk každého hlasu upravili podľa svojich predstáv.\r\n\r\n" +
                 "Zmeňte 'Paragraph gap', aby ste upravili čas čakania pred začiatkom nového odseku." },
             { "sl", "To je predogled izbranega glasu, da slišite, kako naravno zveni.\r\n" +
-                "Spremenite lahko glasnost, hitrost narekovanja, in vrednosti 'premora', da zvok vsakega glasu prilagodite svojemu okusu.\r\n" +
+                "Spremenite lahko glasnost, hitrost narekovanja, in vrednosti 'premora', da zvok vsakega glasu prilagodite svojemu okusu.\r\n\r\n" +
                 "Spremenite 'Paragraph gap', da prilagodite čas čakanja pred začetkom novega odstavka." },
             { "sr", "Ово је преглед изабраног гласа, да бисте чули колико природно звучи.\r\n" +
-                "Можете да промените јачину звука, брзину диктирања, и вредности 'паузе', да бисте прилагодили звук сваког гласа по свом укусу.\r\n" +
+                "Можете да промените јачину звука, брзину диктирања, и вредности 'паузе', да бисте прилагодили звук сваког гласа по свом укусу.\r\n\r\n" +
                 "Промените 'Paragraph gap', да бисте подесили време чекања пре почетка новог пасуса." },
             { "sv", "Det här är en förhandsvisning av den valda rösten, så att du hör hur naturlig den låter.\r\n" +
-                "Du kan ändra volymen, dikteringshastigheten, och 'paus'-värdena, för att anpassa varje röst efter din smak.\r\n" +
+                "Du kan ändra volymen, dikteringshastigheten, och 'paus'-värdena, för att anpassa varje röst efter din smak.\r\n\r\n" +
                 "Ändra 'Paragraph gap', för att justera väntetiden innan ett nytt stycke börjar." },
             { "tr", "Bu, seçilen sesin bir önizlemesidir, ne kadar doğal duyulduğunu dinlemeniz için.\r\n" +
-                "Her sesi beğeninize göre ayarlamak için ses düzeyini, dikte hızını, ve 'duraklama' değerlerini değiştirebilirsiniz.\r\n" +
+                "Her sesi beğeninize göre ayarlamak için ses düzeyini, dikte hızını, ve 'duraklama' değerlerini değiştirebilirsiniz.\r\n\r\n" +
                 "Yeni bir paragraf başlamadan önceki bekleme süresini ayarlamak için, 'Paragraph gap' değerini değiştirin." },
             { "uk", "Це попереднє прослуховування вибраного голосу, щоб почути, наскільки природно він звучить.\r\n" +
-                "Ви можете змінити гучність, швидкість диктування, і значення 'пауз', щоб налаштувати звучання кожного голосу на свій смак.\r\n" +
+                "Ви можете змінити гучність, швидкість диктування, і значення 'пауз', щоб налаштувати звучання кожного голосу на свій смак.\r\n\r\n" +
                 "Змініть 'Paragraph gap', щоб налаштувати час очікування перед початком нового абзацу." },
         };
         // A language's preview text (English for one without).
@@ -1002,8 +1005,11 @@ namespace ModernVoicesConfig
             string plain = Plain(text);
             if (plain.Length == 0) { return true; }
             foreach (string known in ByLanguage.Values) { if (Plain(known) == plain) { return true; } }
-            // (And the English text of earlier versions.)
-            return plain == Plain(App.OldPreviewText);
+            // (And the English texts of earlier versions; and any of these as they were before 0.18.8, without
+            // the empty line before their last.)
+            if (plain == Plain(App.OldPreviewText) || plain == Plain(App.PreviewText0187)) { return true; }
+            foreach (string known in ByLanguage.Values) { if (Plain(known).Replace("\n\n", "\n") == plain) { return true; } }
+            return false;
         }
         static string Plain(string text) { return (text ?? "").Replace("\r", "").Trim(); }
         // A voice's language from its folder's name (en_GB-alba-medium: "en").
@@ -1915,6 +1921,21 @@ namespace ModernVoicesConfig
             bottom.SetColumnSpan(Progress, 5);
             StatusLabel = Words("", true);
             StatusLabel.MinimumSize = new Size(0, Px(34));
+            // Each message stays a while (longer for a longer one), then fades away; not while changes are
+            // being applied (its progress stays). Its left: the Voice manager's frames' line (AlignStatus).
+            statusFade = new Timer();
+            statusFade.Interval = 50;
+            statusFade.Tick += StatusFadeTick;
+            StatusLabel.TextChanged += delegate
+            {
+                if (clearingStatus) { return; }
+                statusFade.Stop();
+                if (palette != null) { StatusLabel.ForeColor = palette.Muted; }
+                if (StatusLabel.Text.Length == 0 || !StatusFades) { return; }
+                statusShownAt = DateTime.UtcNow;
+                statusStay = Math.Min(15000, 4000 + 60 * StatusLabel.Text.Length);
+                statusFade.Start();
+            };
             ApplyButton = Btn("Apply changes");
             CloseButton = Btn("Close");
             // Done (on Add or remove voices only): back to the Voice manager.
@@ -1966,7 +1987,8 @@ namespace ModernVoicesConfig
             ApplyButton.Click += delegate { Apply(); };
             // In front of whatever started it (else it can open behind, unseen).
             TopMost = true;
-            Shown += delegate { Activate(); TopMost = false; applyTimer.Start(); };
+            Shown += delegate { Activate(); TopMost = false; applyTimer.Start(); AlignStatus(); };
+            Resize += delegate { if (IsHandleCreated) { AlignStatus(); } };
             FormClosing += WindowClosing;
             FormClosed += delegate { applyTimer.Stop(); };
             SetGlobalBars(Store.GetPauses(App.SettingsFile), Store.GetGlobalSpeed(App.SettingsFile));
@@ -2019,6 +2041,51 @@ namespace ModernVoicesConfig
                 }
             }
             ShowSortArrow(list);
+        }
+
+        // ---- the message at the bottom: its place, and how it fades
+        public Palette Palette { get { return palette; } }
+        public static bool StatusFades = true;      // (the build's test turns it off, but where it tries it)
+        public const int StatusFadeMs = 1500;
+        Timer statusFade;
+        DateTime statusShownAt;
+        int statusStay;
+        bool clearingStatus;
+        void StatusFadeTick(object sender, EventArgs e)
+        {
+            if (palette == null) { statusFade.Stop(); return; }
+            if (Busy) { statusShownAt = DateTime.UtcNow; StatusLabel.ForeColor = palette.Muted; return; }      // (kept while busy)
+            double past = (DateTime.UtcNow - statusShownAt).TotalMilliseconds - statusStay;
+            if (past < 0) { return; }
+            if (past >= StatusFadeMs)
+            {
+                statusFade.Stop();
+                clearingStatus = true;
+                try { StatusLabel.Text = ""; } finally { clearingStatus = false; }
+                StatusLabel.ForeColor = palette.Muted;
+                return;
+            }
+            // From its colour to the background's, a little each step.
+            double f = past / StatusFadeMs;
+            Color from = palette.Muted, to = StatusLabel.Parent != null ? StatusLabel.Parent.BackColor : palette.Back;
+            StatusLabel.ForeColor = Color.FromArgb((int)(from.R + (to.R - from.R) * f), (int)(from.G + (to.G - from.G) * f), (int)(from.B + (to.B - from.B) * f));
+        }
+        // (For the build's test: the message's time to stay, made short.)
+        public void StatusStayFor(int milliseconds) { statusStay = milliseconds; statusShownAt = DateTime.UtcNow; statusFade.Start(); }
+        // The message's words start on the line of the Voice manager's frames.
+        public void AlignStatus()
+        {
+            try
+            {
+                Control bar = StatusLabel.Parent;
+                if (bar == null || SoundFrame == null || SoundFrame.Parent == null) { return; }
+                int frameX = PointToClient(Pages[0].PointToScreen(Point.Empty)).X + SoundFrame.Parent.Padding.Left + SoundFrame.Margin.Left;
+                int barX = PointToClient(bar.PointToScreen(Point.Empty)).X + bar.Padding.Left;
+                // (A label's words start a little inside it: NameInset.)
+                int left = Math.Max(0, frameX - barX - NameInset);
+                if (StatusLabel.Margin.Left != left) { StatusLabel.Margin = new Padding(left, StatusLabel.Margin.Top, StatusLabel.Margin.Right, StatusLabel.Margin.Bottom); }
+            }
+            catch (Exception) { }
         }
 
         void ListResized(object sender, EventArgs e)
@@ -2332,24 +2399,27 @@ namespace ModernVoicesConfig
             tips.SetToolTip(NickBox, nickTip);
             tips.SetToolTip(PreviewButton, "Says the text below with the selected voice.\r\nPressed while that voice is speaking, it stops it.");
 
+            // "Preview says:" where it was, and under it the box, as wide as the sections' frames below (its
+            // sides on their lines, set once they are made), four lines showing.
             TableLayoutPanel previewLine = Line("auto", "fill");
             Label previewLabel = Words("Preview says");
             previewLabel.Dock = DockStyle.None; previewLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            // (The sliders' names start where the box did, beside the label, up to 0.18.7: the same column,
+            // measured without the colon, so that they stay where they are.)
+            previewColumn = previewLabel.PreferredSize.Width + previewLabel.Margin.Horizontal;
+            previewLabel.Text = "Preview says:";
             PreviewBox = new TextBox();
-            // Several lines (Enter starts a new one: a paragraph pause), three showing.
-            int threeLines = PreviewBox.Font.Height * 3 + Px(18);
+            // Several lines (Enter starts a new one: a paragraph pause), four showing.
+            int fourLines = PreviewBox.Font.Height * 4 + Px(18);
             PreviewBox.Multiline = true; PreviewBox.AcceptsReturn = true; PreviewBox.WordWrap = true; PreviewBox.ScrollBars = ScrollBars.Vertical;
             PreviewBox.Text = App.PreviewText; PreviewBox.Dock = DockStyle.Fill;
-            PreviewBox.MinimumSize = new Size(0, threeLines);
-            PreviewBox.Height = threeLines;
-            previewLine.Controls.Add(previewLabel, 0, 0); previewLine.Controls.Add(PreviewBox, 1, 0);
+            PreviewBox.MinimumSize = new Size(0, fourLines);
+            PreviewBox.Height = fourLines;
+            previewLine.Controls.Add(previewLabel, 0, 0);
             // Twice the gap there was between it and the buttons above.
-            previewLine.Margin = new Padding(previewLine.Margin.Left, previewLine.Margin.Top + Px(9), previewLine.Margin.Right, previewLine.Margin.Bottom);
+            previewLine.Margin = new Padding(previewLine.Margin.Left, previewLine.Margin.Top + Px(9), previewLine.Margin.Right, 0);
             Row(page, previewLine);
-            // The columns the sliders below stand in (see Centre): their names start where the preview box
-            // does, and they end where the output volume slider does.
-            previewColumn = previewLabel.PreferredSize.Width + previewLabel.Margin.Horizontal;
-            previewLine.ColumnStyles[0] = new ColumnStyle(SizeType.Absolute, previewColumn);
+            Row(page, PreviewBox);
             // (A label's words start a little inside it: the sections are set that much to the left, so
             // that the words themselves, not their labels, start at the preview box's edge.)
             // (3 px at 100%, seen in the pictures: it grows with the text. Measuring it with TextRenderer gave 0.)
@@ -2465,6 +2535,8 @@ namespace ModernVoicesConfig
             // The default voice's box starts where the frames' lines do; the speaker and the output volume
             // slider move with it (the slider still ends where the sliders below end).
             DefaultBox.Margin = new Padding(PauseFrame.Margin.Left, 0, DefaultBox.Margin.Right, 0);
+            // The preview box too, both sides on the frames' lines.
+            PreviewBox.Margin = new Padding(PauseFrame.Margin.Left, Px(4), PauseFrame.Margin.Right, PreviewBox.Margin.Bottom);
             Row(PauseFrame, OwnBox);
             Row(PauseFrame, gapGrid);
             Row(page, PauseFrame);
@@ -5139,6 +5211,7 @@ namespace ModernVoicesConfig
             Languages.Override = "";
             // (The lists as made, unsorted, in their first column order; the person's own arrangement is left alone.)
             ListLayout.Override = new Dictionary<string, string>();
+            ConfigForm.StatusFades = false;      // (checks read the message after waiting; one tries the fading)
             List<Entry> everything = Catalogue.Load(out problem);
             List<Entry> catalogue = everything.FindAll(delegate(Entry v) { return v.Family == "en"; });
             Check(catalogue.Count > 20 && everything.Count > catalogue.Count, "the catalogue is read: " + catalogue.Count + " English voices, " +
@@ -5406,8 +5479,8 @@ namespace ModernVoicesConfig
                 int outputRight = ui.OutputBar.PointToScreen(new Point(ui.OutputBar.Width, 0)).X;
                 Note("preview box starts at " + boxLeft + ", the sliders' names at " + nameLeft + ", the override box at " + tickLeft +
                     "; the sliders end at " + sliderRight + ", the output volume at " + outputRight);
-                Check(Math.Abs(boxLeft - ui.NameInset - nameLeft) <= 1 && Math.Abs(boxLeft - tickLeft) <= 1 && ui.NameInset >= 1 && ui.NameInset <= 8,
-                    "the sliders' names (their words, " + ui.NameInset + " px inside their labels) and the override box start where the preview box does");
+                Check(Math.Abs(nameLeft + ui.NameInset - tickLeft) <= 1 && ui.NameInset >= 1 && ui.NameInset <= 8,
+                    "the sliders' names (their words, " + ui.NameInset + " px inside their labels) and the override box start in one line");
                 Check(Math.Abs(sliderRight - outputRight) <= 1, "the sliders end where the output volume slider ends");
                 Check(volumeBar.Width > 200, "the sliders have room (" + volumeBar.Width + " px)");
                 // Each frame's line is as far from the words inside it on its right (the end of the widest
@@ -5424,6 +5497,24 @@ namespace ModernVoicesConfig
                 Control pageGrid = ui.SoundFrame.Parent;
                 int pageLeft = pageGrid.PointToScreen(Point.Empty).X, pageRight = pageLeft + pageGrid.ClientSize.Width;
                 int boxLeft2 = ui.DefaultBox.PointToScreen(Point.Empty).X;
+                // The message at the bottom: its words on the frames' line; it fades away and goes.
+                int statusWords = ui.StatusLabel.PointToScreen(Point.Empty).X + ui.NameInset;
+                ConfigForm.StatusFades = true;
+                string statusWas = ui.StatusLabel.Text;
+                ui.StatusLabel.Text = "A message that fades.";
+                ui.StatusStayFor(200);
+                Settle(300 + ConfigForm.StatusFadeMs / 2);
+                Color halfway = ui.StatusLabel.ForeColor;
+                Settle(ConfigForm.StatusFadeMs);
+                bool faded = ui.StatusLabel.Text.Length == 0 && halfway != ui.Palette.Muted;
+                ConfigForm.StatusFades = false;
+                ui.StatusLabel.Text = statusWas;
+                Check(Math.Abs(statusWords - frameLeft) <= 1 && faded, "the message at the bottom starts on the frames' line (" + statusWords + ", " + frameLeft +
+                    "), and fades away (halfway: " + halfway.Name + ") and goes (" + faded + ")");
+                // (Since 0.18.8 the preview box is under "Preview says:", its sides on the frames' lines, four lines tall.)
+                int boxRight = boxLeft + ui.PreviewBox.Width;
+                Check(Math.Abs(boxLeft - frameLeft) <= 1 && Math.Abs(boxRight - frameRight) <= 1 && ui.PreviewBox.ClientSize.Height >= ui.PreviewBox.Font.Height * 4,
+                    "the preview box's sides are on the frames' lines (" + boxLeft + "-" + boxRight + ", frames " + frameLeft + "-" + frameRight + "), four lines showing");
                 Check(Math.Abs((frameLeft - pageLeft) - (pageRight - frameRight)) <= 1 && pauseLeft == frameLeft && ui.PauseFrame.Width == ui.SoundFrame.Width &&
                     leftGap >= ui.FrameGap && rightGap > 0,
                     "the frames' lines are in the middle of the page (" + (frameLeft - pageLeft) + " px from its left, " + (pageRight - frameRight) + " px from its right), the words inside them " +

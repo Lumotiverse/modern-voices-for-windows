@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.7 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.8 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -13,10 +13,28 @@ run #109 was refused for billing). Builds are free again. Anything pushed is vis
 
 ## State for a new chat (18 Nov 2026, evening)
 
-Nothing he asked for is outstanding. 0.18.2 to 0.18.7 were all built on Opus 5.5 in one chat and
+Nothing he asked for is outstanding. 0.18.2 to 0.18.8 were all built on Opus 5.5 in one chat and
 delivered; he had tried 0.18.2 (hit the crash fixed in 0.18.3), not yet said anything about 0.18.3/0.18.4.
-Start by asking how 0.18.7 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
+Start by asking how 0.18.8 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
 rule with "Say it as" empty does it; comma pause for a rule-made comma would be engine work, Fable).
+
+## 0.18.8 (19 Nov 2026), delivered, not yet confirmed by him
+
+Built on Opus 5.5. Voice manager and the window's bottom line:
+1. "Preview says:" (colon added) stays where it was; the preview box is on its own row under it, its sides
+   on the frames' lines (`PreviewBox.Margin` = the frames' margins, set after `FrameSliders`), four lines
+   tall. `previewColumn` (where the sliders' names start) is still measured from "Preview says" WITHOUT
+   the colon, so the sliders didn't move.
+2. English preview text (his): line 1, line 2, an EMPTY line, then "Change the 'Paragraph gap', to adjust
+   the wait time before reading the next line." Every translation got the same empty line (their own
+   last-line wording kept, not retranslated: told him). An empty line still gives one paragraph pause
+   (`line_break_between` is a yes/no). `IsOneOfThem` also knows 0.18.7's English (`App.PreviewText0187`)
+   and every text without the empty line.
+3. The bottom message (`StatusLabel`): its words start on the frames' line (`AlignStatus`, on Shown and
+   Resize); it fades: stays 4 s + 60 ms a character (max 15 s), fades to the bar's background over
+   1.5 s (`StatusFadeTick`), then empties. Not while Busy. Self-test turns `StatusFades` off except for
+   one check that it fades and goes.
+4. He thought "passed its test" a typo for "it's": told him "its" is right (possessive), left it.
 
 ## 0.18.7 (19 Nov 2026), delivered, not yet confirmed by him
 
@@ -138,7 +156,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.7.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.8.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 
