@@ -6475,12 +6475,12 @@ namespace ModernVoicesConfig
             ForgetGender(voice.Id, was);
             Check(Voices.Gender(voice.Id) == was && KeptGender(voice.Id) == null, "and put back as it was ('" + was + "'), with no choice kept");
 
-            // The right-click menu: its four choices, the selected voice's state ticked.
+            // The right-click menu: its five choices (Remove voice after a line), the selected voice's state ticked.
             ui.UpdateVoiceMenu();
             List<string> offered = new List<string>();
             foreach (ToolStripItem item in ui.VoiceMenu.Items) { offered.Add(item.Text); }
             bool isDefault = string.Equals(Voices.DefaultToken, voice.Token, StringComparison.OrdinalIgnoreCase);
-            Check(string.Join("|", offered.ToArray()) == "Set nickname|Set gender|Override defaults|Make default voice" &&
+            Check(string.Join("|", offered.ToArray()) == "Set nickname|Set gender|Override defaults|Make default voice||Remove voice" &&
                 ui.MenuGender.DropDownItems.Count == 2 && ui.MenuDefault.Checked == isDefault && ui.MenuDefault.Enabled == !isDefault && ui.MenuOverride.Checked == ui.OwnBox.Checked,
                 "the right-click menu offers " + string.Join(", ", offered.ToArray()) + " (Female and Male under Set gender); default ticked " + ui.MenuDefault.Checked);
             bool ownWas = ui.OwnBox.Checked;

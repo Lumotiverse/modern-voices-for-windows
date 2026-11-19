@@ -285,9 +285,9 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
     back the last ten changes to the text: typing, a paste, a file opened, Clear.
   * Closed with text in the box, the Reader asks "Save text for next time?": Yes and the text is
     there, at its place, the next time it opens; No and it opens empty. (A file's place is kept
-    either way: open the file again and Play goes on from where you stopped.) "Save text on close"
-    (under Undo) chooses: Ask (to begin with) asks that question; Always keeps the text without
-    asking; Never closes without asking and the text is not kept. Ticking "Don't ask again" in the
+    either way: open the file again and Play goes on from where you stopped.) The dropdown under Undo
+    chooses: "Ask to save text" (to begin with) asks that question; "Always save text" keeps the text
+    without asking; "Never save text" closes without asking and the text is not kept. Ticking "Don't ask again" in the
     question keeps your answer: Yes makes it Always, No makes it Never. Closing the question with
     its X keeps nothing and changes nothing.
   * Opened while it is already running, the Reader asks whether to start a second one; Cancel

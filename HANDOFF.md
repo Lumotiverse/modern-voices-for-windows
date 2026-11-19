@@ -46,8 +46,9 @@ Built on Opus 5.5: sections 3 and 4 of "Planned next" below, and the Reader's sa
    anything waiting stays waiting and Apply changes is lit for it. `Current` is let go before the ticks
    are put back (else `SaveSpeakers` would write the speaker list's old ticks over them). The row below
    the removed one (else above) is selected afterwards (`selectAfter`).
-3. **Reader "Save text on close"** is a dropdown now: label "Save text on close:" + `saveChoice` (Ask /
-   Always / Never; `State.SaveText`; an old settings file's `SaveOnClose` false reads as Never, else
+3. **Reader "Save text on close"** is a dropdown now, `saveChoice` under Undo, with no label (a label and
+   the dropdown didn't fit under Undo / Redo / Clear: CI run #149): "Ask to save text" / "Always save
+   text" / "Never save text" (`SaveTextWords`; stored as Ask / Always / Never, `State.SaveText`; an old settings file's `SaveOnClose` false reads as Never, else
    Ask). Ask: the question as before; Yes / No with "Don't ask again" set Always / Never
    (`AnswerSaveText`); the question's X (DialogResult Cancel; its No button now returns No) keeps nothing
    and ignores the tick. Always keeps the text whatever closes the Reader (also in the self-test, which
