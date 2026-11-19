@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.5.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.6.0")]
 
 namespace ModernVoicesConfig
 {
@@ -1469,6 +1469,7 @@ namespace ModernVoicesConfig
         public Entry Current;                               // the voice selected on Add or remove voices
         public InstalledRow CurrentInstalled;               // the row selected on the Voice manager
         bool nameClick;
+        bool tickByHand;      // (a voice's box in Add or remove voices clicked, or Space pressed on it, just now)
         float scale = 1f;
         Font boldFont, listFont, listBold, speakerFont;
         Panel headerLine;
@@ -2777,9 +2778,31 @@ namespace ModernVoicesConfig
                 "downloads. Some programs open more slowly when many voices are installed, so install only the ones you use.", true));
 
             AddList.SelectedIndexChanged += delegate { if (!filtering) { UpdateSelection(); } };
+            // A click on a voice's box (or Space) ticks it by hand: a voice of several speakers then has all
+            // its speakers ticked, or none. A click on its name plays a one-speaker voice's sample; a voice of
+            // several plays nothing (its speakers below are clicked to hear them).
+            AddList.MouseDown += delegate(object sender, MouseEventArgs e)
+            {
+                ListViewHitTestInfo hit = AddList.HitTest(e.Location);
+                tickByHand = e.Button == MouseButtons.Left && hit.Item != null && hit.Location == ListViewHitTestLocations.StateImage;
+            };
+            AddList.MouseUp += delegate { BeginInvoke((MethodInvoker)delegate { tickByHand = false; }); };
+            AddList.KeyDown += delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Space) { tickByHand = true; } };
+            AddList.KeyUp += delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Space) { BeginInvoke((MethodInvoker)delegate { tickByHand = false; }); } };
+            AddList.MouseClick += delegate(object sender, MouseEventArgs e)
+            {
+                if (e.Button != MouseButtons.Left) { return; }
+                ListViewHitTestInfo hit = AddList.HitTest(e.Location);
+                if (hit.Item != null && hit.Location != ListViewHitTestLocations.StateImage)
+                {
+                    ListViewItem clicked = hit.Item;
+                    BeginInvoke((MethodInvoker)delegate { VoiceNameClicked(clicked); });
+                }
+            };
             AddList.ItemChecked += delegate(object sender, ItemCheckedEventArgs e)
             {
                 if (Filling || filtering || !listsReady.Contains(AddList)) { return; }
+                if (e.Item != null && ((Entry)e.Item.Tag).Several && (tickByHand || PointerOnBox(e.Item))) { AllSpeakers(e.Item, e.Item.Checked); }
                 UpdateSummary();
                 // The selected voice's speaker box follows its tick: a one-speaker voice's box is the voice's own
                 // tick, and the filtered list gains or loses the voice's speakers. After the event, not inside it.
@@ -4237,6 +4260,51 @@ namespace ModernVoicesConfig
             return Regex.Replace(name, @"\d+", delegate(Match m) { return m.Value.PadLeft(10, '0'); });
         }
 
+        // A voice's name clicked in Add or remove voices: a one-speaker voice plays its sample, as its speaker's
+        // name below would; one of several speakers plays nothing.
+        public void VoiceNameClicked(ListViewItem item)
+        {
+            if (item == null || item.ListView != AddList || !item.Selected || ((Entry)item.Tag).Several) { return; }
+            PlaySample();
+        }
+        // A voice of several speakers ticked or unticked by hand: all its speakers with it.
+        public void AllSpeakers(ListViewItem item, bool on)
+        {
+            Entry v = (Entry)item.Tag;
+            List<string> names = new List<string>(v.SpeakerNames);
+            if (Current == v)
+            {
+                // (Shown below: their boxes, then kept as the list's ticks are.)
+                if (OnlyTickedBox.Checked) { Speakers[v.Key] = on ? string.Join(", ", names.ToArray()) : ""; }
+                else
+                {
+                    Filling = true;
+                    try { for (int i = 0; i < SpeakerList.Items.Count; i++) { SpeakerList.SetItemChecked(i, on); } }
+                    finally { Filling = false; }
+                    SaveSpeakers();
+                }
+                BeginInvoke((MethodInvoker)delegate { Current = null; UpdateSelection(); });
+            }
+            else { Speakers[v.Key] = on ? string.Join(", ", names.ToArray()) : ""; }
+        }
+        // Whether the pointer is on a voice's box (Windows may tick it before the click is reported).
+        bool PointerOnBox(ListViewItem item)
+        {
+            try
+            {
+                if (!AddList.IsHandleCreated) { return false; }
+                ListViewHitTestInfo hit = AddList.HitTest(AddList.PointToClient(Cursor.Position));
+                return hit.Item == item && hit.Location == ListViewHitTestLocations.StateImage;
+            }
+            catch (Exception) { return false; }
+        }
+        // (For the build's test: a voice's box clicked by hand.)
+        public void TickByHand(ListViewItem item, bool on)
+        {
+            tickByHand = true;
+            try { item.Checked = on; } finally { tickByHand = false; }
+        }
+
         // Plays the catalogue's sample of the voice selected (of its speaker selected, else the first ticked,
         // else the first).
         void PlaySample()
@@ -5084,6 +5152,35 @@ namespace ModernVoicesConfig
             Check(ui.SpeakerList.Items.Count == vctkEntry.SpeakerNames.Count && string.Join(" ", ui.PickedIds().ToArray()) == string.Join(" ", pickedFiltered.ToArray()),
                 "and off again: all " + vctkEntry.SpeakerNames.Count + " are listed, with the same ones picked");
 
+            // VCTK's own box ticked by hand: all its speakers ticked; unticked by hand, none. Its name clicked:
+            // no sample (its speakers are clicked to hear them). Then as it was.
+            {
+                bool vctkWas = vctk.Checked;
+                string speakersWas = ui.Speakers.ContainsKey(vctkEntry.Key) ? ui.Speakers[vctkEntry.Key] : null;
+                List<string> pickedWas = ui.PickedIds();
+                Sample.Stop();
+                ui.VoiceNameClicked(vctk);
+                bool vctkSilent = !Sample.Playing;
+                if (vctk.Checked) { ui.TickByHand(vctk, false); Settle(50); }
+                ui.TickByHand(vctk, true);
+                Settle(100);
+                int allTicked = TickedSpeakers(ui).Count, allPicked = 0;
+                foreach (string id in ui.PickedIds()) { if (id.StartsWith("en_GB-vctk-medium#", StringComparison.Ordinal)) { allPicked++; } }
+                ui.TickByHand(vctk, false);
+                Settle(100);
+                int noneTicked = TickedSpeakers(ui).Count, nonePicked = 0;
+                foreach (string id in ui.PickedIds()) { if (id.StartsWith("en_GB-vctk-medium#", StringComparison.Ordinal)) { nonePicked++; } }
+                Check(vctkSilent && allTicked == vctkEntry.SpeakerNames.Count && allPicked == vctkEntry.SpeakerNames.Count && noneTicked == 0 && nonePicked == 0,
+                    "VCTK's box ticked by hand ticks all " + allTicked + " of its speakers (" + allPicked + " picked), unticked none (" + noneTicked +
+                    "); its name clicked plays nothing (" + vctkSilent + ")");
+                if (speakersWas == null) { ui.Speakers.Remove(vctkEntry.Key); } else { ui.Speakers[vctkEntry.Key] = speakersWas; }
+                ui.Current = null;
+                vctk.Checked = vctkWas;
+                ui.UpdateSelection();
+                Settle(50);
+                Check(string.Join(" ", ui.PickedIds().ToArray()) == string.Join(" ", pickedWas.ToArray()), "and put back as it was (a tick not by hand ticks no speakers)");
+            }
+
             // A voice with one speaker: its name is listed, its box is the voice's own tick (both ways), and
             // nothing goes into the speakers ticked.
             ListViewItem single = null;
@@ -5099,6 +5196,11 @@ namespace ModernVoicesConfig
                 Note("one speaker: " + singleEntry.Key + " lists " + (ui.SpeakerList.Items.Count > 0 ? Convert.ToString(ui.SpeakerList.Items[0]) : "nothing") + "; " + ui.SpeakerLabel.Text);
                 Check(ui.SpeakerList.Items.Count == 1 && Convert.ToString(ui.SpeakerList.Items[0]) == ConfigForm.OnlySpeaker(singleEntry) &&
                     ui.SpeakerList.GetItemChecked(0) == was && ui.SpeakerList.Enabled, "a voice with one speaker lists its speaker, ticked as the voice is");
+                Sample.Stop();
+                ui.VoiceNameClicked(single);
+                bool singlePlays = Sample.Playing;
+                Sample.Stop();
+                Check(singlePlays, "its name clicked plays its sample, as its speaker's name below does");
                 ui.SpeakerList.SetItemChecked(0, !was);
                 Settle(50);
                 Check(single.Checked == !was && ui.SpeakerList.Items.Count == 1 && ui.SpeakerList.GetItemChecked(0) == !was && !ui.Speakers.ContainsKey(singleEntry.Key),

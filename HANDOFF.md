@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.5 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.6 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -13,10 +13,26 @@ run #109 was refused for billing). Builds are free again. Anything pushed is vis
 
 ## State for a new chat (18 Nov 2026, evening)
 
-Nothing he asked for is outstanding. 0.18.2 to 0.18.5 were all built on Opus 5.5 in one chat and
+Nothing he asked for is outstanding. 0.18.2 to 0.18.6 were all built on Opus 5.5 in one chat and
 delivered; he had tried 0.18.2 (hit the crash fixed in 0.18.3), not yet said anything about 0.18.3/0.18.4.
-Start by asking how 0.18.5 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
+Start by asking how 0.18.6 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
 rule with "Say it as" empty does it; comma pause for a rule-made comma would be engine work, Fable).
+
+## 0.18.6 (19 Nov 2026), delivered, not yet confirmed by him
+
+Built on Opus 5.5. Add or remove voices:
+1. Clicking a voice's NAME (not its box) plays a one-speaker voice's sample (`VoiceNameClicked`, from
+   AddList.MouseClick, which WinForms raises only over an item); a voice of several speakers plays nothing
+   (his choice, option 3 of: first speaker's sample / a "Choose one or more voices from the list below"
+   phrase / nothing). Told him: samples are Piper's own recordings (speaker_N.mp3 in each voice's folder
+   on Hugging Face, cached in %TEMP% as modernvoices_sample_*), the same text per language (English: the
+   rainbow passage); a voice not installed can't say anything else.
+2. Ticking a several-speaker voice's own box BY HAND ticks all its speakers, unticking unticks all
+   (`AllSpeakers`). By hand = `tickByHand` (MouseDown on the state image, or Space) or `PointerOnBox`
+   (Windows may toggle the box before WinForms reports the press). Ticks made by code (SpeakerTicking
+   ticking the voice, Apply, start) must not: they don't pass either test. Warned him: VCTK has 109
+   speakers, LibriTTS ~900 (each a Windows voice); he hasn't answered about a limit yet.
+3. Self-test: VCTK ticked/unticked by hand (all/none), its name silent; a one-speaker voice's name plays.
 
 ## 0.18.5 (19 Nov 2026), delivered, not yet confirmed by him
 
@@ -111,7 +127,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.5.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.6.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 

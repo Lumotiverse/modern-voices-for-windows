@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.18.5
+Modern Voices for Windows 0.18.6
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -37,12 +37,14 @@ Install
    a "Powered by" window over it names what the program is made from: click it to close it. While no
    voice is installed, a note then says where to start (OK or its X closes it), in the language
    chosen when installing too. On "Add or remove
-   voices", tick the voices you want. Select one and press Play sample to hear it first (some voices
-   sound much more natural than others, so it is worth it; press it
+   voices", tick the voices you want. Click a voice's name to hear its sample first (some voices
+   sound much more natural than others, so it is worth it); Play sample plays it again (press it
    again, "Stop sample" meanwhile, to stop). Voices with
-   several speakers (VCTK, LibriTTS, ...) list their speakers in name order: click a name to hear
-   that speaker (Play sample plays it again); tick a speaker's box to install it. Each ticked speaker
-   becomes a voice. A voice with one speaker lists that one: its box is the voice's own tick.
+   several speakers (VCTK, LibriTTS, ...) play nothing when their name is clicked: they list their
+   speakers in name order below, and clicking a speaker's name plays that speaker; tick a speaker's
+   box to install it. Each ticked speaker becomes a voice. Ticking such a voice's own box ticks all
+   its speakers (unticking it, none): mind the voices with very many. A voice with one speaker
+   lists that one: its box is the voice's own tick.
    "Only show selected speakers" (beside Play sample, off each time the window opens) lists only
    the ticked speakers of the voice selected, to find the ones installed.
    "Show" above the list narrows it (All voices, English only, American only, British only);
