@@ -13,9 +13,10 @@ run #109 was refused for billing). Builds are free again. Anything pushed is vis
 
 ## State for a new chat (19 Nov 2026, late morning)
 
-**He confirmed 0.18.11 is good.** Two things are AGREED BUT NOT BUILT (he said "update the handoff but
-build nothing"): see "Planned for 0.18.12" just below. Ask whether he wants to start them, and on which
-model, before writing any code. 0.18.2 to 0.18.11 were all built on Opus 5.5 in one long chat and
+**He confirmed 0.18.11 is good.** Planned work is AGREED BUT NOT BUILT (he said "make this known to
+github ... for the next build, but dont build anything"): see "Planned next" just below. It is SPLIT
+into two jobs at his say: job A on Opus 5.5 (0.18.12), job B on Fable (0.18.13, or later). Ask which he
+wants to start, and check he is on that model, before writing any code. 0.18.2 to 0.18.11 were all built on Opus 5.5 in one long chat and
 delivered (each zip sent); he has been trying them as they came (he hit 0.18.2's start-up crash, fixed in
 0.18.3, and corrected 0.18.9's Amplify default in 0.18.10).
 What changed across them, newest first, is in the sections below; the main things a new chat should know:
@@ -30,13 +31,13 @@ What changed across them, newest first, is in the sections below; the main thing
 Ideas still on the shelf: see "Ideas" (the pronunciation ignore list is dropped: a rule with "Say it as"
 empty does it).
 
-## Planned for 0.18.12 (agreed 19 Nov 2026, NOT built)
+## Planned next (agreed 19 Nov 2026, NOT built)
 
-**Model:** the whole batch touches the engine, Config and VoiceConvert.ps1, so by his rule it is Fable.
-On per-speaker speed alone I had said Opus 5.5 could do it safely; with Amplify, Boost and the override
-section added it is clearly multi-part: recommend Fable (or ask him to split it).
+He split it: **job A = 0.18.12 on Opus 5.5** (sections 1, 3, 4: Config only, plus packaging),
+**job B = 0.18.13 on Fable** (section 2: engine, Config and VoiceConvert.ps1). Either may go first,
+but A is smaller; if B goes first it takes 0.18.12. Bump the version per build as usual.
 
-**1. Multi-speaker voice's name plays a recorded instruction (Add or remove voices).**
+**1. (Job A, Opus) Multi-speaker voice's name plays a recorded instruction (Add or remove voices).**
 - He will record MP3s of a voice saying "Select the voices you want from the list below", one per
   language (English is 23.8 KB). He has not sent any yet: ask him to attach them.
 - Before he records, give him the list of languages that HAVE multi-speaker voices in the catalogue (only
@@ -51,7 +52,7 @@ section added it is clearly multi-part: recommend Fable (or ask him to split it)
   permissive licence. In 0.18.6 he chose "nothing" over "a phrase"; this replaces that choice.
 - Self-test: VCTK's name now plays (today it checks it is silent: change that check).
 
-**2. Per-speaker settings in the Voice manager.** His words: "currently, dictation speed affects all
+**2. (Job B, Fable) Per-speaker settings in the Voice manager.** His words: "currently, dictation speed affects all
 speakers in the voice. can this be changed so each speaker can have its own dictation setting", then
 "it makes sense to do boost and amp, as well as the override settings, at the same time? the voices
 can vary significantly due to the nature of how they were created."
@@ -59,12 +60,11 @@ can vary significantly due to the nature of how they were created."
   `App.VoiceFile`, VoiceConvert's `Get-VoiceText`), so all of VCTK's speakers share one. The token
   carries `SpeakerId` (Install.ps1 `Register-Voice`), and the engine already has `voice.speaker`.
 - Scope: Amplify (peak), Boost, Dictation speed (length_scale), and the override section (own pauses:
-  sentence, comma, paragraph). Per speaker, falling back to the voice's value where a speaker has none,
+  sentence, comma, paragraph; NOT variation). Per speaker, falling back to the voice's value where a speaker has none,
   so existing settings files need no migration and update-in-place stays safe.
-- **Voice variation is the catch** (in the override section, `own_variation_percent`): it is applied
-  when a MODEL is LOADED (`load_model`, cache key `dir|data|variation`), not per line. A speaker with a
-  different variation means a second copy of the whole model in memory (VCTK's is ~75 MB) and a reload.
-  Not yet discussed with him: tell him, and suggest variation stays per voice (or accept the memory).
+- **Voice variation stays PER VOICE (his decision):** it is applied when a model is LOADED (`load_model`,
+  cache key `dir|data|variation`), so per speaker would mean a second ~75 MB copy of the model. Job A
+  (section 3) takes it out of the override section altogether.
 - Live changes must keep working: he checked in Balabolka that a Config change is heard after Stop/Play
   with no restart (the engine re-reads the settings at each Speak by file time, `Model::settings`).
   Per-speaker values must go through the same re-read; note `Model::settings` caches ONE `Settings` per
@@ -79,6 +79,39 @@ can vary significantly due to the nature of how they were created."
   whether a label should say "for this speaker".
 - Tests: engine unit tests for the lookup; Test-Kit: two VCTK speakers at different speeds/peaks speak
   differently; Config self-test: a slider moved on one speaker leaves the other alone.
+
+**3. (Job A, Opus) Voice variation out of the override section.** His words: "voice variation slider would
+need removing from the 'overide pause' section, and the tickbox label need updating to remove
+'variation'. (i think variation is ok just being in the advanced section of speed and pauses ...)"
+- Remove `OwnVariation` (Config.cs ~2548, built in `BuildVoiceManager`'s gapGrid, plus wherever it is
+  filled/saved/reset and the self-test's checks of it).
+- Label: `OwnBox.Text` (~2540) and the menu's `MenuOverride.ToolTipText` (~2282) become "Override pause
+  duration for the selected voice". Check kit/README.txt and README.md for the old wording too.
+- **A saved own variation must not linger unseen:** the engine still uses `own_variation_percent` while
+  `own_pauses` is 1 (`text::own_variation`, used in `load_model`). Without the slider no one could see or
+  change it. Simplest safe fix without engine work: Config deletes `own_variation_percent` from every
+  voice's own file (once, at start, or when the voice is shown) so the global variation applies. Or drop
+  `own_variation` from the engine (then it is engine work; fine in job B). Tell him which was done.
+- The global "Voice variation" on Speed and pauses (Advanced setting) stays as it is.
+
+**4. (Job A, Opus) "Remove voice" on the Voice manager's right-click menu.** His words: "right click a voice
+in voice manager list should have 'remove voice' option to uninstall the selected speaker. this should
+trigger a pop up: "Uninstall selected speaker?" yes should remove the voice and 'apply changes' (and ask
+for admin permish if required and not yet granted) no ofc cancels."
+- Menu item "Remove voice" in `BuildVoiceMenu` (`VoiceMenu`). Question window with his exact words
+  "Uninstall selected speaker?", Yes / No (No, Esc and closing cancel). Build it like the other
+  question windows (`AskWindow` style, themed light/dark), not a MessageBox.
+- Yes: untick that speaker (a voice of one speaker: the voice; the LAST installed speaker of a voice of
+  several: the voice too, so its model is removed) in `VoiceItems` / `Speakers`, then run `Apply()`, which
+  already asks for the administrator's permission through `Elevate()` only if the helper isn't running.
+- **Open point, ask him:** `Apply()` applies ALL ticks (`PickedIds`), so any changes ticked on Add or
+  remove voices but not yet applied would go through too. Options: say so in the question when there
+  are pending ticks; or apply only this removal (installed set minus this id) and keep the pending
+  ticks as they were. I would do the second.
+- After Apply, `SetDefaultAfterApply` already covers removing Windows' default voice (first voice
+  becomes default). Select a neighbouring row afterwards.
+- Self-test: the menu item exists; in the `--apply` run, remove the VCTK speaker the test added through
+  this path (answer Yes through a test hook, as `AskAll` does) and check it is gone; No changes nothing.
 
 ## 0.18.11 (19 Nov 2026), delivered, not yet confirmed by him
 
