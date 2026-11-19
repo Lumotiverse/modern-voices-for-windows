@@ -1,0 +1,14 @@
+name: voice licences
+
+# Run by hand: prints every Piper voice's MODEL_CARD licence lines (tools/dev/fetch_licences.py) in
+# the log, for tools/voice-licences.json. Builds nothing.
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the model cards
+        run: python3 tools/dev/fetch_licences.py
