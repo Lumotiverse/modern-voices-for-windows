@@ -87,11 +87,9 @@ need removing from the 'overide pause' section, and the tickbox label need updat
   filled/saved/reset and the self-test's checks of it).
 - Label: `OwnBox.Text` (~2540) and the menu's `MenuOverride.ToolTipText` (~2282) become "Override pause
   duration for the selected voice". Check kit/README.txt and README.md for the old wording too.
-- **A saved own variation must not linger unseen:** the engine still uses `own_variation_percent` while
-  `own_pauses` is 1 (`text::own_variation`, used in `load_model`). Without the slider no one could see or
-  change it. Simplest safe fix without engine work: Config deletes `own_variation_percent` from every
-  voice's own file (once, at start, or when the voice is shown) so the global variation applies. Or drop
-  `own_variation` from the engine (then it is engine work; fine in job B). Tell him which was done.
+- A saved `own_variation_percent` would still be used by the engine (while `own_pauses` is 1) with no
+  slider to see it. **No clean-up needed (his decision, 19 Nov):** he never saved one and no one else has
+  the program. Just remove the slider; leave the engine and the files alone.
 - The global "Voice variation" on Speed and pauses (Advanced setting) stays as it is.
 
 **4. (Job A, Opus) "Remove voice" on the Voice manager's right-click menu.** His words: "right click a voice
@@ -104,10 +102,11 @@ for admin permish if required and not yet granted) no ofc cancels."
 - Yes: untick that speaker (a voice of one speaker: the voice; the LAST installed speaker of a voice of
   several: the voice too, so its model is removed) in `VoiceItems` / `Speakers`, then run `Apply()`, which
   already asks for the administrator's permission through `Elevate()` only if the helper isn't running.
-- **Open point, ask him:** `Apply()` applies ALL ticks (`PickedIds`), so any changes ticked on Add or
-  remove voices but not yet applied would go through too. Options: say so in the question when there
-  are pending ticks; or apply only this removal (installed set minus this id) and keep the pending
-  ticks as they were. I would do the second.
+- **Decided (his choice, 19 Nov): the removal applies only itself.** `Apply()` sends ALL ticks
+  (`PickedIds`), so don't call it as it is: send the installed set minus this id (same helper request,
+  progress, Busy and SetDefaultAfterApply handling), and leave any ticks pending on Add or remove voices
+  as they were, still waiting for Apply changes. Make sure the Add page's ticks for OTHER voices aren't
+  reset by the refresh after this apply, and that the removed speaker shows unticked there.
 - After Apply, `SetDefaultAfterApply` already covers removing Windows' default voice (first voice
   becomes default). Select a neighbouring row afterwards.
 - Self-test: the menu item exists; in the `--apply` run, remove the VCTK speaker the test added through
