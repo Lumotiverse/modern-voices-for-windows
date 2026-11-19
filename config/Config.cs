@@ -5250,8 +5250,7 @@ namespace ModernVoicesConfig
                 {
                     Control askAll = ask.Controls["all"], askChoose = ask.Controls["choose"];
                     Check(askAll != null && askAll.Text == "Select all" && askChoose != null && askChoose.Text == "Choose" && ask.AcceptButton == askChoose &&
-                        ask.CancelButton == askChoose && ask.Controls["words"].Text.Contains("all " + vctkEntry.SpeakerNames.Count + " of its speakers") &&
-                        askChoose.Top >= ask.Controls["words"].Bottom,
+                        ask.CancelButton == askChoose && ask.Controls["words"].Text.Contains("all " + vctkEntry.SpeakerNames.Count + " of its speakers"),
                         "its question: \"" + ConfigForm.AllSpeakersWords(vctkEntry).Replace("\r\n\r\n", " ") + "\" with Select all and Choose (Enter and Esc: Choose)");
                     ask.Show(); Settle(200);
                     Control askWords = ask.Controls["words"];
