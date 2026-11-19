@@ -1,0 +1,604 @@
+{
+ "ca_ES-upc_ona-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-SA 3.0 ES",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://collectivat.cat/asr#upc-festcat-tts-corpora"
+ },
+ "cs_CZ-jirka-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "cy_GB-bu_tts-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY",
+  "trained": "lessac",
+  "speakers": 7,
+  "dataset": "https://huggingface.co/datasets/techiaith/bu-tts-cy-en"
+ },
+ "cy_GB-gwryw_gogleddol-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "not stated (see its dataset)",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://git.techiaith.bangor.ac.uk/data-porth-technolegau-iaith/corpws-talentau-llais"
+ },
+ "da_DK-talesyntese-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://www.nb.no/sprakbanken/en/resource-catalogue/oai-nb-no-sbr-21/"
+ },
+ "de_DE-mls-medium": {
+  "group": "Free, give credit",
+  "licence": "CC BY 4.0",
+  "trained": "nothing (from scratch)",
+  "speakers": 236,
+  "dataset": "http://openslr.org/94/"
+ },
+ "de_DE-thorsten-high": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/thorstenMueller/Thorsten-Voice"
+ },
+ "de_DE-thorsten-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/thorstenMueller/Thorsten-Voice"
+ },
+ "de_DE-thorsten_emotional-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "German Thorsten (itself from lessac)",
+  "speakers": 8,
+  "dataset": "https://github.com/thorstenMueller/Thorsten-Voice"
+ },
+ "en_GB-alan-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "not stated (see its dataset)",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/MycroftAI/mimic3-voices/blob/master/voices/en_UK/apope_low"
+ },
+ "en_GB-alba-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://datashare.ed.ac.uk/handle/10283/3270"
+ },
+ "en_GB-aru-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY 4.0",
+  "trained": "lessac",
+  "speakers": 12,
+  "dataset": "https://www.liverpool.ac.uk/architecture/research/acoustics-research-unit/speech-corpus/"
+ },
+ "en_GB-cori-high": {
+  "group": "Public domain",
+  "licence": "Public domain",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "https://librivox.org"
+ },
+ "en_GB-cori-medium": {
+  "group": "Public domain",
+  "licence": "Public domain",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "https://librivox.org"
+ },
+ "en_GB-jenny_dioco-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "not stated (see its dataset)",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/dioco-group/jenny-tts-dataset"
+ },
+ "en_GB-northern_english_male-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-SA 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "http://www.openslr.org/83/"
+ },
+ "en_GB-semaine-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-NC-SA 4.0",
+  "trained": "lessac",
+  "speakers": 4,
+  "dataset": "https://github.com/marytts/dfki-semaine-data"
+ },
+ "en_GB-vctk-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY 4.0",
+  "trained": "lessac",
+  "speakers": 109,
+  "dataset": "https://datashare.ed.ac.uk/handle/10283/3443"
+ },
+ "en_US-amy-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "not stated (see its dataset)",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/MycroftAI/mimic3-voices"
+ },
+ "en_US-arctic-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "not stated (see its dataset)",
+  "trained": "lessac",
+  "speakers": 18,
+  "dataset": "http://www.festvox.org/cmu_arctic/"
+ },
+ "en_US-bryce-medium": {
+  "group": "Public domain",
+  "licence": "Public domain",
+  "trained": "an unreleased voice its card does not name",
+  "speakers": 1,
+  "dataset": ""
+ },
+ "en_US-hfc_female-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-NC-SA 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://ast-astrec.nict.go.jp/en/release/hi-fi-captain/"
+ },
+ "en_US-hfc_male-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-NC-SA 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://ast-astrec.nict.go.jp/en/release/hi-fi-captain/"
+ },
+ "en_US-joe-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "en_US-john-medium": {
+  "group": "Public domain",
+  "licence": "Public domain",
+  "trained": "Kristin (public domain)",
+  "speakers": 1,
+  "dataset": "https://librivox.org"
+ },
+ "en_US-kristin-medium": {
+  "group": "Public domain",
+  "licence": "Public domain",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "https://librivox.org"
+ },
+ "en_US-kusal-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "not stated (see its dataset)",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/MycroftAI/mimic2"
+ },
+ "en_US-l2arctic-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-NC 4.0",
+  "trained": "lessac",
+  "speakers": 24,
+  "dataset": "https://www.isca-speech.org/archive/interspeech_2018/zhao18b_interspeech.html"
+ },
+ "en_US-lessac-high": {
+  "group": "Research only",
+  "licence": "Blizzard 2013 lessac licence (research only)",
+  "trained": "its own recordings (scratch)",
+  "speakers": 1,
+  "dataset": "https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/"
+ },
+ "en_US-lessac-medium": {
+  "group": "Research only",
+  "licence": "Blizzard 2013 lessac licence (research only)",
+  "trained": "its own recordings (scratch)",
+  "speakers": 1,
+  "dataset": "https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/"
+ },
+ "en_US-libritts-high": {
+  "group": "Free, give credit",
+  "licence": "CC BY 4.0",
+  "trained": "nothing (from scratch)",
+  "speakers": 904,
+  "dataset": "http://www.openslr.org/60/"
+ },
+ "en_US-libritts_r-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY 4.0",
+  "trained": "lessac",
+  "speakers": 904,
+  "dataset": "http://www.openslr.org/141/"
+ },
+ "en_US-ljspeech-high": {
+  "group": "Public domain",
+  "licence": "Public domain",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "https://keithito.com/LJ-Speech-Dataset/"
+ },
+ "en_US-ljspeech-medium": {
+  "group": "Public domain",
+  "licence": "Public domain",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "https://keithito.com/LJ-Speech-Dataset/"
+ },
+ "en_US-norman-medium": {
+  "group": "Public domain",
+  "licence": "Public domain",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "https://librivox.org"
+ },
+ "en_US-reza_ibrahim-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://huggingface.co/datasets/mah92/Hedayatfar-Persian-Quran-Audio-Dataset"
+ },
+ "en_US-ryan-high": {
+  "group": "Non-commercial",
+  "licence": "CC BY-NC-SA 4.0",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "https://www.kaggle.com/datasets/roholazandie/ryanspeech"
+ },
+ "en_US-ryan-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-NC-SA 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://www.kaggle.com/datasets/roholazandie/ryanspeech"
+ },
+ "en_US-sam-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "Apache 2.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/Sam-Accenture-Non-Binary-Voice/non-binary-voice-files"
+ },
+ "es_AR-daniela-high": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-SA 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://www.openslr.org/61/"
+ },
+ "es_ES-davefx-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "es_ES-sharvard-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY 3.0",
+  "trained": "lessac",
+  "speakers": 2,
+  "dataset": "https://datashare.ed.ac.uk/handle/10283/574"
+ },
+ "es_MX-ald-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "Unlicense",
+  "trained": "Spanish Davefx (itself from lessac)",
+  "speakers": 1,
+  "dataset": "https://huggingface.co/datasets/rmcpantoja/Ald_Mexican_Spanish_speech_dataset"
+ },
+ "es_MX-claude-high": {
+  "group": "Free, give credit",
+  "licence": "Apache 2.0",
+  "trained": "not stated on its card",
+  "speakers": 1,
+  "dataset": "https://huggingface.co/spaces/HirCoir/Piper-TTS-Spanish"
+ },
+ "fi_FI-harri-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://www.kaggle.com/bryanpark/finnish-single-speaker-speech-dataset"
+ },
+ "fr_FR-mls-medium": {
+  "group": "Free, give credit",
+  "licence": "CC BY 4.0",
+  "trained": "nothing (from scratch)",
+  "speakers": 125,
+  "dataset": "http://openslr.org/94/"
+ },
+ "fr_FR-siwis-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://datashare.is.ed.ac.uk/handle/10283/2353"
+ },
+ "fr_FR-tom-medium": {
+  "group": "Free, share alike",
+  "licence": "AGPLv3",
+  "trained": "not stated on its card",
+  "speakers": 1,
+  "dataset": "https://git.bksp.space/Tjiho/French-tts-model-piper"
+ },
+ "fr_FR-upmc-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-SA 4.0",
+  "trained": "lessac",
+  "speakers": 2,
+  "dataset": "https://github.com/marytts/upmc-pierre-data"
+ },
+ "hu_HU-anna-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "hu_HU-berta-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "hu_HU-imre-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "is_IS-bui-medium": {
+  "group": "Unclear",
+  "licence": "not stated (see its dataset)",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "http://hdl.handle.net/20.500.12537/104"
+ },
+ "is_IS-salka-medium": {
+  "group": "Unclear",
+  "licence": "not stated (see its dataset)",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "http://hdl.handle.net/20.500.12537/104"
+ },
+ "is_IS-steinn-medium": {
+  "group": "Unclear",
+  "licence": "not stated (see its dataset)",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "http://hdl.handle.net/20.500.12537/104"
+ },
+ "is_IS-ugla-medium": {
+  "group": "Unclear",
+  "licence": "not stated (see its dataset)",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "http://hdl.handle.net/20.500.12537/104"
+ },
+ "it_IT-paola-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "not stated (see its dataset)",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://huggingface.co/datasets/paolapersico1/Voice-Dataset-Italian"
+ },
+ "lb_LU-marylux-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-NC-SA 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/marytts/marylux-data"
+ },
+ "lv_LV-aivars-medium": {
+  "group": "Public domain",
+  "licence": "CC0",
+  "trained": "not stated on its card",
+  "speakers": 1,
+  "dataset": "https://huggingface.co/RaivisDejus/Piper-lv_LV-Aivars-medium"
+ },
+ "nl_BE-nathalie-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/rhasspy/dataset-voice-nathalie"
+ },
+ "nl_BE-rdh-medium": {
+  "group": "Public domain",
+  "licence": "CC0",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "https://github.com/r-dh/dutch-vl-tts"
+ },
+ "nl_NL-mls-medium": {
+  "group": "Free, give credit",
+  "licence": "CC BY 4.0",
+  "trained": "nothing (from scratch)",
+  "speakers": 52,
+  "dataset": "http://openslr.org/94/"
+ },
+ "nl_NL-pim-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "nl_NL-ronnie-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "no_NO-talesyntese-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://www.nb.no/sprakbanken/en/resource-catalogue/oai-nb-no-sbr-15/"
+ },
+ "pl_PL-darkman-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "pl_PL-gosia-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "pl_PL-mc_speech-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://www.kaggle.com/datasets/czyzi0/the-mc-speech-dataset"
+ },
+ "pt_BR-cadu-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "pt_BR-faber-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "pt_BR-jeff-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "pt_PT-tugão-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": ""
+ },
+ "ro_RO-mihai-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "ru_RU-denis-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "ru_RU-dmitri-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "ru_RU-irina-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "unknown",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/RHVoice/RHVoice"
+ },
+ "ru_RU-ruslan-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-NC-SA 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://ruslan-corpus.github.io/"
+ },
+ "sk_SK-lili-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "sl_SI-artur-medium": {
+  "group": "Free, give credit",
+  "licence": "CC BY 4.0",
+  "trained": "not stated on its card",
+  "speakers": 1,
+  "dataset": "https://huggingface.co/datasets/ppisljar/artur_studio_tts/"
+ },
+ "sr_RS-serbski_institut-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-NC-SA 4.0",
+  "trained": "lessac",
+  "speakers": 2,
+  "dataset": "https://github.com/marytts/serbski-institut-dsb-data"
+ },
+ "sv_SE-lisa-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "none given",
+  "trained": "Norwegian Talesyntese (itself from lessac)",
+  "speakers": 1,
+  "dataset": ""
+ },
+ "sv_SE-nst-medium": {
+  "group": "Public domain",
+  "licence": "CC0",
+  "trained": "nothing (from scratch)",
+  "speakers": 1,
+  "dataset": "https://www.nb.no/sprakbanken/en/resource-catalogue/oai-nb-no-sbr-17/"
+ },
+ "tr_TR-dfki-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC BY-NC-SA 4.0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/marytts/dfki-ot-data/"
+ },
+ "tr_TR-fahrettin-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "tr_TR-fettah-medium": {
+  "group": "Unsettled (lessac)",
+  "licence": "CC0",
+  "trained": "lessac",
+  "speakers": 1,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ },
+ "uk_UA-ukrainian_tts-medium": {
+  "group": "Public domain",
+  "licence": "CC0",
+  "trained": "nothing (from scratch)",
+  "speakers": 3,
+  "dataset": "https://github.com/NabuCasa/voice-datasets"
+ }
+}

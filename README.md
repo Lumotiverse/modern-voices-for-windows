@@ -207,7 +207,9 @@ person reading sentences aloud, until it could speak text it had never seen in t
 The recordings come from university research collections, public-domain audiobooks and volunteers;
 each voice's page in the [Piper voice collection](https://huggingface.co/rhasspy/piper-voices) says
 whose it is and under what licence. Modern Voices Config downloads the voices you tick from that
-collection (version 1.0.0). They are not part of this project and keep their own licences.
+collection (version 1.0.0). They are not part of this project and keep their own licences: see
+[VOICE-LICENCES.md](VOICE-LICENCES.md) for what each one allows (any of them is fine for use at home;
+it matters if you publish or sell speech made with a voice). The same shows in Config's Licence column.
 
 ## Open and transparent
 

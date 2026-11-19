@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.13.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.14.0")]
 
 namespace ModernVoicesConfig
 {
@@ -172,6 +172,124 @@ namespace ModernVoicesConfig
         public Dictionary<string, int> SpeakerIds = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         public bool Several { get { return SpeakerNames.Count > 1; } }
         public string FirstSpeaker { get { return SpeakerNames.Count > 0 ? SpeakerNames[0] : null; } }
+    }
+
+    // What each voice's licence allows, grouped (VOICE-LICENCES.md on GitHub explains the groups): the
+    // group, the licence its page in the Piper collection gives, and what it was trained from.
+    public static class VoiceLicences
+    {
+        // ---- voice licences (made by tools/dev/make_licences.py from tools/voice-licences.json: edit there)
+        public static readonly string[] Groups = { "Public domain", "Free, give credit", "Free, share alike", "Non-commercial", "Unsettled (lessac)", "Research only", "Unclear" };
+        static readonly Dictionary<string, string[]> Table = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase) {
+            { "ca_ES-upc_ona-medium", new string[] { "Unsettled (lessac)", "CC BY-SA 3.0 ES", "lessac" } },
+            { "cs_CZ-jirka-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "cy_GB-bu_tts-medium", new string[] { "Unsettled (lessac)", "CC BY", "lessac" } },
+            { "cy_GB-gwryw_gogleddol-medium", new string[] { "Unsettled (lessac)", "not stated (see its dataset)", "lessac" } },
+            { "da_DK-talesyntese-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "de_DE-mls-medium", new string[] { "Free, give credit", "CC BY 4.0", "nothing (from scratch)" } },
+            { "de_DE-thorsten-high", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "de_DE-thorsten-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "de_DE-thorsten_emotional-medium", new string[] { "Unsettled (lessac)", "CC0", "German Thorsten (itself from lessac)" } },
+            { "en_GB-alan-medium", new string[] { "Unsettled (lessac)", "not stated (see its dataset)", "lessac" } },
+            { "en_GB-alba-medium", new string[] { "Unsettled (lessac)", "CC BY 4.0", "lessac" } },
+            { "en_GB-aru-medium", new string[] { "Unsettled (lessac)", "CC BY 4.0", "lessac" } },
+            { "en_GB-cori-high", new string[] { "Public domain", "Public domain", "nothing (from scratch)" } },
+            { "en_GB-cori-medium", new string[] { "Public domain", "Public domain", "nothing (from scratch)" } },
+            { "en_GB-jenny_dioco-medium", new string[] { "Unsettled (lessac)", "not stated (see its dataset)", "lessac" } },
+            { "en_GB-northern_english_male-medium", new string[] { "Unsettled (lessac)", "CC BY-SA 4.0", "lessac" } },
+            { "en_GB-semaine-medium", new string[] { "Unsettled (lessac)", "CC BY-NC-SA 4.0", "lessac" } },
+            { "en_GB-vctk-medium", new string[] { "Unsettled (lessac)", "CC BY 4.0", "lessac" } },
+            { "en_US-amy-medium", new string[] { "Unsettled (lessac)", "not stated (see its dataset)", "lessac" } },
+            { "en_US-arctic-medium", new string[] { "Unsettled (lessac)", "not stated (see its dataset)", "lessac" } },
+            { "en_US-bryce-medium", new string[] { "Public domain", "Public domain", "an unreleased voice its card does not name" } },
+            { "en_US-hfc_female-medium", new string[] { "Unsettled (lessac)", "CC BY-NC-SA 4.0", "lessac" } },
+            { "en_US-hfc_male-medium", new string[] { "Unsettled (lessac)", "CC BY-NC-SA 4.0", "lessac" } },
+            { "en_US-joe-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "en_US-john-medium", new string[] { "Public domain", "Public domain", "Kristin (public domain)" } },
+            { "en_US-kristin-medium", new string[] { "Public domain", "Public domain", "nothing (from scratch)" } },
+            { "en_US-kusal-medium", new string[] { "Unsettled (lessac)", "not stated (see its dataset)", "lessac" } },
+            { "en_US-l2arctic-medium", new string[] { "Unsettled (lessac)", "CC BY-NC 4.0", "lessac" } },
+            { "en_US-lessac-high", new string[] { "Research only", "Blizzard 2013 lessac licence (research only)", "its own recordings (scratch)" } },
+            { "en_US-lessac-medium", new string[] { "Research only", "Blizzard 2013 lessac licence (research only)", "its own recordings (scratch)" } },
+            { "en_US-libritts-high", new string[] { "Free, give credit", "CC BY 4.0", "nothing (from scratch)" } },
+            { "en_US-libritts_r-medium", new string[] { "Unsettled (lessac)", "CC BY 4.0", "lessac" } },
+            { "en_US-ljspeech-high", new string[] { "Public domain", "Public domain", "nothing (from scratch)" } },
+            { "en_US-ljspeech-medium", new string[] { "Public domain", "Public domain", "nothing (from scratch)" } },
+            { "en_US-norman-medium", new string[] { "Public domain", "Public domain", "nothing (from scratch)" } },
+            { "en_US-reza_ibrahim-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "en_US-ryan-high", new string[] { "Non-commercial", "CC BY-NC-SA 4.0", "nothing (from scratch)" } },
+            { "en_US-ryan-medium", new string[] { "Unsettled (lessac)", "CC BY-NC-SA 4.0", "lessac" } },
+            { "en_US-sam-medium", new string[] { "Unsettled (lessac)", "Apache 2.0", "lessac" } },
+            { "es_AR-daniela-high", new string[] { "Unsettled (lessac)", "CC BY-SA 4.0", "lessac" } },
+            { "es_ES-davefx-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "es_ES-sharvard-medium", new string[] { "Unsettled (lessac)", "CC BY 3.0", "lessac" } },
+            { "es_MX-ald-medium", new string[] { "Unsettled (lessac)", "Unlicense", "Spanish Davefx (itself from lessac)" } },
+            { "es_MX-claude-high", new string[] { "Free, give credit", "Apache 2.0", "not stated on its card" } },
+            { "fi_FI-harri-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "fr_FR-mls-medium", new string[] { "Free, give credit", "CC BY 4.0", "nothing (from scratch)" } },
+            { "fr_FR-siwis-medium", new string[] { "Unsettled (lessac)", "CC BY 4.0", "lessac" } },
+            { "fr_FR-tom-medium", new string[] { "Free, share alike", "AGPLv3", "not stated on its card" } },
+            { "fr_FR-upmc-medium", new string[] { "Unsettled (lessac)", "CC BY-SA 4.0", "lessac" } },
+            { "hu_HU-anna-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "hu_HU-berta-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "hu_HU-imre-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "is_IS-bui-medium", new string[] { "Unclear", "not stated (see its dataset)", "nothing (from scratch)" } },
+            { "is_IS-salka-medium", new string[] { "Unclear", "not stated (see its dataset)", "nothing (from scratch)" } },
+            { "is_IS-steinn-medium", new string[] { "Unclear", "not stated (see its dataset)", "nothing (from scratch)" } },
+            { "is_IS-ugla-medium", new string[] { "Unclear", "not stated (see its dataset)", "nothing (from scratch)" } },
+            { "it_IT-paola-medium", new string[] { "Unsettled (lessac)", "not stated (see its dataset)", "lessac" } },
+            { "lb_LU-marylux-medium", new string[] { "Unsettled (lessac)", "CC BY-NC-SA 4.0", "lessac" } },
+            { "lv_LV-aivars-medium", new string[] { "Public domain", "CC0", "not stated on its card" } },
+            { "nl_BE-nathalie-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "nl_BE-rdh-medium", new string[] { "Public domain", "CC0", "nothing (from scratch)" } },
+            { "nl_NL-mls-medium", new string[] { "Free, give credit", "CC BY 4.0", "nothing (from scratch)" } },
+            { "nl_NL-pim-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "nl_NL-ronnie-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "no_NO-talesyntese-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "pl_PL-darkman-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "pl_PL-gosia-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "pl_PL-mc_speech-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "pt_BR-cadu-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "pt_BR-faber-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "pt_BR-jeff-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "pt_PT-tug\u00e3o-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "ro_RO-mihai-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "ru_RU-denis-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "ru_RU-dmitri-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "ru_RU-irina-medium", new string[] { "Unsettled (lessac)", "unknown", "lessac" } },
+            { "ru_RU-ruslan-medium", new string[] { "Unsettled (lessac)", "CC BY-NC-SA 4.0", "lessac" } },
+            { "sk_SK-lili-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "sl_SI-artur-medium", new string[] { "Free, give credit", "CC BY 4.0", "not stated on its card" } },
+            { "sr_RS-serbski_institut-medium", new string[] { "Unsettled (lessac)", "CC BY-NC-SA 4.0", "lessac" } },
+            { "sv_SE-lisa-medium", new string[] { "Unsettled (lessac)", "none given", "Norwegian Talesyntese (itself from lessac)" } },
+            { "sv_SE-nst-medium", new string[] { "Public domain", "CC0", "nothing (from scratch)" } },
+            { "tr_TR-dfki-medium", new string[] { "Unsettled (lessac)", "CC BY-NC-SA 4.0", "lessac" } },
+            { "tr_TR-fahrettin-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "tr_TR-fettah-medium", new string[] { "Unsettled (lessac)", "CC0", "lessac" } },
+            { "uk_UA-ukrainian_tts-medium", new string[] { "Public domain", "CC0", "nothing (from scratch)" } },
+        };
+        // ---- end of voice licences
+
+        // A voice's group ("" when not in the table: a voice the table was made without).
+        public static string Group(string key)
+        {
+            string[] row;
+            return key != null && Table.TryGetValue(key, out row) ? row[0] : "";
+        }
+        // Where a group comes in the column's sorting (as the groups are listed; unknown last).
+        public static int Rank(string key)
+        {
+            int at = Array.IndexOf(Groups, Group(key));
+            return at < 0 ? Groups.Length : at;
+        }
+        // What the pointer over a voice shows: its licence and what it was trained from.
+        public static string Tip(string key)
+        {
+            string[] row;
+            if (key == null || !Table.TryGetValue(key, out row)) { return "Licence: see the voice's page in the Piper collection."; }
+            return "Licence on its page: " + row[1] + "\r\nTrained from: " + row[2] + "\r\nMore: VOICE-LICENCES.md on the program's GitHub page.";
+        }
+        public static int Count { get { return Table.Count; } }
     }
 
     class QuickClient : WebClient
@@ -2315,6 +2433,7 @@ namespace ModernVoicesConfig
                 case 2: return v.Accent;
                 case 3: return v.Quality == "high" ? 1 : 0;      // (medium, then high)
                 case 4: return v.SizeMb;
+                case 5: return VoiceLicences.Rank(v.Key);      // (as the groups are listed: public domain first)
                 default: return v.Key;
             }
         }
@@ -2863,7 +2982,9 @@ namespace ModernVoicesConfig
             AddList.Columns.Add("Accent or language", Px(150));
             AddList.Columns.Add("Quality", Px(75));
             AddList.Columns.Add("Download", Px(90));
+            AddList.Columns.Add("Licence", Px(150));
             AddList.Columns.Add("Catalogue key", Px(220));
+            AddList.ShowItemToolTips = true;      // (a voice's licence and what it was trained from)
             Dictionary<string, List<string>> speakersOf = SpeakersInstalled(null);
             foreach (KeyValuePair<string, List<string>> had in speakersOf)
             {
@@ -2876,7 +2997,9 @@ namespace ModernVoicesConfig
                 item.SubItems.Add(v.Accent);
                 item.SubItems.Add(v.Quality);
                 item.SubItems.Add(v.SizeMb + " MB");
+                item.SubItems.Add(VoiceLicences.Group(v.Key));
                 item.SubItems.Add(v.Key);
+                item.ToolTipText = VoiceLicences.Tip(v.Key);
                 item.Tag = v;
                 item.Checked = speakersOf.ContainsKey(v.Key);
                 if (item.Checked) { item.Font = listBold; }
@@ -2885,7 +3008,7 @@ namespace ModernVoicesConfig
             // It sorts by the column whose heading is clicked, as the Voice manager's does (kept for next time).
             for (int i = 0; i < VoiceItems.Count; i++) { addOrder[VoiceItems[i]] = i; }
             AddSorter = new RowSorter();
-            AddSorter.Names = new string[] { "Voice", "Speakers", "Accent or language", "Quality", "Download", "Catalogue key" };
+            AddSorter.Names = new string[] { "Voice", "Speakers", "Accent or language", "Quality", "Download", "Licence", "Catalogue key" };
             AddSorter.Key = AddKey;
             AddSorter.Order = delegate(ListViewItem item) { int at; return addOrder.TryGetValue(item, out at) ? at : int.MaxValue; };
             AddSorter.Saved = ListLayout.Get("AddSort");
@@ -5816,6 +5939,25 @@ namespace ModernVoicesConfig
 
             // Add or remove voices: Speakers is the second column; Play sample stops a sample playing.
             Check(ui.AddList.Columns[1].Text == "Speakers" && ui.AddList.Columns[2].Text == "Accent or language", "Speakers is the second column, before the accent");
+            // The Licence column: every voice offered has a group (from VOICE-LICENCES.md's table), and a tooltip.
+            {
+                int licenceColumn = -1;
+                for (int c = 0; c < ui.AddList.Columns.Count; c++) { if (ui.AddList.Columns[c].Text == "Licence") { licenceColumn = c; } }
+                List<string> without = new List<string>();
+                int grouped = 0;
+                string ljTip = "";
+                foreach (ListViewItem item in ui.VoiceItems)
+                {
+                    Entry v = (Entry)item.Tag;
+                    string shown = licenceColumn < 0 ? "" : item.SubItems[licenceColumn].Text;
+                    if (shown.Length == 0) { without.Add(v.Key); } else { grouped++; }
+                    if (v.Key == "en_US-ljspeech-high") { ljTip = item.ToolTipText + " [" + shown + "]"; }
+                }
+                Note("licences: " + grouped + " voices grouped, " + VoiceLicences.Count + " in the table; tooltip of LJSpeech high: " + ljTip.Replace("\r\n", " | "));
+                Check(licenceColumn == 5 && ui.AddList.ShowItemToolTips && without.Count == 0 && grouped > 0 && ljTip.Contains("Public domain") &&
+                    VoiceLicences.Group("en_GB-vctk-medium") == "Unsettled (lessac)",
+                    "the Licence column is the sixth, and every voice listed has a group (" + grouped + "; without one: " + string.Join(", ", without.ToArray()) + ")");
+            }
             {
                 string fakeSample = Path.Combine(Path.GetTempPath(), "modernvoices_selftest_silence.wav");
                 try

@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.18.13
+Modern Voices for Windows 0.18.14
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -45,6 +45,8 @@ Install
    box to install it. Each ticked speaker becomes a voice. Ticking such a voice's own box ticks all
    its speakers (unticking it, none). With more than two speakers it asks first, as each speaker
    becomes a voice of its own: Select all, or Choose (recommended) to tick the ones you want below. A voice with one speaker lists that one: its box is the voice's own tick.
+   The Licence column says what a voice's licence allows (hover over a voice for more; see "Credits
+   and licences" at the end).
    "Only show selected speakers" (beside Play sample, off each time the window opens) lists only
    the ticked speakers of the voice selected, to find the ones installed.
    "Show" above the list narrows it (All voices, English only, American only, British only);
@@ -349,5 +351,7 @@ with sherpa-onnx, ONNX Runtime and espeak-ng built in. GPL-3.0-or-later: see LIC
 THIRD-PARTY-NOTICES.md.
 
 Voices: Piper (https://huggingface.co/rhasspy/piper-voices). Each voice has its own licence and
-dataset, given in its MODEL_CARD there. Many are CC BY or CC BY-SA (credit the dataset). The models
-are installed as published; the loudness is applied by the engine as it speaks.
+dataset, given in its MODEL_CARD there. What each allows is grouped in the Licence column of "Add or
+remove voices" (hover over a voice for its licence and what it was trained from) and explained in
+VOICE-LICENCES.md on the program's GitHub page: any of them is fine for use at home; it matters if you
+publish or sell speech made with a voice. The models are installed as published; the loudness is applied by the engine as it speaks.

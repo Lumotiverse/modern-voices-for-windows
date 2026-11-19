@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.13 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.14 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -29,6 +29,34 @@ What changed across them, newest first, is in the sections below; the main thing
   to 2.5x; output volume 50% on a new install.
 Ideas still on the shelf: see "Ideas" (the pronunciation ignore list is dropped: a rule with "Say it as"
 empty does it).
+
+## 0.18.14 (19 Nov 2026), delivered, not yet confirmed by him: voice licences
+
+Built on Opus 5.5. He asked for a Licence column and for the licence grouping to be on GitHub.
+1. **Data:** `tools/voice-licences.json`, one entry per voice Config offers (medium/high, English and
+   `Catalogue.Offered`; 86 at v1.0.0): group, licence as its MODEL_CARD gives it, what it was trained
+   from, speakers, dataset URL. Made from the cards themselves: `.github/workflows/licences.yml`
+   (workflow_dispatch only; this container can't reach Hugging Face, the runner can) runs
+   `tools/dev/fetch_licences.py`, which prints every card's lines as JSON between marker lines in the
+   log; dispatch it through the API (POST .../actions/workflows/licences.yml/dispatches with a
+   Content-Type: application/json header), read the job log, classify. A third-party summary (Hugging
+   Face PYTHAI/voaice) was used only for a first look: it is of the NEWER collection and differs.
+2. **Groups** (in sorting order): Public domain, Free, give credit, Free, share alike, Non-commercial,
+   Unsettled (lessac), Research only, Unclear. Anything fine-tuned from lessac, directly or through
+   another voice (Thorsten Emotional, Ald, Lisa), is "Unsettled (lessac)" whatever its own licence: the
+   lessac recordings' Blizzard 2013 licence is research only, no redistribution; Piper's maintainer
+   leaves it to users (piper discussion #271). Not checked beyond the card: the training of Claude
+   (es_MX), Tom, Aivars, Artur (cards point to a URL), the Icelandic dataset's licence; Artur's
+   dataset page says CC BY 3.0, its card CC BY 4.0. Said so on the page.
+3. **`tools/dev/make_licences.py`** writes `VOICE-LICENCES.md` (linked from README.md and kit/README.txt)
+   and the `VoiceLicences` table in Config.cs between marker comments. Edit the JSON, run it, never
+   edit the table by hand.
+4. **Config:** Add or remove voices has a Licence column (sixth, before Catalogue key; sorts by group
+   order, `VoiceLicences.Rank`); each row's tooltip (`ShowItemToolTips`) gives the licence and what it
+   was trained from. A voice not in the table shows blank. Self-test: column 5, every listed voice
+   grouped, LJSpeech high's tooltip says Public domain.
+5. For his language MP3s: only public-domain voices (LJSpeech, Cori, Kristin, Norman, ...); many
+   languages have no clean voice at all (told him).
 
 ## 0.18.13 (19 Nov 2026), delivered, not yet confirmed by him: per-speaker settings (job B)
 
@@ -349,7 +377,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.13.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.14.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 
