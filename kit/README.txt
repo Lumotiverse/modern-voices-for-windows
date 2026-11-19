@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.18.10
+Modern Voices for Windows 0.18.11
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -44,8 +44,7 @@ Install
    speakers in name order below, and clicking a speaker's name plays that speaker; tick a speaker's
    box to install it. Each ticked speaker becomes a voice. Ticking such a voice's own box ticks all
    its speakers (unticking it, none). With more than two speakers it asks first, as each speaker
-   becomes a voice in every program's list: Select all, or Choose (recommended) to tick the ones you
-   want below. A voice with one speaker lists that one: its box is the voice's own tick.
+   becomes a voice of its own: Select all, or Choose (recommended) to tick the ones you want below. A voice with one speaker lists that one: its box is the voice's own tick.
    "Only show selected speakers" (beside Play sample, off each time the window opens) lists only
    the ticked speakers of the voice selected, to find the ones installed.
    "Show" above the list narrows it (All voices, English only, American only, British only);

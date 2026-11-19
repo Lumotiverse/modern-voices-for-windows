@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.10 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.11 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -11,12 +11,33 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
-## State for a new chat (18 Nov 2026, evening)
+## State for a new chat (19 Nov 2026, morning)
 
-Nothing he asked for is outstanding. 0.18.2 to 0.18.10 were all built on Opus 5.5 in one chat and
-delivered; he had tried 0.18.2 (hit the crash fixed in 0.18.3), not yet said anything about 0.18.3/0.18.4.
-Start by asking how 0.18.10 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
-rule with "Say it as" empty does it; comma pause for a rule-made comma would be engine work, Fable).
+Nothing he asked for is outstanding. 0.18.2 to 0.18.11 were all built on Opus 5.5 in one long chat and
+delivered (each zip sent); he has been trying them as they came (he hit 0.18.2's start-up crash, fixed in
+0.18.3, and corrected 0.18.9's Amplify default in 0.18.10). Start by asking how 0.18.11 went.
+What changed across them, newest first, is in the sections below; the main things a new chat should know:
+- Voice manager list: Accent and Gender columns, sorting by heading (both lists), columns that can be
+  dragged (all kept in HKCU), a right-click menu; gender is written to Windows by the elevated helper.
+- Add or remove voices: a voice's name plays its sample (one speaker); ticking a voice of several speakers
+  ticks them all (more than two: it asks, "Select all" / "Choose").
+- Layout: the section outlines are centred on the page; the default voice box, the preview box, the bottom
+  message and (0.18.11) the first tab all line up with things below them; the bottom message fades.
+- Loudness: the per-voice slider is "Amplify" ("off (default)" at 0, MAX at 100, the default 100); Boost up
+  to 2.5x; output volume 50% on a new install.
+Ideas still on the shelf: see "Ideas" (the pronunciation ignore list is dropped: a rule with "Say it as"
+empty does it).
+
+## 0.18.11 (19 Nov 2026), delivered, not yet confirmed by him
+
+Built on Opus 5.5:
+1. The many-speakers question is shorter (his words): "Ticking VCTK (British) will install all 109 voices."
+   then, after an empty line, "It is recommended to only select individual voices" / "from the list
+   below..." (his line break kept). Buttons as before (Select all / Choose).
+2. The tabs: the first tab's left edge is the lists' left edge (`TabFlow`'s left margin, worked out in
+   `AlignStatus` on Shown and Resize from where InstalledList and TabButtons[0] are).
+3. "Preview says:" half-way between the Preview button and the preview box: the room there was shared out
+   equally (`previewGap`; the label's own top and bottom margins 0). Self-test checks both, within 1 px.
 
 ## 0.18.10 (19 Nov 2026), delivered, not yet confirmed by him
 
@@ -177,7 +198,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.10.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.11.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 

@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.10.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.11.0")]
 
 namespace ModernVoicesConfig
 {
@@ -1483,7 +1483,9 @@ namespace ModernVoicesConfig
         public Button ReaderButton, PlayButton;
         public Label MuteIcon, AboutButton;
         public Label SavedNote;
-        public FlowLayoutPanel DefaultBox;      // Windows' default voice, in its box
+        public FlowLayoutPanel DefaultBox;
+        public Label PreviewLabel;
+        int previewGap;      // Windows' default voice, in its box
         public TableLayoutPanel SoundFrame, PauseFrame, GlobalGrid, AdvancedGrid;      // the framed sections, and the Speed tab's sliders
         public TableLayoutPanel OutLine;
         public int NameInset;
@@ -1511,6 +1513,7 @@ namespace ModernVoicesConfig
         // Its controls.
         public List<Panel> Pages = new List<Panel>();
         public List<Button> TabButtons = new List<Button>();
+        FlowLayoutPanel TabFlow;
         Panel pageHost;
         TableLayoutPanel tabStrip, gapGrid, addGrid;
         public Label ThemeButton, StatusLabel, DefaultLabel, SoundLabel, SizeLabel, WarnLabel, SpeakerLabel, RateWarn, SpeedValue;
@@ -1858,6 +1861,7 @@ namespace ModernVoicesConfig
             Controls.Add(tabStrip);
             FlowLayoutPanel tabFlow = Flow();
             tabFlow.WrapContents = false;
+            TabFlow = tabFlow;      // (its left: the lists' left edge, AlignEdges)
             tabStrip.Controls.Add(tabFlow, 0, 0);
             string[] titles = { "Voice manager", "Speed and pauses", "Pronunciation", "Add or remove voices" };
             for (int i = 0; i < titles.Length; i++)
@@ -2072,11 +2076,19 @@ namespace ModernVoicesConfig
         }
         // (For the build's test: the message's time to stay, made short.)
         public void StatusStayFor(int milliseconds) { statusStay = milliseconds; statusShownAt = DateTime.UtcNow; statusFade.Start(); }
-        // The message's words start on the line of the Voice manager's frames.
+        // The message's words start on the line of the Voice manager's frames; the first tab's left edge is
+        // the lists' left edge.
         public void AlignStatus()
         {
             try
             {
+                if (TabFlow != null && InstalledList != null && TabButtons.Count > 0)
+                {
+                    int listX = PointToClient(InstalledList.PointToScreen(Point.Empty)).X;
+                    int tabX = PointToClient(TabButtons[0].PointToScreen(Point.Empty)).X;
+                    int shift = TabFlow.Margin.Left + listX - tabX;
+                    if (shift >= 0 && shift != TabFlow.Margin.Left) { TabFlow.Margin = new Padding(shift, TabFlow.Margin.Top, TabFlow.Margin.Right, TabFlow.Margin.Bottom); }
+                }
                 Control bar = StatusLabel.Parent;
                 if (bar == null || SoundFrame == null || SoundFrame.Parent == null) { return; }
                 int frameX = PointToClient(Pages[0].PointToScreen(Point.Empty)).X + SoundFrame.Parent.Padding.Left + SoundFrame.Margin.Left;
@@ -2412,8 +2424,13 @@ namespace ModernVoicesConfig
             PreviewBox.MinimumSize = new Size(0, fourLines);
             PreviewBox.Height = fourLines;
             previewLine.Controls.Add(previewLabel, 0, 0);
-            // Twice the gap there was between it and the buttons above.
-            previewLine.Margin = new Padding(previewLine.Margin.Left, previewLine.Margin.Top + Px(9), previewLine.Margin.Right, 0);
+            // The label half-way between the buttons above and the box below: the room there was (0.18.8),
+            // shared out the same above it as below.
+            int room = PreviewButton.Margin.Bottom + Px(9) + 3 + 3 + Px(4);
+            previewGap = room / 2;
+            previewLabel.Margin = new Padding(previewLabel.Margin.Left, 0, previewLabel.Margin.Right, 0);
+            previewLine.Margin = new Padding(previewLine.Margin.Left, previewGap - PreviewButton.Margin.Bottom, previewLine.Margin.Right, 0);
+            PreviewLabel = previewLabel;
             Row(page, previewLine);
             Row(page, PreviewBox);
             // (The sliders' names start where the box did, beside the label, up to 0.18.7: the same column,
@@ -2538,7 +2555,7 @@ namespace ModernVoicesConfig
             // slider move with it (the slider still ends where the sliders below end).
             DefaultBox.Margin = new Padding(PauseFrame.Margin.Left, 0, DefaultBox.Margin.Right, 0);
             // The preview box too, both sides on the frames' lines.
-            PreviewBox.Margin = new Padding(PauseFrame.Margin.Left, Px(4), PauseFrame.Margin.Right, PreviewBox.Margin.Bottom);
+            PreviewBox.Margin = new Padding(PauseFrame.Margin.Left, room - previewGap, PauseFrame.Margin.Right, PreviewBox.Margin.Bottom);
             Row(PauseFrame, OwnBox);
             Row(PauseFrame, gapGrid);
             Row(page, PauseFrame);
@@ -4397,10 +4414,8 @@ namespace ModernVoicesConfig
         }
         public static string AllSpeakersWords(Entry v)
         {
-            int n = v.SpeakerNames.Count;
-            return "Ticking " + v.Display + " (" + v.Accent + ") installs all " + n + " of its speakers, each as a voice of its own: " + n +
-                " more voices in every program's list, and programs can be slow to open with so many.\r\n\r\n" +
-                "We recommend choosing the speakers you want from the list below instead.";
+            return "Ticking " + v.Display + " (" + v.Accent + ") will install all " + v.SpeakerNames.Count + " voices.\r\n\r\n" +
+                "It is recommended to only select individual voices\r\nfrom the list below...";
         }
         public Form AllSpeakersWindow(Entry v)
         {
@@ -5325,7 +5340,7 @@ namespace ModernVoicesConfig
                 {
                     Control askAll = ask.Controls["all"], askChoose = ask.Controls["choose"];
                     Check(askAll != null && askAll.Text == "Select all" && askChoose != null && askChoose.Text == "Choose" && ask.AcceptButton == askChoose &&
-                        ask.CancelButton == askChoose && ask.Controls["words"].Text.Contains("all " + vctkEntry.SpeakerNames.Count + " of its speakers"),
+                        ask.CancelButton == askChoose && ask.Controls["words"].Text.Contains("all " + vctkEntry.SpeakerNames.Count + " voices."),
                         "its question: \"" + ConfigForm.AllSpeakersWords(vctkEntry).Replace("\r\n\r\n", " ") + "\" with Select all and Choose (Enter and Esc: Choose)");
                     ask.Show(); Settle(200);
                     Control askWords = ask.Controls["words"];
@@ -5513,6 +5528,14 @@ namespace ModernVoicesConfig
                 ui.StatusLabel.Text = statusWas;
                 Check(Math.Abs(statusWords - frameLeft) <= 1 && faded, "the message at the bottom starts on the frames' line (" + statusWords + ", " + frameLeft +
                     "), and fades away (halfway: " + halfway.Name + ") and goes (" + faded + ")");
+                // "Preview says:" half-way between the Preview button and the box; the first tab over the list.
+                int buttonBottom = ui.PreviewButton.PointToScreen(new Point(0, ui.PreviewButton.Height)).Y;
+                int labelTop = ui.PreviewLabel.PointToScreen(Point.Empty).Y, labelBottom = labelTop + ui.PreviewLabel.Height;
+                int boxTop = ui.PreviewBox.PointToScreen(Point.Empty).Y;
+                int tabLeft = ui.TabButtons[0].PointToScreen(Point.Empty).X, listLeft = ui.InstalledList.PointToScreen(Point.Empty).X;
+                Check(Math.Abs((labelTop - buttonBottom) - (boxTop - labelBottom)) <= 1 && tabLeft == listLeft,
+                    "\"Preview says:\" is half-way between the Preview button and the box (" + (labelTop - buttonBottom) + " and " + (boxTop - labelBottom) +
+                    " px); the first tab starts where the list does (" + tabLeft + ", " + listLeft + ")");
                 // (Since 0.18.8 the preview box is under "Preview says:", its sides on the frames' lines, four lines tall.)
                 int boxRight = boxLeft + ui.PreviewBox.Width;
                 Check(Math.Abs(boxLeft - frameLeft) <= 1 && Math.Abs(boxRight - frameRight) <= 1 && ui.PreviewBox.ClientSize.Height >= ui.PreviewBox.Font.Height * 4,
