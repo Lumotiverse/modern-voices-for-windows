@@ -47,8 +47,12 @@ CC BY or Apache 2.0, and not trained from another voice with stricter terms. Fre
 | [MLS](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/nl/nl_NL/mls/medium/MODEL_CARD) (52 speakers) | Dutch (nl_NL) | medium | CC BY 4.0 | nothing (from scratch) |
 | [MLS](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/fr/fr_FR/mls/medium/MODEL_CARD) (125 speakers) | French (fr_FR) | medium | CC BY 4.0 | nothing (from scratch) |
 | [MLS](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/de/de_DE/mls/medium/MODEL_CARD) (236 speakers) | German (de_DE) | medium | CC BY 4.0 | nothing (from scratch) |
+| [Bui](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/is/is_IS/bui/medium/MODEL_CARD) | Icelandic (is_IS) | medium | CC BY 4.0 (its dataset, Talrómur 1; the card says "See URL") | nothing (from scratch) |
+| [Salka](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/is/is_IS/salka/medium/MODEL_CARD) | Icelandic (is_IS) | medium | CC BY 4.0 (its dataset, Talrómur 1; the card says "See URL") | nothing (from scratch) |
+| [Steinn](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/is/is_IS/steinn/medium/MODEL_CARD) | Icelandic (is_IS) | medium | CC BY 4.0 (its dataset, Talrómur 1; the card says "See URL") | nothing (from scratch) |
+| [Ugla](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/is/is_IS/ugla/medium/MODEL_CARD) | Icelandic (is_IS) | medium | CC BY 4.0 (its dataset, Talrómur 1; the card says "See URL") | nothing (from scratch) |
 | [Artur](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/sl/sl_SI/artur/medium/MODEL_CARD) | Slovenian (sl_SI) | medium | CC BY 4.0 | not stated on its card |
-| [Claude](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/es/es_MX/claude/high/MODEL_CARD) | Spanish (es_MX) | high | Apache 2.0 | not stated on its card |
+| [Claude](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/es/es_MX/claude/high/MODEL_CARD) | Spanish (es_MX) | high | Apache 2.0 | not stated (its card and its maker's page do not say) |
 
 ## Free to use, share alike
 
@@ -56,7 +60,7 @@ A "share alike" or copyleft licence (here, AGPLv3). Free to use with credit, but
 
 | Voice | Language | Quality | Licence on its page | Trained from |
 |---|---|---|---|---|
-| [Tom](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/fr/fr_FR/tom/medium/MODEL_CARD) | French (fr_FR) | medium | AGPLv3 | not stated on its card |
+| [Tom](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/fr/fr_FR/tom/medium/MODEL_CARD) | French (fr_FR) | medium | AGPLv3 | not stated (its card and its maker's page do not say) |
 
 ## Non-commercial only
 
@@ -142,17 +146,6 @@ Lessac itself: the Blizzard Challenge 2013 licence allows research and explorati
 | [Lessac](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/en/en_US/lessac/high/MODEL_CARD) | English (en_US) | high | Blizzard 2013 lessac licence (research only) | its own recordings (scratch) |
 | [Lessac](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/en/en_US/lessac/medium/MODEL_CARD) | English (en_US) | medium | Blizzard 2013 lessac licence (research only) | its own recordings (scratch) |
 
-## Unclear
-
-The voice's page does not give a licence, only a link to its dataset. Check there before using its speech for anything beyond personal use.
-
-| Voice | Language | Quality | Licence on its page | Trained from |
-|---|---|---|---|---|
-| [Bui](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/is/is_IS/bui/medium/MODEL_CARD) | Icelandic (is_IS) | medium | not stated (see its dataset) | nothing (from scratch) |
-| [Salka](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/is/is_IS/salka/medium/MODEL_CARD) | Icelandic (is_IS) | medium | not stated (see its dataset) | nothing (from scratch) |
-| [Steinn](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/is/is_IS/steinn/medium/MODEL_CARD) | Icelandic (is_IS) | medium | not stated (see its dataset) | nothing (from scratch) |
-| [Ugla](https://huggingface.co/rhasspy/piper-voices/blob/v1.0.0/is/is_IS/ugla/medium/MODEL_CARD) | Icelandic (is_IS) | medium | not stated (see its dataset) | nothing (from scratch) |
-
 ## How this list was made
 
 `tools/dev/fetch_licences.py`, run by the *voice licences* workflow on GitHub, reads every
@@ -160,6 +153,8 @@ voice's MODEL_CARD at version 1.0.0. `tools/voice-licences.json` holds the resul
 hand, and `tools/dev/make_licences.py` writes this page and the column in Config from it.
 Corrections are welcome as issues or pull requests.
 
-Not yet checked beyond the card: what four voices were trained from, where the card only points
-to a web page (Claude, Spanish; Tom, French; Aivars, Latvian; Artur, Slovenian); and the
-Icelandic dataset's licence. Artur's card says CC BY 4.0 while its dataset's page says CC BY 3.0.
+Checked beyond the card: the four Icelandic voices' cards give no licence, only a link to their
+dataset, Talrómur 1, which is released under CC BY 4.0. Not known: what four voices were trained
+from (Claude, Spanish; Tom, French; Aivars, Latvian; Artur, Slovenian): neither their cards nor
+their makers' pages say, so they could have been trained from lessac. Artur's card says CC BY 4.0
+while its dataset's page says CC BY 3.0.

@@ -45,9 +45,10 @@ Built on Opus 5.5. He asked for a Licence column and for the licence grouping to
    Unsettled (lessac), Research only, Unclear. Anything fine-tuned from lessac, directly or through
    another voice (Thorsten Emotional, Ald, Lisa), is "Unsettled (lessac)" whatever its own licence: the
    lessac recordings' Blizzard 2013 licence is research only, no redistribution; Piper's maintainer
-   leaves it to users (piper discussion #271). Not checked beyond the card: the training of Claude
-   (es_MX), Tom, Aivars, Artur (cards point to a URL), the Icelandic dataset's licence; Artur's
-   dataset page says CC BY 3.0, its card CC BY 4.0. Said so on the page.
+   leaves it to users (piper discussion #271). Checked after 0.18.14 (repo only, in the next build): the
+   four Icelandic voices' dataset is Talromur 1, CC BY 4.0, so they are "Free, give credit". Still
+   unknown: the training of Claude (es_MX), Tom, Aivars, Artur (neither cards nor makers' pages say);
+   Artur's dataset page says CC BY 3.0, its card CC BY 4.0. Said so on the page.
 3. **`tools/dev/make_licences.py`** writes `VOICE-LICENCES.md` (linked from README.md and kit/README.txt)
    and the `VoiceLicences` table in Config.cs between marker comments. Edit the JSON, run it, never
    edit the table by hand.

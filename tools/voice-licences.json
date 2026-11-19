@@ -303,7 +303,7 @@
  "es_MX-claude-high": {
   "group": "Free, give credit",
   "licence": "Apache 2.0",
-  "trained": "not stated on its card",
+  "trained": "not stated (its card and its maker's page do not say)",
   "speakers": 1,
   "dataset": "https://huggingface.co/spaces/HirCoir/Piper-TTS-Spanish"
  },
@@ -331,7 +331,7 @@
  "fr_FR-tom-medium": {
   "group": "Free, share alike",
   "licence": "AGPLv3",
-  "trained": "not stated on its card",
+  "trained": "not stated (its card and its maker's page do not say)",
   "speakers": 1,
   "dataset": "https://git.bksp.space/Tjiho/French-tts-model-piper"
  },
@@ -364,29 +364,29 @@
   "dataset": "https://github.com/NabuCasa/voice-datasets"
  },
  "is_IS-bui-medium": {
-  "group": "Unclear",
-  "licence": "not stated (see its dataset)",
+  "group": "Free, give credit",
+  "licence": "CC BY 4.0 (its dataset, Talrómur 1; the card says \"See URL\")",
   "trained": "nothing (from scratch)",
   "speakers": 1,
   "dataset": "http://hdl.handle.net/20.500.12537/104"
  },
  "is_IS-salka-medium": {
-  "group": "Unclear",
-  "licence": "not stated (see its dataset)",
+  "group": "Free, give credit",
+  "licence": "CC BY 4.0 (its dataset, Talrómur 1; the card says \"See URL\")",
   "trained": "nothing (from scratch)",
   "speakers": 1,
   "dataset": "http://hdl.handle.net/20.500.12537/104"
  },
  "is_IS-steinn-medium": {
-  "group": "Unclear",
-  "licence": "not stated (see its dataset)",
+  "group": "Free, give credit",
+  "licence": "CC BY 4.0 (its dataset, Talrómur 1; the card says \"See URL\")",
   "trained": "nothing (from scratch)",
   "speakers": 1,
   "dataset": "http://hdl.handle.net/20.500.12537/104"
  },
  "is_IS-ugla-medium": {
-  "group": "Unclear",
-  "licence": "not stated (see its dataset)",
+  "group": "Free, give credit",
+  "licence": "CC BY 4.0 (its dataset, Talrómur 1; the card says \"See URL\")",
   "trained": "nothing (from scratch)",
   "speakers": 1,
   "dataset": "http://hdl.handle.net/20.500.12537/104"

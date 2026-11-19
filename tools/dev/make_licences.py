@@ -88,9 +88,11 @@ md += ['## How this list was made', '',
        'voice\'s MODEL_CARD at version 1.0.0. `tools/voice-licences.json` holds the result, grouped by',
        'hand, and `tools/dev/make_licences.py` writes this page and the column in Config from it.',
        'Corrections are welcome as issues or pull requests.', '',
-       'Not yet checked beyond the card: what four voices were trained from, where the card only points',
-       'to a web page (Claude, Spanish; Tom, French; Aivars, Latvian; Artur, Slovenian); and the',
-       'Icelandic dataset\'s licence. Artur\'s card says CC BY 4.0 while its dataset\'s page says CC BY 3.0.', '']
+       'Checked beyond the card: the four Icelandic voices\' cards give no licence, only a link to their',
+       'dataset, Talr\u00f3mur 1, which is released under CC BY 4.0. Not known: what four voices were trained',
+       'from (Claude, Spanish; Tom, French; Aivars, Latvian; Artur, Slovenian): neither their cards nor',
+       'their makers\' pages say, so they could have been trained from lessac. Artur\'s card says CC BY 4.0',
+       'while its dataset\'s page says CC BY 3.0.', '']
 open(os.path.join(ROOT, 'VOICE-LICENCES.md'), 'w', encoding='utf-8', newline='\n').write('\n'.join(md))
 
 def cs(s):
