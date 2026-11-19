@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.4 (18 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.5 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -13,10 +13,23 @@ run #109 was refused for billing). Builds are free again. Anything pushed is vis
 
 ## State for a new chat (18 Nov 2026, evening)
 
-Nothing he asked for is outstanding. 0.18.2, 0.18.3 and 0.18.4 were all built on Opus 5.5 in one chat and
+Nothing he asked for is outstanding. 0.18.2 to 0.18.5 were all built on Opus 5.5 in one chat and
 delivered; he had tried 0.18.2 (hit the crash fixed in 0.18.3), not yet said anything about 0.18.3/0.18.4.
-Start by asking how 0.18.4 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
+Start by asking how 0.18.5 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
 rule with "Say it as" empty does it; comma pause for a rule-made comma would be engine work, Fable).
+
+## 0.18.5 (19 Nov 2026), delivered, not yet confirmed by him
+
+Built on Opus 5.5. Text only:
+1. "Powered by"'s thanks (`Credit.Thanks`, also README.md's credits): "Thanks to everyone who recorded their
+   voice for a research collection or audiobook, and allowed it to be used for free in software such as
+   this." (his words).
+2. The quality warning on Add or remove voices moved from beside "Additional languages..." (it got lost
+   there) to a line of its own in brackets, under "Tick the voices to install..." above the list.
+3. The first-voices note (`FirstVoicesWords`) has a second line, "(Voice quality varies. Sample before
+   downloading.)", in each of its 29 languages too (Claude's translations, unchecked, like the rest).
+   Careful editing that dictionary by language code: the same codes key the preview texts earlier in the
+   file (a script appending by `{ "de", "` first hit those; caught and undone).
 
 ## 0.18.4 (18 Nov 2026), delivered, not yet confirmed by him
 
@@ -98,7 +111,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.4.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.5.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 

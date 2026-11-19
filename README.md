@@ -89,7 +89,7 @@ This program is a thin layer over years of work by people who actually know how 
 - **[LAME](https://lame.sourceforge.io)** (the LAME Project) for saving MP3 files; the Windows builds
   are [RareWares'](https://www.rarewares.org/mp3-lame-libraries.php), as kept by the
   [NAudio.Lame](https://github.com/Corey-M/NAudio.Lame) project.
-- Everyone who recorded their voice for a research collection or an audiobook and let it be used.
+- Everyone who recorded their voice for a research collection or audiobook, and allowed it to be used for free in software such as this.
 
 The full list, with licences, is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 

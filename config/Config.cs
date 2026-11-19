@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.4.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.5.0")]
 
 namespace ModernVoicesConfig
 {
@@ -1193,7 +1193,7 @@ namespace ModernVoicesConfig
             new Credit("ONNX Runtime", "Microsoft Corporation", "Runs the voices' models.", "https://github.com/microsoft/onnxruntime"),
             new Credit("PdfPig", "UglyToad and contributors", "Reads the text of PDFs in the Reader.", "https://github.com/UglyToad/PdfPig"),
             new Credit("LAME", "The LAME Project", "Makes the Reader's MP3 files.", "https://lame.sourceforge.io") };
-        public const string Thanks = "Thanks to everyone who recorded their voice for a research collection or an audiobook and let it be used in this software.";
+        public const string Thanks = "Thanks to everyone who recorded their voice for a research collection or audiobook, and allowed it to be used for free in software such as this.";
         public const string Home = "https://github.com/Lumotiverse/modern-voices-for-windows";
         public const string Coding = "All coding done by Anthropic's Fable 5.2, assisted by Opus 5.5. Testing and UX done by Lumoti.";
         public const string FromLumoti = "I hope anyone who uses this software finds it useful. It was only made possible by the incredible effort of the " +
@@ -2677,16 +2677,15 @@ namespace ModernVoicesConfig
             LanguagesButton.Anchor = AnchorStyles.Left; LanguagesButton.Margin = new Padding(Px(12), 0, 0, 0);
             LanguagesButton.Click += delegate { ChooseLanguages(); };
             filterLine.Controls.Add(Beside("Show"), 0, 0); filterLine.Controls.Add(VoiceFilterBox, 1, 0); filterLine.Controls.Add(LanguagesButton, 2, 0);
-            // In the room to the right: the voices vary in quality, so hear them first.
-            QualityNote = Words("Some voices sound much more natural than others. Play a sample before you install a voice.", true);
-            QualityNote.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
-            QualityNote.Margin = new Padding(Px(12), 0, 3, 0);
-            filterLine.Controls.Add(QualityNote, 3, 0);
             Row(addGrid, filterLine);
             // The instructions under them, with room above.
             Label addHow = Words("Tick the voices to install and untick the ones to remove, then press Apply changes.");
-            addHow.Margin = new Padding(addHow.Margin.Left, Px(12), addHow.Margin.Right, Px(4));
+            addHow.Margin = new Padding(addHow.Margin.Left, Px(12), addHow.Margin.Right, 0);
             Row(addGrid, addHow);
+            // On a line of its own under them: the voices vary in quality, so hear them first.
+            QualityNote = Words("(Some voices sound much more natural than others. Play a sample before you install a voice.)", true);
+            QualityNote.Margin = new Padding(QualityNote.Margin.Left, Px(2), QualityNote.Margin.Right, Px(4));
+            Row(addGrid, QualityNote);
             AddList = NewList(true);
             AddList.Columns.Add("Voice", Px(220));
             AddList.Columns.Add("Speakers", Px(105));
@@ -3302,41 +3301,41 @@ namespace ModernVoicesConfig
 
         // Over Add or remove voices whenever Config opens with no voice installed (after "Powered by", the
         // first time): where to start. OK, its X, Enter or Esc closes it.
-        public const string FirstVoicesWords = "Select the voices you wish to download and install, then click Apply changes.";
+        public const string FirstVoicesWords = "Select the voices you wish to download and install, then click Apply changes.\r\n(Voice quality varies. Sample before downloading.)";
         // The same in the language chosen when installing (shown above the English; Claude's translations,
         // not checked by a speaker of each, like the installer's note). The button's name stays English, as
         // the button is.
         public static readonly Dictionary<string, string> FirstVoicesTranslated = new Dictionary<string, string>
         {
-            { "bg", "Изберете гласовете, които искате да изтеглите и инсталирате, след което щракнете върху „Apply changes“." },
-            { "ca", "Seleccioneu les veus que voleu baixar i instal·lar i, després, feu clic a «Apply changes»." },
-            { "cs", "Vyberte hlasy, které chcete stáhnout a nainstalovat, a potom klikněte na „Apply changes“." },
-            { "cy", "Dewiswch y lleisiau rydych am eu llwytho i lawr a'u gosod, yna cliciwch “Apply changes”." },
-            { "da", "Vælg de stemmer, du vil hente og installere, og klik derefter på »Apply changes«." },
-            { "de", "Wählen Sie die Stimmen aus, die Sie herunterladen und installieren möchten, und klicken Sie dann auf „Apply changes“." },
-            { "el", "Επιλέξτε τις φωνές που θέλετε να κατεβάσετε και να εγκαταστήσετε και, στη συνέχεια, κάντε κλικ στο «Apply changes»." },
-            { "es", "Seleccione las voces que desea descargar e instalar y, después, haga clic en «Apply changes»." },
-            { "eu", "Hautatu deskargatu eta instalatu nahi dituzun ahotsak, eta egin klik «Apply changes» botoian." },
-            { "fi", "Valitse äänet, jotka haluat ladata ja asentaa, ja napsauta sitten ”Apply changes”." },
-            { "fr", "Sélectionnez les voix que vous souhaitez télécharger et installer, puis cliquez sur « Apply changes »." },
-            { "gl", "Seleccione as voces que desexa descargar e instalar e, despois, prema en «Apply changes»." },
-            { "hu", "Jelölje ki a letölteni és telepíteni kívánt hangokat, majd kattintson az „Apply changes” gombra." },
-            { "is", "Veldu raddirnar sem þú vilt sækja og setja upp og smelltu svo á „Apply changes“." },
-            { "it", "Seleziona le voci che vuoi scaricare e installare, poi fai clic su «Apply changes»." },
-            { "lb", "Wielt d'Stëmmen aus, déi Dir eroflueden an installéiere wëllt, a klickt dann op „Apply changes“." },
-            { "lv", "Atlasiet balsis, kuras vēlaties lejupielādēt un instalēt, un pēc tam noklikšķiniet uz „Apply changes”." },
-            { "nl", "Selecteer de stemmen die u wilt downloaden en installeren en klik daarna op ‘Apply changes’." },
-            { "no", "Velg stemmene du vil laste ned og installere, og klikk deretter på «Apply changes»." },
-            { "pl", "Zaznacz głosy, które chcesz pobrać i zainstalować, a następnie kliknij „Apply changes”." },
-            { "pt", "Selecione as vozes que pretende transferir e instalar e, depois, clique em «Apply changes»." },
-            { "ro", "Selectați vocile pe care doriți să le descărcați și să le instalați, apoi faceți clic pe „Apply changes”." },
-            { "ru", "Выберите голоса, которые хотите загрузить и установить, а затем нажмите «Apply changes»." },
-            { "sk", "Vyberte hlasy, ktoré chcete stiahnuť a nainštalovať, a potom kliknite na „Apply changes“." },
-            { "sl", "Izberite glasove, ki jih želite prenesti in namestiti, nato kliknite »Apply changes«." },
-            { "sr", "Izaberite glasove koje želite da preuzmete i instalirate, a zatim kliknite na „Apply changes“." },
-            { "sv", "Markera de röster du vill hämta och installera och klicka sedan på ”Apply changes”." },
-            { "tr", "İndirip yüklemek istediğiniz sesleri seçin, ardından “Apply changes” düğmesine tıklayın." },
-            { "uk", "Виберіть голоси, які хочете завантажити та встановити, а потім натисніть «Apply changes»." }
+            { "bg", "Изберете гласовете, които искате да изтеглите и инсталирате, след което щракнете върху „Apply changes“.\r\n(Качеството на гласовете е различно. Чуйте мостра, преди да изтеглите.)" },
+            { "ca", "Seleccioneu les veus que voleu baixar i instal·lar i, després, feu clic a «Apply changes».\r\n(La qualitat de les veus varia. Escolteu una mostra abans de baixar-les.)" },
+            { "cs", "Vyberte hlasy, které chcete stáhnout a nainstalovat, a potom klikněte na „Apply changes“.\r\n(Kvalita hlasů se liší. Před stažením si poslechněte ukázku.)" },
+            { "cy", "Dewiswch y lleisiau rydych am eu llwytho i lawr a'u gosod, yna cliciwch “Apply changes”.\r\n(Mae ansawdd y lleisiau'n amrywio. Gwrandewch ar sampl cyn llwytho i lawr.)" },
+            { "da", "Vælg de stemmer, du vil hente og installere, og klik derefter på »Apply changes«.\r\n(Stemmernes kvalitet varierer. Lyt til en prøve, før du henter.)" },
+            { "de", "Wählen Sie die Stimmen aus, die Sie herunterladen und installieren möchten, und klicken Sie dann auf „Apply changes“.\r\n(Die Qualität der Stimmen ist unterschiedlich. Hören Sie vor dem Herunterladen eine Hörprobe an.)" },
+            { "el", "Επιλέξτε τις φωνές που θέλετε να κατεβάσετε και να εγκαταστήσετε και, στη συνέχεια, κάντε κλικ στο «Apply changes».\r\n(Η ποιότητα των φωνών διαφέρει. Ακούστε ένα δείγμα πριν από τη λήψη.)" },
+            { "es", "Seleccione las voces que desea descargar e instalar y, después, haga clic en «Apply changes».\r\n(La calidad de las voces varía. Escuche una muestra antes de descargarlas.)" },
+            { "eu", "Hautatu deskargatu eta instalatu nahi dituzun ahotsak, eta egin klik «Apply changes» botoian.\r\n(Ahotsen kalitatea aldakorra da. Entzun lagin bat deskargatu aurretik.)" },
+            { "fi", "Valitse äänet, jotka haluat ladata ja asentaa, ja napsauta sitten ”Apply changes”.\r\n(Äänten laatu vaihtelee. Kuuntele näyte ennen lataamista.)" },
+            { "fr", "Sélectionnez les voix que vous souhaitez télécharger et installer, puis cliquez sur « Apply changes ».\r\n(La qualité des voix varie. Écoutez un extrait avant de les télécharger.)" },
+            { "gl", "Seleccione as voces que desexa descargar e instalar e, despois, prema en «Apply changes».\r\n(A calidade das voces varía. Escoite unha mostra antes de descargalas.)" },
+            { "hu", "Jelölje ki a letölteni és telepíteni kívánt hangokat, majd kattintson az „Apply changes” gombra.\r\n(A hangok minősége eltérő. Letöltés előtt hallgasson meg egy mintát.)" },
+            { "is", "Veldu raddirnar sem þú vilt sækja og setja upp og smelltu svo á „Apply changes“.\r\n(Gæði raddanna eru misjöfn. Hlustaðu á sýnishorn áður en þú sækir.)" },
+            { "it", "Seleziona le voci che vuoi scaricare e installare, poi fai clic su «Apply changes».\r\n(La qualità delle voci varia. Ascolta un campione prima di scaricarle.)" },
+            { "lb", "Wielt d'Stëmmen aus, déi Dir eroflueden an installéiere wëllt, a klickt dann op „Apply changes“.\r\n(D'Qualitéit vun de Stëmmen ass ënnerschiddlech. Lauschtert eng Prouf, ier Dir eroflued.)" },
+            { "lv", "Atlasiet balsis, kuras vēlaties lejupielādēt un instalēt, un pēc tam noklikšķiniet uz „Apply changes”.\r\n(Balsu kvalitāte atšķiras. Pirms lejupielādes noklausieties paraugu.)" },
+            { "nl", "Selecteer de stemmen die u wilt downloaden en installeren en klik daarna op ‘Apply changes’.\r\n(De kwaliteit van de stemmen verschilt. Luister naar een voorbeeld voordat u downloadt.)" },
+            { "no", "Velg stemmene du vil laste ned og installere, og klikk deretter på «Apply changes».\r\n(Kvaliteten på stemmene varierer. Lytt til en prøve før du laster ned.)" },
+            { "pl", "Zaznacz głosy, które chcesz pobrać i zainstalować, a następnie kliknij „Apply changes”.\r\n(Jakość głosów jest różna. Przed pobraniem odsłuchaj próbkę.)" },
+            { "pt", "Selecione as vozes que pretende transferir e instalar e, depois, clique em «Apply changes».\r\n(A qualidade das vozes varia. Ouça uma amostra antes de transferir.)" },
+            { "ro", "Selectați vocile pe care doriți să le descărcați și să le instalați, apoi faceți clic pe „Apply changes”.\r\n(Calitatea vocilor variază. Ascultați o mostră înainte de descărcare.)" },
+            { "ru", "Выберите голоса, которые хотите загрузить и установить, а затем нажмите «Apply changes».\r\n(Качество голосов различается. Прослушайте образец перед загрузкой.)" },
+            { "sk", "Vyberte hlasy, ktoré chcete stiahnuť a nainštalovať, a potom kliknite na „Apply changes“.\r\n(Kvalita hlasov sa líši. Pred stiahnutím si vypočujte ukážku.)" },
+            { "sl", "Izberite glasove, ki jih želite prenesti in namestiti, nato kliknite »Apply changes«.\r\n(Kakovost glasov se razlikuje. Pred prenosom poslušajte vzorec.)" },
+            { "sr", "Izaberite glasove koje želite da preuzmete i instalirate, a zatim kliknite na „Apply changes“.\r\n(Kvalitet glasova se razlikuje. Poslušajte uzorak pre preuzimanja.)" },
+            { "sv", "Markera de röster du vill hämta och installera och klicka sedan på ”Apply changes”.\r\n(Röstkvaliteten varierar. Lyssna på ett prov innan du hämtar.)" },
+            { "tr", "İndirip yüklemek istediğiniz sesleri seçin, ardından “Apply changes” düğmesine tıklayın.\r\n(Ses kalitesi farklılık gösterir. İndirmeden önce bir örnek dinleyin.)" },
+            { "uk", "Виберіть голоси, які хочете завантажити та встановити, а потім натисніть «Apply changes».\r\n(Якість голосів різна. Прослухайте зразок перед завантаженням.)" }
         };
         public Form FirstVoicesWindow()
         {
