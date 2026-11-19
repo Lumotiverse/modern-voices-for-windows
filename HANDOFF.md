@@ -11,11 +11,13 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
-## State for a new chat (19 Nov 2026, morning)
+## State for a new chat (19 Nov 2026, late morning)
 
-Nothing he asked for is outstanding. 0.18.2 to 0.18.11 were all built on Opus 5.5 in one long chat and
+**He confirmed 0.18.11 is good.** Two things are AGREED BUT NOT BUILT (he said "update the handoff but
+build nothing"): see "Planned for 0.18.12" just below. Ask whether he wants to start them, and on which
+model, before writing any code. 0.18.2 to 0.18.11 were all built on Opus 5.5 in one long chat and
 delivered (each zip sent); he has been trying them as they came (he hit 0.18.2's start-up crash, fixed in
-0.18.3, and corrected 0.18.9's Amplify default in 0.18.10). Start by asking how 0.18.11 went.
+0.18.3, and corrected 0.18.9's Amplify default in 0.18.10).
 What changed across them, newest first, is in the sections below; the main things a new chat should know:
 - Voice manager list: Accent and Gender columns, sorting by heading (both lists), columns that can be
   dragged (all kept in HKCU), a right-click menu; gender is written to Windows by the elevated helper.
@@ -27,6 +29,56 @@ What changed across them, newest first, is in the sections below; the main thing
   to 2.5x; output volume 50% on a new install.
 Ideas still on the shelf: see "Ideas" (the pronunciation ignore list is dropped: a rule with "Say it as"
 empty does it).
+
+## Planned for 0.18.12 (agreed 19 Nov 2026, NOT built)
+
+**Model:** the whole batch touches the engine, Config and VoiceConvert.ps1, so by his rule it is Fable.
+On per-speaker speed alone I had said Opus 5.5 could do it safely; with Amplify, Boost and the override
+section added it is clearly multi-part: recommend Fable (or ask him to split it).
+
+**1. Multi-speaker voice's name plays a recorded instruction (Add or remove voices).**
+- He will record MP3s of a voice saying "Select the voices you want from the list below", one per
+  language (English is 23.8 KB). He has not sent any yet: ask him to attach them.
+- Before he records, give him the list of languages that HAVE multi-speaker voices in the catalogue (only
+  those need one). Not yet worked out.
+- Plan: files `choose-speakers-<lang>.mp3` (lang = `text::language_of`'s letters, e.g. en, de) shipped
+  beside `ModernVoicesConfig.exe` (MediaPlayer needs a file path; `tools/Package.ps1` copies them,
+  Install copies config\*). `VoiceNameClicked` (Config.cs ~4374) now returns for `Several`: instead
+  play the file for the voice's language through `Sample.Play`, else the English one (my proposal, he
+  didn't object; confirm). So "Play sample" reads "Stop sample" meanwhile and Apply stops it, as now.
+- Told him: the same clip plays for every multi-speaker voice of a language, so it may be taken as how
+  VCTK sounds; and if he records with a Piper voice (the Reader's Save as audio, MP3), pick one with a
+  permissive licence. In 0.18.6 he chose "nothing" over "a phrase"; this replaces that choice.
+- Self-test: VCTK's name now plays (today it checks it is silent: change that check).
+
+**2. Per-speaker settings in the Voice manager.** His words: "currently, dictation speed affects all
+speakers in the voice. can this be changed so each speaker can have its own dictation setting", then
+"it makes sense to do boost and amp, as well as the override settings, at the same time? the voices
+can vary significantly due to the nature of how they were created."
+- Today every setting is per MODEL FOLDER: `voices\<folder>.json` (engine `own_file`, Config
+  `App.VoiceFile`, VoiceConvert's `Get-VoiceText`), so all of VCTK's speakers share one. The token
+  carries `SpeakerId` (Install.ps1 `Register-Voice`), and the engine already has `voice.speaker`.
+- Scope: Amplify (peak), Boost, Dictation speed (length_scale), and the override section (own pauses:
+  sentence, comma, paragraph). Per speaker, falling back to the voice's value where a speaker has none,
+  so existing settings files need no migration and update-in-place stays safe.
+- **Voice variation is the catch** (in the override section, `own_variation_percent`): it is applied
+  when a MODEL is LOADED (`load_model`, cache key `dir|data|variation`), not per line. A speaker with a
+  different variation means a second copy of the whole model in memory (VCTK's is ~75 MB) and a reload.
+  Not yet discussed with him: tell him, and suggest variation stays per voice (or accept the memory).
+- Live changes must keep working: he checked in Balabolka that a Config change is heard after Stop/Play
+  with no restart (the engine re-reads the settings at each Speak by file time, `Model::settings`).
+  Per-speaker values must go through the same re-read; note `Model::settings` caches ONE `Settings` per
+  model, so it must become per speaker (or the per-speaker part applied on top after the read).
+- A possible file shape (not decided): a `"speakers": { "<id>": { "peak": .., "boost": ..,
+  "length_scale": .., "own_pauses": .., "sentence_ms": .. } }` block in the voice's own file. Beware: all
+  three readers (engine `number()`, Config `Read`, VoiceConvert regexes) find the FIRST match of a key in
+  the text, so a nested block with the same key names would be found by the old voice-level reads. Use
+  distinct keys, or read the block out first, and keep the three readers in step.
+- Config: the sliders follow the selected ROW (each speaker is a row already); "Reset" resets that
+  speaker back to the voice's values. Decide with him what a voice of one speaker shows (unchanged) and
+  whether a label should say "for this speaker".
+- Tests: engine unit tests for the lookup; Test-Kit: two VCTK speakers at different speeds/peaks speak
+  differently; Config self-test: a slider moved on one speaker leaves the other alone.
 
 ## 0.18.11 (19 Nov 2026), delivered, not yet confirmed by him
 
