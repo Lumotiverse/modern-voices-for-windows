@@ -160,7 +160,7 @@ Check ($rulesText.Contains("1`tw`ti`tty`tthank you") -and $rulesText.Contains("1
 Check (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\ModernVoicesForWindows') 'Installed apps entry'
 $alba = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-alba-medium\Attributes')
 Check ($alba.Language -eq '809' -and $alba.Gender -eq 'Female') "Alba tagged British, female ($($alba.Language), $($alba.Gender))"
-Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 0,') 'voice.json: loudness set (Amplify off, 1.5x: the defaults since 0.18.9)'
+Check ((Get-Content (Join-Path $albaDir 'voice.json') -Raw) -match '"peak": 1,') 'voice.json: loudness set (Amplify MAX, 1.5x)'
 $settingsText = Get-Content $settingsFile -Raw
 Check ($settingsText -match '"speed_percent": 100' -and $settingsText -match '"sentence_ms": 500' -and $settingsText -match '"paragraph_ms": 1200' -and $settingsText -match '"output_percent": 50') 'settings.json: speed 100%, sentence 500 ms, paragraph 1200 ms, output volume 50%'
 # (The loudness checks below measure against a known level: every voice amplified to MAX, the output at 100%.)
@@ -426,9 +426,7 @@ Set-Dictionary $rulesFile @()
 Check (-not (Test-Path "$menu\Repair.lnk")) "the Start menu's old Repair entry is gone"
 Check ((Get-Item $voiceFile.FullName).LastWriteTimeUtc -eq $voiceWritten) 'the voice files were not downloaded again'
 Check ((Get-ItemProperty $ourKey).DisplayIcon -like '*ModernVoicesReader.exe,0') "Installed apps shows the program's icon (the speaker), not Config's cog"
-# (Alba from its voice.json, as before 0.12.0: nothing of its own says otherwise yet; the others' voice.json
-# say Amplify off, the default since 0.18.9.)
-[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8; 'Northern English Male (British)' = -1; 'VCTK p239 (British)' = -1 })
+[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })      # (from its voice.json, as before 0.12.0: nothing of its own says otherwise yet)
 [System.IO.File]::WriteAllText($albaJson, $albaJsonWas)
 Set-GlobalSpeed $settingsFile 100
 Set-VoiceSettings $albaDir 1 1.5 1

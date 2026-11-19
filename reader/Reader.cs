@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.9.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.10.0")]
 
 namespace ModernVoicesReader
 {

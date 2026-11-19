@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.9.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.10.0")]
 
 namespace ModernVoicesConfig
 {
@@ -100,7 +100,7 @@ namespace ModernVoicesConfig
     {
         public const string Name = "Modern Voices for Windows";
         public const string BaseUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0";   // v1.0.0: the voices as tested
-        public const double DefaultPeak = 0;      // Amplify off (as Piper made the voice): the default since 0.18.9
+        public const double DefaultPeak = 1;      // Amplify at MAX ("off (default)" names the voice's own level, as Piper made it)
         public const double MaxBoost = 2.5;       // Boost's most (4 until 0.18.9)
         public const double DefaultBoost = 1.5;
         public static string PreviewText { get { return PreviewTexts.For("en"); } }
@@ -1717,7 +1717,7 @@ namespace ModernVoicesConfig
         public int FrameGap { get { return 2 * (Px(10) + 3 + NameInset); } }
         int FramePad { get { return FrameGap - 3 - NameInset; } }
         // The value column of a framed section: the widest value its sliders show.
-        public static readonly string[] ValueSamples = { "MAX", "off (Default)", "150%", "200%", "2.5x", "none", "+3000 ms", "none added", "none (as said)" };
+        public static readonly string[] ValueSamples = { "MAX", "off (default)", "150%", "200%", "2.5x", "none", "+3000 ms", "none added", "none (as said)" };
         public string WidestValue
         {
             get
@@ -3598,7 +3598,7 @@ namespace ModernVoicesConfig
         {
             if (SpeedBar == null || Sliders.Count < 6 || GlobalBars.Count < 3) { return; }
             int volume = Sliders["Volume"].Bar.Value;
-            Sliders["Volume"].Value.Text = volume == 0 ? "off (Default)" : volume >= 100 ? "MAX" : volume + "%";
+            Sliders["Volume"].Value.Text = volume == 0 ? "off (default)" : volume >= 100 ? "MAX" : volume + "%";
             double boost = Sliders["Boost"].Bar.Value / 10.0;
             Sliders["Boost"].Value.Text = boost <= 1.0 ? "none" : boost.ToString("0.0", CultureInfo.InvariantCulture) + "x";
             Sliders["Speed"].Value.Text = Sliders["Speed"].Bar.Value + "%";
@@ -5895,8 +5895,8 @@ namespace ModernVoicesConfig
                 ui.Sliders["Volume"].Bar.Value = 100; string atMax = ui.Sliders["Volume"].Value.Text;
                 ui.Sliders["Volume"].Bar.Value = 0; string atOff = ui.Sliders["Volume"].Value.Text;
                 ui.Sliders["Volume"].Bar.Value = 60;
-                Check(ui.Sliders["Volume"].Name.Text == "Amplify" && atMax == "MAX" && atOff == "off (Default)" && App.DefaultPeak == 0 &&
-                    ui.Sliders["Boost"].Bar.Maximum == 25, "Amplify: '" + atOff + "' (the default) to '" + atMax + "'; Boost up to " + ui.Sliders["Boost"].Bar.Maximum / 10.0 + "x");
+                Check(ui.Sliders["Volume"].Name.Text == "Amplify" && atMax == "MAX" && atOff == "off (default)" && App.DefaultPeak == 1 &&
+                    ui.Sliders["Boost"].Bar.Maximum == 25, "Amplify: '" + atOff + "' to '" + atMax + "' (the default); Boost up to " + ui.Sliders["Boost"].Bar.Maximum / 10.0 + "x");
                 ui.StopTimers();
                 // A voice left above 100% by 0.12.0 shows as 100%.
                 File.WriteAllText(App.VoiceFile(dir), File.ReadAllText(App.VoiceFile(dir)).Replace("\"peak\": 0.6", "\"peak\": 1.7"));

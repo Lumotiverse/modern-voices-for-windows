@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.9 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.10 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -13,18 +13,25 @@ run #109 was refused for billing). Builds are free again. Anything pushed is vis
 
 ## State for a new chat (18 Nov 2026, evening)
 
-Nothing he asked for is outstanding. 0.18.2 to 0.18.9 were all built on Opus 5.5 in one chat and
+Nothing he asked for is outstanding. 0.18.2 to 0.18.10 were all built on Opus 5.5 in one chat and
 delivered; he had tried 0.18.2 (hit the crash fixed in 0.18.3), not yet said anything about 0.18.3/0.18.4.
-Start by asking how 0.18.9 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
+Start by asking how 0.18.10 went. Ideas still on the shelf: see "Ideas" (the ignore list is dropped: a
 rule with "Say it as" empty does it; comma pause for a rule-made comma would be engine work, Fable).
+
+## 0.18.10 (19 Nov 2026), delivered, not yet confirmed by him
+
+Built on Opus 5.5. He corrected 0.18.9: Amplify's DEFAULT stays 100% (MAX); "off (default)" (lowercase)
+only names the voice's own level, as Piper made it. `App.DefaultPeak` and `$DefaultPeak` back to 1;
+Test-Kit back to expecting peak 1 (its "-1 = as Piper made it" option in Test-Speech stays, unused).
+Everything else in 0.18.9 stands (the name Amplify, MAX, Boost up to 2.5x, output 50% on new installs).
+Lesson: don't infer a behaviour change from a label; ask if a label seems to contradict the behaviour.
 
 ## 0.18.9 (19 Nov 2026), delivered, not yet confirmed by him
 
 Built on Opus 5.5. Loudness:
 1. The per-voice "Volume" slider is now named **Amplify** (still `Sliders["Volume"]` in code and "peak" in
    voice.json). Values: 0 = "off (Default)", 10%..90%, 100% = "MAX"; steps of 10 as before.
-2. Off is now the DEFAULT (his "0 = off (Default)" made it so): `App.DefaultPeak` and Install.ps1's
-   `$DefaultPeak` = 0, for newly installed voices and Reset. Voices already set keep their settings.
+2. (Undone in 0.18.10: off was made the default here; he wanted only the label.)
 3. Boost goes up to 2.5x (`App.MaxBoost`; was 4). A voice saved higher shows (and saves, if touched) as 2.5.
    The engine and VoiceConvert.ps1 still accept up to 5 (harmless).
 4. Output volume starts at 50% on a NEW install (Initialize-SettingsFolder, when settings.json is made).
@@ -170,7 +177,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.9.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.10.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 

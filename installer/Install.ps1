@@ -86,7 +86,7 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 . (Join-Path $Here 'VoiceConvert.ps1')
 . (Join-Path $Here 'Languages.ps1')
 
-$Version = '0.18.9'
+$Version = '0.18.10'
 $AppName = 'Modern Voices for Windows'
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
@@ -134,7 +134,7 @@ $StartMenu = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$
 $PS64 = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $PS32 = "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
 $Base = 'https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0'   # v1.0.0: the voices as tested
-$DefaultPeak = 0      # Amplify off (as Piper made the voice) since 0.18.9
+$DefaultPeak = 1
 $DefaultBoost = 1.5
 Set-AppPaths $DefaultApp
 $InPlace = $false
