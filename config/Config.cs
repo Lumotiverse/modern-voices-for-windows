@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.11.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.12.0")]
 
 namespace ModernVoicesConfig
 {
@@ -1490,7 +1490,6 @@ namespace ModernVoicesConfig
         public TableLayoutPanel OutLine;
         public int NameInset;
         int labelColumn, valueColumn, previewColumn;      // the sliders' columns, the same on both tabs
-        public Slider OwnVariation;          // the selected voice's own variation (with its own pauses)
         // Each installed voice's language, by the name programs see (for the preview text in its language).
         readonly Dictionary<string, string> languageOfVoice = new Dictionary<string, string>();
         int unmutedVolume = 100;            // the output volume to go back to when unmuted
@@ -1530,7 +1529,7 @@ namespace ModernVoicesConfig
         readonly Dictionary<ListViewItem, int> addOrder = new Dictionary<ListViewItem, int>();          // Add or remove voices' rows as listed
         // The Voice manager list's right-click menu.
         public ContextMenuStrip VoiceMenu;
-        public ToolStripMenuItem MenuNickname, MenuGender, MenuFemale, MenuMale, MenuOverride, MenuDefault;
+        public ToolStripMenuItem MenuNickname, MenuGender, MenuFemale, MenuMale, MenuOverride, MenuDefault, MenuRemove;
         public BigCheckList SpeakerList;
         public TextBox NickBox, PreviewBox, WordFrom, WordTo;
         public CheckBox OwnBox, UsBox, WordWhole, WordCase, OnlyTickedBox;
@@ -2279,9 +2278,13 @@ namespace ModernVoicesConfig
             MenuGender.DropDownItems.Add(MenuFemale); MenuGender.DropDownItems.Add(MenuMale);
             MenuGender.ToolTipText = "Click the ticked one again to leave both blank.";
             MenuOverride = new ToolStripMenuItem("Override defaults");
-            MenuOverride.ToolTipText = "Override pause duration and variation for the selected voice";
+            MenuOverride.ToolTipText = "Override pause duration for the selected voice";
             MenuDefault = new ToolStripMenuItem("Make default voice");
+            MenuRemove = new ToolStripMenuItem("Remove voice");
+            MenuRemove.ToolTipText = "Uninstalls the selected speaker.";
             VoiceMenu.Items.Add(MenuNickname); VoiceMenu.Items.Add(MenuGender); VoiceMenu.Items.Add(MenuOverride); VoiceMenu.Items.Add(MenuDefault);
+            VoiceMenu.Items.Add(new ToolStripSeparator());
+            VoiceMenu.Items.Add(MenuRemove);
             VoiceMenu.ShowItemToolTips = true;
             MenuGender.DropDown.ShowItemToolTips = true;
             InstalledList.ContextMenuStrip = VoiceMenu;
@@ -2306,6 +2309,8 @@ namespace ModernVoicesConfig
                 if (OwnBox.Checked) { BeginInvoke((MethodInvoker)delegate { Pages[0].ScrollControlIntoView(PauseFrame); }); }
             };
             MenuDefault.Click += delegate { SetDefaultVoice(); };
+            // (After the menu has closed: the question is a window of its own.)
+            MenuRemove.Click += delegate { BeginInvoke((MethodInvoker)delegate { RemoveSelectedVoice(); }); };
         }
         // The menu's ticks: the selected voice's gender, override and whether it is the default.
         public void UpdateVoiceMenu()
@@ -2322,6 +2327,7 @@ namespace ModernVoicesConfig
             bool isDefault = voice != null && string.Equals(Voices.DefaultToken, voice.Token, StringComparison.OrdinalIgnoreCase);
             MenuDefault.Checked = isDefault;
             MenuDefault.Enabled = on && !isDefault;
+            MenuRemove.Enabled = on && voice != null && !Busy;
         }
         void ThemeMenu()
         {
@@ -2535,31 +2541,19 @@ namespace ModernVoicesConfig
             Row(SoundFrame, soundGrid);
             Row(page, SoundFrame);
 
-            // Its own pauses and variation: a framed section too, with room above it.
+            // Its own pauses: a framed section too, with room above it. (Variation is for every voice only, on
+            // Speed and pauses: it is applied when a voice's model is loaded, so it can't differ by speaker.)
             OwnBox = new CheckBox();
-            OwnBox.Text = "Override pause duration and variation for the selected voice";
+            OwnBox.Text = "Override pause duration for the selected voice";
             OwnBox.AutoSize = true; OwnBox.Enabled = false; OwnBox.Checked = false;
             OwnBox.Margin = new Padding(3 + NameInset, 3, 3, 3);      // (its box, not its words, starts at that edge)
             gapGrid = Line("auto", "fill", "auto");
             Sliders["Sentence gap"] = AddSlider(gapGrid, "Sentence pause", 0, Store.SentenceLimit, 50, 250, 250, true);
             Sliders["Comma gap"] = AddSlider(gapGrid, "Comma pause", 0, Store.CommaLimit, 50, 250, 250, true);
             Sliders["Paragraph gap"] = AddSlider(gapGrid, "Paragraph gap", 0, Store.ParagraphLimit, 50, 250, 250, true);
-            // Its own variation too (Speed and pauses has the one for all voices).
-            OwnVariation = AddSlider(gapGrid, "Voice variation", 0, Store.VariationLimit, 5, 25, 25, true);
             Describe(Sliders["Sentence gap"], "Extra silence after each sentence, for this voice.");
             Describe(Sliders["Comma gap"], "Extra silence at each comma, semicolon and colon, for this voice.");
             Describe(Sliders["Paragraph gap"], "Extra silence when a new line or paragraph starts, for this voice.");
-            Describe(OwnVariation, "How much this voice changes its tone and rhythm each time it speaks.\r\n" +
-                "Programs that are already open use a new value after you restart them.");
-            OwnVariation.Bar.Enabled = false;
-            OwnVariation.Bar.ValueChanged += delegate
-            {
-                TrackBar bar = OwnVariation.Bar;
-                int snapped = (int)(Math.Round(bar.Value / 5.0, MidpointRounding.AwayFromZero) * 5);
-                if (bar.Value != snapped) { bar.Value = snapped; return; }
-                OwnVariation.Value.Text = bar.Value + "%";
-                if (!Filling) { saveTimer.Stop(); saveTimer.Start(); }
-            };
             gapGrid.Visible = false;
             PauseFrame = Frame();
             FrameSliders(PauseFrame, gapGrid, sectionLeft, Px(16));
@@ -3703,7 +3697,6 @@ namespace ModernVoicesConfig
         {
             bool own = OwnBox.Checked;
             foreach (string k in GapKeys) { Sliders[k].Bar.Enabled = CurrentInstalled != null && own; }
-            OwnVariation.Bar.Enabled = CurrentInstalled != null && own;
             gapGrid.Visible = own;
             if (!Filling && CurrentInstalled != null) { saveTimer.Stop(); saveTimer.Start(); }
         }
@@ -3816,7 +3809,6 @@ namespace ModernVoicesConfig
             Sliders["Volume"].Bar.Enabled = on; Sliders["Boost"].Bar.Enabled = on; Sliders["Speed"].Bar.Enabled = on;
             OwnBox.Enabled = on;
             foreach (string k in GapKeys) { Sliders[k].Bar.Enabled = false; }
-            OwnVariation.Bar.Enabled = false;
             PreviewButton.Enabled = on; ResetButton.Enabled = on; DefaultButton.Enabled = on;
             if (!on) { return; }
             InstalledRow row = (InstalledRow)InstalledList.SelectedItems[0].Tag;
@@ -3844,10 +3836,6 @@ namespace ModernVoicesConfig
                 Sliders["Sentence gap"].Bar.Value = Clamp(shown.Sentence, 0, Store.SentenceLimit);
                 Sliders["Comma gap"].Bar.Value = Clamp(shown.Comma, 0, Store.CommaLimit);
                 Sliders["Paragraph gap"].Bar.Value = Clamp(shown.Paragraph, 0, Store.ParagraphLimit);
-                // (Its own variation; with none set yet, the one for all voices.)
-                double? ownVaried = Store.GetVoiceVariation(row.Dir);
-                OwnVariation.Bar.Value = Clamp(Math.Round((ownVaried ?? Store.GetVariation(App.SettingsFile)) / 5.0) * 5, 0, Store.VariationLimit);
-                OwnVariation.Value.Text = OwnVariation.Bar.Value + "%";
                 Sliders["Volume"].Bar.Value = Clamp(Math.Round(peak * 10, MidpointRounding.AwayFromZero) * 10, 0, (int)(Store.MaxPeak * 100));
                 Sliders["Boost"].Bar.Value = Clamp(Math.Round(boost * 10), 10, (int)(App.MaxBoost * 10));
                 Sliders["Speed"].Bar.Value = Clamp(Math.Round(100 / lengthScale), 25, 200);
@@ -3856,7 +3844,6 @@ namespace ModernVoicesConfig
             finally { Filling = false; }
             CurrentInstalled = row;
             foreach (string k in GapKeys) { Sliders[k].Bar.Enabled = OwnBox.Checked; }
-            OwnVariation.Bar.Enabled = OwnBox.Checked;
             // The nickname box: the selected row's nickname.
             bool named = row.Entry != null;
             NickBox.Enabled = named; NickButton.Enabled = named;
@@ -3892,8 +3879,6 @@ namespace ModernVoicesConfig
                 Store.SetVoice(row.Dir, peak, boost, lengthScale);
                 Store.SetVoicePauses(row.Dir, OwnBox.Checked, RoundedMs(Sliders["Sentence gap"].Bar.Value), RoundedMs(Sliders["Comma gap"].Bar.Value),
                     RoundedMs(Sliders["Paragraph gap"].Bar.Value));
-                // (Its own variation is written once it overrides, or once one is there to keep in step.)
-                if (OwnBox.Checked || Store.GetVoiceVariation(row.Dir).HasValue) { Store.SetVoiceVariation(row.Dir, OwnVariation.Bar.Value); }
             }
             catch (Exception e) { MessageBox.Show(this, "Could not save the settings: " + e.Message, App.Name); }
         }
@@ -4560,7 +4545,14 @@ namespace ModernVoicesConfig
             List<string> wanted = PickedIds();
             bool us = UsBox.Checked;
             if (NothingToApply(wanted, us)) { StatusLabel.Text = "Nothing to change."; return; }
-            if (!Elevate()) { return; }
+            pendingIds = null;
+            StartApply(wanted, us);
+        }
+        // Has the installer make the voices installed exactly 'wanted' (false: the administrator's permission
+        // was not given, nothing started).
+        bool StartApply(List<string> wanted, bool us)
+        {
+            if (!Elevate()) { return false; }
             string request = "apply " + (us ? "1" : "0") + " " + B64.To(string.Join(",", wanted.ToArray()));
             lock (applyLock) { ApplyLines.Clear(); }
             applyUsTags = us;
@@ -4585,6 +4577,114 @@ namespace ModernVoicesConfig
                 catch (Exception e) { stopped = "Stopped: " + e.Message; }
                 try { BeginInvoke(new Action<int, string>(ApplyFinished), code, stopped); } catch (Exception) { }
             });
+            return true;
+        }
+
+        // ---- Remove voice (the Voice manager's right-click menu): the selected speaker is uninstalled at
+        // once, after a question. Only that changes: ticks waiting on Add or remove voices stay waiting.
+        public const string RemoveWords = "Uninstall selected speaker?";
+        public delegate bool RemoveQuestion(string id);
+        public RemoveQuestion AskRemove;      // (the build's test answers it; else the window below)
+        List<string> pendingIds;              // the Add page's ticks to put back once a removal is done (null: none)
+        bool pendingUs;                       // and its US English tick
+        string selectAfter;                   // the row to select once it is done (the removed one's neighbour)
+
+        public void RemoveSelectedVoice()
+        {
+            if (Busy) { return; }
+            CurrentVoice voice = GetCurrentVoice();
+            if (voice == null) { return; }
+            string id = null;
+            foreach (string have in Installed) { if (string.Equals(have, voice.Id, StringComparison.OrdinalIgnoreCase)) { id = have; } }
+            if (id == null) { return; }
+            bool yes;
+            if (AskRemove != null) { yes = AskRemove(id); }
+            else { using (Form ask = RemoveWindow()) { yes = ask.ShowDialog(this) == DialogResult.Yes; } }
+            if (!yes) { return; }
+            Sample.Stop();
+            SaveSpeakers();
+            // What is ticked on Add or remove voices, less this one, is put back afterwards.
+            List<string> pending = new List<string>();
+            foreach (string picked in PickedIds()) { if (!string.Equals(picked, id, StringComparison.OrdinalIgnoreCase)) { pending.Add(picked); } }
+            List<string> wanted = new List<string>();
+            foreach (string have in Installed) { if (have != id) { wanted.Add(have); } }
+            // (Its neighbour is selected afterwards: the row below, else the one above.)
+            selectAfter = null;
+            if (InstalledList.SelectedItems.Count > 0)
+            {
+                int at = InstalledList.SelectedItems[0].Index;
+                int next = at + 1 < InstalledList.Items.Count ? at + 1 : at - 1;
+                if (next >= 0)
+                {
+                    InstalledRow row = (InstalledRow)InstalledList.Items[next].Tag;
+                    selectAfter = Voices.IdOf(row.Key, row.Speaker);
+                }
+            }
+            pendingIds = pending;
+            pendingUs = UsBox.Checked;
+            if (!StartApply(wanted, UsTags)) { pendingIds = null; selectAfter = null; }
+        }
+        // Puts the Add page's ticks as they are in 'ids' (the list's rows and their speakers).
+        void TickAsPending(List<string> ids)
+        {
+            foreach (ListViewItem item in VoiceItems)
+            {
+                Entry v = (Entry)item.Tag;
+                bool on = false;
+                List<string> names = new List<string>();
+                foreach (string id in ids)
+                {
+                    if (!string.Equals(Voices.KeyOf(id), v.Key, StringComparison.OrdinalIgnoreCase)) { continue; }
+                    on = true;
+                    string name = Voices.SpeakerOf(id);
+                    if (name != null && !names.Contains(name)) { names.Add(name); }
+                }
+                item.Checked = on;
+                if (v.Several) { Speakers[v.Key] = string.Join(", ", names.ToArray()); }
+            }
+        }
+        public Form RemoveWindow()
+        {
+            Form window = new Form();
+            window.Text = App.Name; window.Font = Font;
+            window.FormBorderStyle = FormBorderStyle.FixedDialog; window.MaximizeBox = false; window.MinimizeBox = false;
+            window.ShowInTaskbar = false; window.StartPosition = FormStartPosition.CenterParent;
+            window.BackColor = palette.Back; window.ForeColor = palette.Text;
+            int width = Px(300);
+            Label words = new Label();
+            words.Name = "words"; words.UseMnemonic = false;
+            words.Text = RemoveWords;
+            words.ForeColor = palette.Text; words.BackColor = palette.Back;
+            words.AutoSize = true; words.MaximumSize = new Size(width, 0); words.MinimumSize = new Size(width, 0);
+            words.Location = new Point(Px(20), Px(20));
+            window.Controls.Add(words);
+            Button yes = Btn("Yes"), no = Btn("No");
+            yes.Name = "yes"; no.Name = "no";
+            yes.DialogResult = DialogResult.Yes; no.DialogResult = DialogResult.No;
+            foreach (Button b in new Button[] { yes, no })
+            {
+                ThemeOn(b, palette);
+                window.Controls.Add(b);
+                Size preferred = b.PreferredSize;
+                b.Size = new Size(Math.Max(preferred.Width, Px(90)), preferred.Height);
+            }
+            // (No on the right and the default: Enter, Esc and closing the window change nothing.)
+            MethodInvoker place = delegate
+            {
+                no.Location = new Point(Px(20) + width - no.Width, words.Bottom + Px(18));
+                yes.Location = new Point(no.Left - Px(10) - yes.Width, no.Top);
+                window.ClientSize = new Size(width + Px(40), no.Bottom + Px(18));
+            };
+            place();
+            window.Load += delegate { place(); };
+            window.AcceptButton = no; window.CancelButton = no;
+            window.Shown += delegate { no.Focus(); };
+            window.HandleCreated += delegate
+            {
+                int on = palette.Dark ? 1 : 0;
+                try { if (Native.DwmSetWindowAttribute(window.Handle, 20, ref on, 4) != 0) { Native.DwmSetWindowAttribute(window.Handle, 19, ref on, 4); } } catch (Exception) { }
+            };
+            return window;
         }
 
         // A line from the installer (on another thread): kept, and shown.
@@ -4639,6 +4739,11 @@ namespace ModernVoicesConfig
         // ('stopped' says why).
         void ApplyFinished(int code, string stopped)
         {
+            // (After Remove voice: the Add page's ticks that were waiting, put back.)
+            List<string> pending = pendingIds;
+            pendingIds = null;
+            string select = selectAfter;
+            selectAfter = null;
             Busy = false;
             Progress.Visible = false;
             pageHost.Enabled = true; tabStrip.Enabled = true; ApplyButton.Enabled = true; DoneButton.Enabled = true; CloseButton.Enabled = true;
@@ -4649,7 +4754,9 @@ namespace ModernVoicesConfig
                 UsTags = applyUsTags;
                 SetDefaultAfterApply();
             }
-            // The new state: ticks and bold for what is installed, the manager's list.
+            // The new state: ticks and bold for what is installed, the manager's list. (After Remove voice the
+            // speakers' list below is let go first, so its old ticks aren't saved over the ones put back.)
+            if (pending != null) { Current = null; }
             Filling = true;
             try
             {
@@ -4661,14 +4768,22 @@ namespace ModernVoicesConfig
                     item.Checked = isIn;
                     item.Font = isIn ? listBold : listFont;
                 }
+                if (pending != null) { TickAsPending(pending); }
             }
             finally { Filling = false; }
             // (A language listed only for its installed voices goes from the lists with the last of them.)
             int choicesBefore = VoiceFilterBox.Items.Count;
             FillLanguageChoices();
             if (VoiceFilterBox.Items.Count != choicesBefore) { LanguagesChanged(); }
-            UsBox.Checked = UsTags;
+            UsBox.Checked = pending != null ? pendingUs : UsTags;
             UpdateInstalledList();
+            if (pending != null)
+            {
+                // (The speakers' list below shows the ticks put back; the removed one's neighbour is selected.)
+                Current = null;
+                UpdateSelection();
+                if (select != null || InstalledList.Items.Count > 0) { SelectInstalledId(select); }
+            }
             UpdateSummary();
             UpdateApply();
             if (code == 0)
@@ -5175,6 +5290,13 @@ namespace ModernVoicesConfig
             if (!ok) { failures++; }
         }
         static void Note(string text) { log.AppendLine(text); }
+        // Whether a control, or any control inside it, shows these words.
+        static bool HasText(Control parent, string words)
+        {
+            if (parent.Text == words) { return true; }
+            foreach (Control c in parent.Controls) { if (HasText(c, words)) { return true; } }
+            return false;
+        }
 
         static bool WaitWhile(Func<bool> busy, int seconds)
         {
@@ -5559,9 +5681,9 @@ namespace ModernVoicesConfig
                 Check(boxLeft2 == frameLeft && ui.MuteIcon.PointToScreen(Point.Empty).X > boxLeft2 + ui.DefaultBox.Width,
                     "the default voice's box starts where the frames' lines do (" + boxLeft2 + " and " + frameLeft + "), the speaker after it");
                 Check(ui.SoundFrame.Contains(volumeBar) && ui.SoundFrame.Contains(ui.ResetButton) && ui.PauseFrame.Contains(ui.OwnBox) &&
-                    ui.PauseFrame.Contains(ui.OwnVariation.Bar) && ui.PauseFrame.Top - ui.SoundFrame.Bottom >= 10,
+                    ui.PauseFrame.Contains(ui.Sliders["Paragraph gap"].Bar) && ui.PauseFrame.Top - ui.SoundFrame.Bottom >= 10,
                     "\"How it sounds\" and the override section each have a frame, with a gap between them");
-                Check(ui.TipOf(volumeBar).Length > 0 && ui.TipOf(volumeBar) == ui.TipOf(ui.Sliders["Volume"].Name) && ui.TipOf(ui.OwnVariation.Name).Length > 0 &&
+                Check(ui.TipOf(volumeBar).Length > 0 && ui.TipOf(volumeBar) == ui.TipOf(ui.Sliders["Volume"].Name) && ui.TipOf(ui.Sliders["Paragraph gap"].Name).Length > 0 &&
                     ui.SoundFrame.Controls.Count == 2, "a slider's description shows when the pointer rests on it or its name (none under the sliders)");
                 ui.ShowPage(1);
                 Settle(100);
@@ -5994,12 +6116,11 @@ namespace ModernVoicesConfig
                 ui.UpdateOwnPauses();
                 bool shown = ui.OwnPausesShown && ui.Sliders["Sentence gap"].Bar.Enabled;
                 ui.Sliders["Sentence gap"].Bar.Value = 300;
-                bool variationOffered = ui.OwnVariation.Bar.Enabled;
-                ui.OwnVariation.Bar.Value = 40;
                 ui.SaveSettings();
                 ui.StopTimers();
                 Pauses own = Store.GetVoicePauses(dir);
-                Check(variationOffered && Store.GetVoiceVariation(dir) == 40, "a voice's own variation is saved with its override (own_variation_percent 40)");
+                Check(ui.PauseFrame.Controls.Count > 0 && !HasText(ui.PauseFrame, "Voice variation") && !ui.OwnBox.Text.Contains("variation") &&
+                    !Store.GetVoiceVariation(dir).HasValue, "the override section has no Voice variation (it is on Speed and pauses only), and none is saved for the voice");
                 ui.UpdateApply();
                 if (pictures) { Pictures(ui, folder); }
                 ui.OwnBox.Checked = false;
@@ -6251,10 +6372,58 @@ namespace ModernVoicesConfig
                 finished = WaitWhile(delegate { return ui.Busy; }, 1200);
                 Check(finished && Voices.InstalledIds().Count == had.Count + 1 && Voices.DefaultToken == Voices.TokenName(after[after.Count - 1]),
                     "a Modern Voice that is Windows' default stays the default when a voice is added (" + ui.DefaultLabel.Text + ")");
-                ui.SpeakerList.SetItemChecked(extraIndex, false);
-                ui.Apply();
+                // Remove voice (the Voice manager's right-click menu): asked first; No changes nothing; Yes
+                // uninstalls that speaker only, and a tick waiting on Add or remove voices stays waiting.
+                bool pendingTick = alan != null && !alan.Checked;
+                if (pendingTick) { alan.Checked = true; }
+                ui.ShowPage(0);
+                Settle(50);
+                ui.SelectInstalledId(extra);
+                ui.UpdateVoiceMenu();
+                bool offered = ui.MenuRemove.Enabled && ui.MenuRemove.Text == "Remove voice";
+                string askedAbout = null;
+                ui.AskRemove = delegate(string id) { askedAbout = id; return false; };
+                ui.MenuRemove.PerformClick();
+                Settle(200);
+                bool keptOnNo = askedAbout == extra && !ui.Busy && Voices.InstalledIds().Contains(extra);
+                Check(offered && keptOnNo, "Remove voice is on the right-click menu; it asks about " + (askedAbout ?? "nothing") + "; No changes nothing");
+                using (Form ask = ui.RemoveWindow())
+                {
+                    Control askYes = ask.Controls["yes"], askNo = ask.Controls["no"];
+                    Check(ask.Controls["words"].Text == "Uninstall selected speaker?" && askYes != null && askYes.Text == "Yes" && askNo != null && askNo.Text == "No" &&
+                        ask.AcceptButton == askNo && ask.CancelButton == askNo, "its question: \"Uninstall selected speaker?\" with Yes and No (Enter and Esc: No)");
+                    ask.Show(); Settle(200);
+                    if (pictures)
+                    {
+                        using (Bitmap shot = new Bitmap(ask.Width, ask.Height))
+                        {
+                            ask.DrawToBitmap(shot, new Rectangle(Point.Empty, shot.Size));
+                            shot.Save(Path.Combine(folder, "remove-question.png"), ImageFormat.Png);
+                        }
+                    }
+                    ask.Close();
+                }
+                ui.AskRemove = delegate(string id) { return true; };
+                ui.MenuRemove.PerformClick();
+                Settle(200);
+                bool removing = ui.Busy;
                 finished = WaitWhile(delegate { return ui.Busy; }, 1200);
-                Check(finished && Voices.InstalledIds().Count == had.Count, "and the voices are as they were again");
+                ui.AskRemove = null;
+                List<string> left = Voices.InstalledIds();
+                Note("remove voice: " + ui.ApplyLines.Count + " lines from the installer; status: " + ui.StatusLabel.Text + "; ticked now: " + string.Join(", ", ui.PickedIds().ToArray()));
+                Check(removing && finished && left.Count == had.Count && !left.Contains(extra) && !left.Contains("en_GB-alan-medium") && ui.StatusLabel.Text.StartsWith("Done", StringComparison.Ordinal),
+                    "Yes: " + extra + " is uninstalled, and nothing else changes (" + left.Count + " voices installed)");
+                ui.ShowPage(3);
+                Settle(50);
+                vctk.Selected = true;
+                ui.UpdateSelection();
+                Settle(50);
+                bool speakerUnticked = !ui.SpeakerList.GetItemChecked(extraIndex) && !ui.PickedIds().Contains(extra);
+                bool stillWaiting = !pendingTick || (alan.Checked && ui.PickedIds().Contains("en_GB-alan-medium") && ui.ApplyButton.Enabled);
+                Check(speakerUnticked && stillWaiting, "on Add or remove voices the removed speaker is unticked (" + speakerUnticked + "), and the tick that was waiting still waits, Apply changes lit (" + stillWaiting + ")");
+                if (pendingTick) { alan.Checked = false; }
+                ui.UpdateApply();
+                Check(!ui.ApplyButton.Enabled && Voices.InstalledIds().Count == had.Count, "and the voices are as they were again");
                 Check(Elevated.Ready, "the administrator's part was started once and is still there (nothing asks twice)");
                 Voices.DefaultTokenId = defaultBefore;
             }

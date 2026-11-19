@@ -26,7 +26,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.11.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.12.0")]
 
 namespace ModernVoicesReader
 {
@@ -1075,7 +1075,8 @@ namespace ModernVoicesReader
         public string OpenedFile = "";       // the file the box's text came from, while it is unchanged
         public bool ScreenWarningOff;        // "Do not display this warning again" was ticked (Read screen's warning)
         public bool KeepText;                // "Save text for next time?" was answered Yes as the Reader closed
-        public bool SaveOnClose = true;      // "Save text on close" is ticked: closing with text asks that question
+        public bool SaveOnClose = true;      // (before 0.18.12: "Save text on close" was ticked; read once into SaveText)
+        public string SaveText = "";         // "Save text on close": "Ask", "Always" or "Never" ("": not chosen yet)
         public string AudioKind = "mp3";     // what Save as audio last made: "mp3" or "wav"
         public int[] Bounds = new int[0];
         public Dictionary<string, Place> Places = new Dictionary<string, Place>();
@@ -1408,7 +1409,9 @@ namespace ModernVoicesReader
         string savingWav;                // an MP3 is wanted: the WAV the voice makes first (a temporary file), else null
         bool encoding;                   // that WAV is being made into the MP3 (on another thread)
         volatile bool stopEncoding;
-        CheckBox autoBox, tidyBox, saveBox;
+        CheckBox autoBox, tidyBox;
+        Label saveLabel;
+        ComboBox saveChoice;
         ProgressBar progress;
         Timer tick;
 
@@ -1530,8 +1533,9 @@ namespace ModernVoicesReader
                 progress.Width = Math.Max(Px(50), leftOf(playButton) + playButton.Width - start);     // as wide as the first two buttons
                 autoBox.Left = leftOf(clipboardButton);
                 tidyBox.Left = leftOf(audioButton);
-                saveBox.Left = leftOf(undoButton);
-                foreach (Control c in new Control[] { progress, autoBox, tidyBox, saveBox }) { c.Top = Math.Max(0, (underPanel.Height - c.Height) / 2); }
+                saveLabel.Left = leftOf(undoButton);
+                saveChoice.Left = saveLabel.Right + Px(4);
+                foreach (Control c in new Control[] { progress, autoBox, tidyBox, saveLabel, saveChoice }) { c.Top = Math.Max(0, (underPanel.Height - c.Height) / 2); }
             }
             finally { aligning = false; }
         }
@@ -2084,21 +2088,30 @@ namespace ModernVoicesReader
             tidyBox.Text = "Don't read links"; tidyBox.AutoSize = true; tidyBox.Anchor = AnchorStyles.Left; tidyBox.Font = lineFont;
             tidyBox.Margin = new Padding(Px(4), 3, 0, 3);
             tidyBox.CheckedChanged += delegate { if (!loading) { store.State.Tidy = tidyBox.Checked; store.Save(); } };
-            // Ticked (as it is to begin with): closing with text in the box asks "Save text for next time?".
-            // Not ticked: closing does not ask, and does not keep the text.
-            saveBox = new CheckBox();
-            saveBox.Text = "Save text on close"; saveBox.AutoSize = true; saveBox.Anchor = AnchorStyles.Left; saveBox.Font = lineFont;
-            saveBox.Margin = new Padding(Px(4), 3, 0, 3);
-            saveBox.Checked = true;
-            saveBox.CheckedChanged += delegate { if (!loading) { store.State.SaveOnClose = saveBox.Checked; store.Save(); } };
-            tips.SetToolTip(saveBox, "When you close the Reader with text in the box, asks whether to keep the text for next time.\r\nNot ticked: it closes without asking, and the text is not kept.");
+            // "Save text on close": Ask (to begin with): closing with text in the box asks "Save text for next
+            // time?"; Always: keeps it without asking; Never: closes without asking, and does not keep it.
+            saveLabel = new Label();
+            saveLabel.Text = "Save text on close:"; saveLabel.AutoSize = true; saveLabel.Font = lineFont;
+            saveLabel.Margin = new Padding(Px(4), 3, 0, 3);
+            saveChoice = new ComboBox();
+            saveChoice.DropDownStyle = ComboBoxStyle.DropDownList; saveChoice.Font = lineFont;
+            saveChoice.Items.AddRange(SaveTextModes);
+            int widest = 0;
+            foreach (string mode in SaveTextModes) { widest = Math.Max(widest, TextRenderer.MeasureText(mode, lineFont).Width); }
+            saveChoice.Width = widest + SystemInformation.VerticalScrollBarWidth + Px(14);
+            saveChoice.SelectedIndex = 0;
+            saveChoice.SelectedIndexChanged += delegate { if (!loading) { store.State.SaveText = SaveTextMode; store.Save(); } };
+            string saveTip = "What happens to the text in the box when you close the Reader.\r\n" +
+                "Ask: asks whether to keep it for next time.\r\nAlways: keeps it for next time without asking.\r\nNever: closes without keeping it.";
+            tips.SetToolTip(saveLabel, saveTip);
+            tips.SetToolTip(saveChoice, saveTip);
             tips.SetToolTip(autoBox, "Reads whatever you copy, in any program, as soon as you copy it");
             tips.SetToolTip(tidyBox, "Leaves out links, code and the symbols of formatted text");
             // (Placed by AlignLine, against the buttons above.)
             underPanel = new Panel();
             underPanel.Dock = DockStyle.Fill; underPanel.Margin = new Padding(0);
-            foreach (Control c in new Control[] { progress, autoBox, tidyBox, saveBox }) { c.Anchor = AnchorStyles.Left | AnchorStyles.Top; underPanel.Controls.Add(c); }
-            underPanel.Height = Math.Max(autoBox.PreferredSize.Height, progress.Height) + Px(8);
+            foreach (Control c in new Control[] { progress, autoBox, tidyBox, saveLabel, saveChoice }) { c.Anchor = AnchorStyles.Left | AnchorStyles.Top; underPanel.Controls.Add(c); }
+            underPanel.Height = Math.Max(Math.Max(autoBox.PreferredSize.Height, progress.Height), saveChoice.Height) + Px(8);
             under.Controls.Add(underPanel, 0, 0);
             ends.LocationChanged += delegate { AlignLine(); };
             buttons.SizeChanged += delegate { AlignLine(); };
@@ -2270,7 +2283,9 @@ namespace ModernVoicesReader
             ApplyVolume();
             autoBox.Checked = s.AutoRead;
             tidyBox.Checked = s.Tidy;
-            saveBox.Checked = s.SaveOnClose;
+            // (A settings file from before 0.18.12 has only SaveOnClose: ticked was Ask, unticked Never.)
+            if (Array.IndexOf(SaveTextModes, s.SaveText) < 0) { s.SaveText = s.SaveOnClose ? "Ask" : "Never"; }
+            saveChoice.SelectedIndex = Array.IndexOf(SaveTextModes, s.SaveText);
             int chosen = StartVoiceIndex(s.Voice);
             voiceBox.SelectedIndex = chosen;
             voiceIndex = chosen;
@@ -2308,21 +2323,36 @@ namespace ModernVoicesReader
             else { s.Position = 0; try { if (File.Exists(store.CurrentFile)) { File.Delete(store.CurrentFile); } } catch (Exception) { } }
             store.Save();
         }
-        // "Save text for next time?" was answered: the text is kept or not, and "Don't ask again" unticks
-        // "Save text on close" (from then on closing neither asks nor keeps).
+        // "Save text for next time?" was answered Yes or No: the text is kept or not, and with "Don't ask
+        // again" ticked the answer is kept too: "Save text on close" becomes Always (Yes) or Never (No).
         public void AnswerSaveText(bool keep, bool notAgain)
         {
             KeepTextForNextTime(keep);
-            if (notAgain) { saveBox.Checked = false; store.State.SaveOnClose = false; store.Save(); }
+            if (notAgain) { SaveTextMode = keep ? "Always" : "Never"; }
         }
-        public bool SaveOnCloseTicked { get { return saveBox.Checked; } set { saveBox.Checked = value; } }
-        public string SaveOnCloseWords { get { return saveBox.Text; } }
+        public static readonly string[] SaveTextModes = new string[] { "Ask", "Always", "Never" };
+        // What "Save text on close" is set to (setting it keeps it, as choosing it does).
+        public string SaveTextMode
+        {
+            get { return saveChoice.SelectedIndex >= 0 ? SaveTextModes[saveChoice.SelectedIndex] : "Ask"; }
+            set
+            {
+                int at = Array.IndexOf(SaveTextModes, value);
+                if (at < 0) { return; }
+                if (saveChoice.SelectedIndex != at) { saveChoice.SelectedIndex = at; }
+                store.State.SaveText = value; store.Save();
+            }
+        }
+        public string SaveOnCloseWords { get { return saveLabel.Text; } }
         // (How far "Save text on close" starts from where Undo does: the build's test.)
         public int SaveBoxOffset
         {
-            get { return saveBox.PointToScreen(Point.Empty).X - undoButton.PointToScreen(Point.Empty).X; }
+            get { return saveLabel.PointToScreen(Point.Empty).X - undoButton.PointToScreen(Point.Empty).X; }
         }
-        public bool SaveBoxFits { get { return saveBox.Right <= underPanel.ClientSize.Width && saveBox.Visible; } }
+        public bool SaveBoxFits
+        {
+            get { return saveChoice.Right <= underPanel.ClientSize.Width && saveChoice.Visible && saveChoice.Left > saveLabel.Right && saveChoice.Bottom <= underPanel.ClientSize.Height; }
+        }
         void Remember()
         {
             State s = store.State;
@@ -3045,15 +3075,20 @@ namespace ModernVoicesReader
             if (mode != Mode.Stopped) { Halt(); }
             stopEncoding = true;
             if (saver != null) { try { saver.SpeakAsyncCancelAll(); } catch (Exception) { } SavingEnded(false, ""); }
-            // Text in the box: kept for next time, if wanted ("Save text on close" not ticked: not asked, not kept).
-            if (!silent && e.CloseReason == CloseReason.UserClosing && box.Text.Trim().Length > 0 && store.State.SaveOnClose)
+            // Text in the box: kept for next time as "Save text on close" says. Ask: the question (Yes / No;
+            // closing the question with its X keeps nothing and leaves "Don't ask again" aside). Always: kept,
+            // however the Reader is closed (the build's test too: nothing is asked). Never: not kept.
+            bool hasText = box.Text.Trim().Length > 0;
+            if (hasText && SaveTextMode == "Always") { KeepTextForNextTime(true); }
+            else if (!silent && e.CloseReason == CloseReason.UserClosing && hasText && SaveTextMode == "Ask")
             {
                 CheckBox notAgain;
                 using (Form ask = Program.SaveTextWindow(out notAgain))
                 {
                     ask.StartPosition = FormStartPosition.CenterParent; ask.ShowInTaskbar = false;
-                    bool keep = ask.ShowDialog(this) == DialogResult.Yes;
-                    AnswerSaveText(keep, notAgain.Checked);
+                    DialogResult answer = ask.ShowDialog(this);
+                    if (answer == DialogResult.Yes || answer == DialogResult.No) { AnswerSaveText(answer == DialogResult.Yes, notAgain.Checked); }
+                    else { KeepTextForNextTime(false); }
                 }
             }
             Remember();
@@ -3176,7 +3211,10 @@ namespace ModernVoicesReader
         public const string DontAskAgain = "Don't ask again";
         public static Form SaveTextWindow(out CheckBox notAgain)
         {
-            return AskWindow("Save text for next time?", DontAskAgain, out notAgain, "No");
+            Form ask = AskWindow("Save text for next time?", DontAskAgain, out notAgain, "No");
+            // (No and Esc answer No; the window's X answers nothing, Cancel.)
+            ((Button)ask.CancelButton).DialogResult = DialogResult.No;
+            return ask;
         }
 
         public const string ScreenWarning = "The screen reader can make mistakes, and is intended for use on images containing text. " +
@@ -3675,15 +3713,41 @@ namespace ModernVoicesReader
                     Check(again.BoxText == "", "No: the next start is empty");
                     again.Show();
                     Application.DoEvents();
-                    // "Save text on close": ticked to begin with, under Undo; "Don't ask again" unticks it for good.
+                    // "Save text on close": Ask to begin with, under Undo; "Don't ask again" keeps the answer:
+                    // No makes it Never, Yes Always (which then keeps the text without asking).
                     System.Threading.Thread.Sleep(50); Application.DoEvents();
                     log.AppendLine("\"" + again.SaveOnCloseWords + "\" starts " + again.SaveBoxOffset + " px from Undo's left edge");
-                    Check(new State().SaveOnClose && again.SaveOnCloseTicked && again.SaveOnCloseWords == "Save text on close", "\"Save text on close\" is ticked to begin with");
+                    Check(again.SaveTextMode == "Ask" && again.SaveOnCloseWords == "Save text on close:" && string.Join("/", MainForm.SaveTextModes) == "Ask/Always/Never",
+                        "\"Save text on close:\" offers Ask, Always and Never, Ask to begin with");
                     Check(Math.Abs(again.SaveBoxOffset) <= 1 && again.SaveBoxFits, "it starts where the Undo button does, under it, and fits in the window");
+                    again.AnswerSaveText(false, false);
+                    Check(again.SaveTextMode == "Ask" && new Store(data).State.SaveText == "Ask", "No without \"Don't ask again\": still Ask");
                     again.AnswerSaveText(false, true);
-                    Check(!again.SaveOnCloseTicked && !new Store(data).State.SaveOnClose, "\"Don't ask again\" unticks it, and that is kept");
-                    again.SaveOnCloseTicked = true;
-                    Check(new Store(data).State.SaveOnClose, "ticked again in the Reader: kept too");
+                    Check(again.SaveTextMode == "Never" && new Store(data).State.SaveText == "Never", "No with \"Don't ask again\": Never, and that is kept");
+                    again.AnswerSaveText(true, true);
+                    Check(again.SaveTextMode == "Always" && new Store(data).State.SaveText == "Always", "Yes with \"Don't ask again\": Always, and that is kept");
+                    string alwaysText = "Kept without asking.";
+                    again.TestLoad(alwaysText, 0);
+                    again.Close();
+                    again.Dispose();
+                    MainForm always = new MainForm(new Store(data), true);
+                    Check(always.BoxText == alwaysText && always.SaveTextMode == "Always", "Always: closing keeps the text without asking, the next start has it");
+                    always.SaveTextMode = "Never";
+                    always.TestLoad("Not kept.", 0);
+                    always.Close();
+                    always.Dispose();
+                    MainForm never = new MainForm(new Store(data), true);
+                    Check(never.BoxText == "" && never.SaveTextMode == "Never", "Never: closing keeps nothing");
+                    never.SaveTextMode = "Ask";
+                    Check(new Store(data).State.SaveText == "Ask", "set back to Ask in the Reader: kept too");
+                    // A settings file from before 0.18.12 ("Save text on close" unticked) reads as Never.
+                    State old = new State(); old.SaveOnClose = false;
+                    Check(Array.IndexOf(MainForm.SaveTextModes, old.SaveText) < 0, "an old settings file has no SaveText (read as Never when SaveOnClose was unticked, else Ask)");
+                    never.Close();
+                    never.Dispose();
+                    again = new MainForm(new Store(data), true);
+                    again.Show();
+                    Application.DoEvents();
                     using (Form ask = Program.AlreadyRunningWindow())
                     {
                         ask.Show(); Application.DoEvents();

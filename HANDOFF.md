@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.11 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.12 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -13,10 +13,9 @@ run #109 was refused for billing). Builds are free again. Anything pushed is vis
 
 ## State for a new chat (19 Nov 2026, late morning)
 
-**He confirmed 0.18.11 is good.** Planned work is AGREED BUT NOT BUILT (he said "make this known to
-github ... for the next build, but dont build anything"): see "Planned next" just below. It is SPLIT
-into two jobs at his say: job A on Opus 5.5 (0.18.12), job B on Fable (0.18.13, or later). Ask which he
-wants to start, and check he is on that model, before writing any code. 0.18.2 to 0.18.11 were all built on Opus 5.5 in one long chat and
+**He confirmed 0.18.11 is good.** 0.18.12 (job A without the MP3s, on Opus 5.5) is built: see its section.
+Still to do: the language MP3s (job A's section 1, waiting for his recordings) and job B (per-speaker
+settings, Fable). Ask how 0.18.12 went. 0.18.2 to 0.18.11 were all built on Opus 5.5 in one long chat and
 delivered (each zip sent); he has been trying them as they came (he hit 0.18.2's start-up crash, fixed in
 0.18.3, and corrected 0.18.9's Amplify default in 0.18.10).
 What changed across them, newest first, is in the sections below; the main things a new chat should know:
@@ -31,10 +30,37 @@ What changed across them, newest first, is in the sections below; the main thing
 Ideas still on the shelf: see "Ideas" (the pronunciation ignore list is dropped: a rule with "Say it as"
 empty does it).
 
+## 0.18.12 (19 Nov 2026), delivered, not yet confirmed by him
+
+Built on Opus 5.5: sections 3 and 4 of "Planned next" below, and the Reader's save question.
+1. Voice variation is out of the Voice manager's override section (`OwnVariation` gone); the tick and the
+   menu's tooltip read "Override pause duration for the selected voice". Variation is only on Speed and
+   pauses. `Store.GetVoiceVariation` / `SetVoiceVariation` and the engine's `own_variation` are left in
+   place, unused by Config (he has none saved; no clean-up, his call).
+2. **Remove voice** (Voice manager right-click menu, after a separator, `MenuRemove`):
+   `RemoveSelectedVoice` asks "Uninstall selected speaker?" (`RemoveWindow`, Yes / No; No is the default:
+   Enter, Esc and closing change nothing; test hook `AskRemove`), then `StartApply(installed minus this
+   id, UsTags)`. `Apply()` is now `Apply()` (the Add page's ticks) + `StartApply(wanted, us)` (Elevate,
+   helper request, Busy). The Add page's ticks are saved as `pendingIds` (PickedIds less the removed id)
+   and `pendingUs`, and put back in `ApplyFinished` (`TickAsPending`, which also writes `Speakers`), so
+   anything waiting stays waiting and Apply changes is lit for it. `Current` is let go before the ticks
+   are put back (else `SaveSpeakers` would write the speaker list's old ticks over them). The row below
+   the removed one (else above) is selected afterwards (`selectAfter`).
+3. **Reader "Save text on close"** is a dropdown now: label "Save text on close:" + `saveChoice` (Ask /
+   Always / Never; `State.SaveText`; an old settings file's `SaveOnClose` false reads as Never, else
+   Ask). Ask: the question as before; Yes / No with "Don't ask again" set Always / Never
+   (`AnswerSaveText`); the question's X (DialogResult Cancel; its No button now returns No) keeps nothing
+   and ignores the tick. Always keeps the text whatever closes the Reader (also in the self-test, which
+   tests it), Never keeps nothing. `underPanel` is as tall as the dropdown needs.
+4. kit/README.txt: the menu's Remove voice, the override wording, the Reader's dropdown.
+
+Not covered by CI: a real right-click, the UAC prompt (CI is elevated), the dropdown opened by hand.
+
 ## Planned next (agreed 19 Nov 2026, NOT built)
 
-He split it: **job A = 0.18.12 on Opus 5.5** (sections 1, 3, 4: Config only, plus packaging),
-**job B = 0.18.13 on Fable** (section 2: engine, Config and VoiceConvert.ps1). Either may go first,
+**Sections 3 and 4 were built in 0.18.12; section 1 (MP3s) waits for his recordings (it will be 0.18.13 or
+later); section 2 is still job B.** He split it: **job A on Opus 5.5** (sections 1, 3, 4: Config only, plus packaging),
+**job B on Fable** (section 2: engine, Config and VoiceConvert.ps1). Either may go first,
 but A is smaller; if B goes first it takes 0.18.12. Bump the version per build as usual.
 
 **1. (Job A, Opus) Multi-speaker voice's name plays a recorded instruction (Add or remove voices).**

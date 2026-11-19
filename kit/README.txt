@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.18.11
+Modern Voices for Windows 0.18.12
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -130,8 +130,12 @@ Right-click a voice in the list for:
                       Windows too, so programs that choose a voice by gender find it. Windows asks for
                       permission, as for a nickname, and programs already open see it after a restart.
                       Repair and updates keep it.
-  Override defaults   ticks or unticks "Override pause duration and variation for the selected voice".
+  Override defaults   ticks or unticks "Override pause duration for the selected voice".
   Make default voice  as the button (see below).
+  Remove voice        uninstalls the selected speaker (a voice of one speaker: the voice), after
+                      asking "Uninstall selected speaker?". Only that is changed: anything ticked on
+                      Add or remove voices but not yet applied stays ticked, waiting for Apply changes.
+                      Windows asks for permission, as for Apply changes.
 
 Set nickname gives the selected row's voice the name typed in the box beside it, shown in brackets in
 the voice's name in place of its accent: "VCTK p262 (Irish Female)" for "VCTK p262 (British)". It
@@ -162,9 +166,8 @@ On the Speed and pauses tab, for every voice:
                   each part of a sentence separately so the pause can go between them, which can make
                   the intonation a little more broken up.
 
-(A voice can have its own variation too: tick "Override pause duration and variation for the
-selected voice" on the Voice manager.) Advanced setting, at the bottom of the tab: Voice variation. How much a voice changes its tone and
-rhythm each time it speaks: lower is steadier, higher is livelier. 100% is how the voices were made,
+Advanced setting, at the bottom of the tab: Voice variation. How much a voice changes its tone and
+rhythm each time it speaks: lower is steadier, higher is livelier. It is the same for every voice. 100% is how the voices were made,
 60% is the default (75% before 0.18.1). Programs already open use a new value after they are restarted.
 
 Each pause is silence added to the voice's own, in milliseconds at 100% dictation speed and a program's
@@ -178,7 +181,7 @@ Speech settings, sapi.cpl), for programs that leave the speed to Windows: when t
 says so, with a button to set it to 0. Set the speed here instead, and leave Windows' and the
 program's at 0 unless you want faster still.
 
-A voice can have its own: in the Voice manager, tick "Override pause duration and variation for the selected voice" and
+A voice can have its own: in the Voice manager, tick "Override pause duration for the selected voice" and
 set its three pauses. Changes apply straight away, like volume. Preview on this tab says the Voice
 manager's line with the voice chosen beside it.
 
@@ -283,8 +286,10 @@ Modern Voices: Reader (Start menu > Modern Voices for Windows > Modern Voices Re
   * Closed with text in the box, the Reader asks "Save text for next time?": Yes and the text is
     there, at its place, the next time it opens; No and it opens empty. (A file's place is kept
     either way: open the file again and Play goes on from where you stopped.) "Save text on close"
-    (under Undo, ticked to begin with) is what makes it ask: unticked, the Reader closes without
-    asking and the text is not kept. Ticking "Don't ask again" in the question unticks it.
+    (under Undo) chooses: Ask (to begin with) asks that question; Always keeps the text without
+    asking; Never closes without asking and the text is not kept. Ticking "Don't ask again" in the
+    question keeps your answer: Yes makes it Always, No makes it Never. Closing the question with
+    its X keeps nothing and changes nothing.
   * Opened while it is already running, the Reader asks whether to start a second one; Cancel
     shows the one that is open.
   * Sums of money are said the way they are read aloud, by every program that uses the voices:
