@@ -5536,7 +5536,7 @@ namespace ModernVoicesConfig
                 using (Form start = ui.FirstVoicesWindow())
                 {
                     Control startWords = start.Controls["words"], startOk = start.Controls["ok"], startX = start.Controls["close"];
-                    Check(startWords != null && startWords.Text == "Select the voices you wish to download and install, then click Apply changes." &&
+                    Check(startWords != null && startWords.Text == "Select the voices you wish to download and install, then click Apply changes.\r\n(Voice quality varies. Sample before downloading.)" &&
                         startOk is Button && startOk.Text == "OK" && start.AcceptButton == startOk && start.CancelButton == startOk &&
                         startX != null && startX.Bounds.Contains(new Point(start.ClientSize.Width - 16, 16)) && start.Controls[0] == startX,
                         "with no voice installed: \"Select the voices...\", with OK and an X in the top right corner");
