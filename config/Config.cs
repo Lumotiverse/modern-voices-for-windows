@@ -2404,10 +2404,6 @@ namespace ModernVoicesConfig
             TableLayoutPanel previewLine = Line("auto", "fill");
             Label previewLabel = Words("Preview says");
             previewLabel.Dock = DockStyle.None; previewLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left;
-            // (The sliders' names start where the box did, beside the label, up to 0.18.7: the same column,
-            // measured without the colon, so that they stay where they are.)
-            previewColumn = previewLabel.PreferredSize.Width + previewLabel.Margin.Horizontal;
-            previewLabel.Text = "Preview says:";
             PreviewBox = new TextBox();
             // Several lines (Enter starts a new one: a paragraph pause), four showing.
             int fourLines = PreviewBox.Font.Height * 4 + Px(18);
@@ -2420,6 +2416,11 @@ namespace ModernVoicesConfig
             previewLine.Margin = new Padding(previewLine.Margin.Left, previewLine.Margin.Top + Px(9), previewLine.Margin.Right, 0);
             Row(page, previewLine);
             Row(page, PreviewBox);
+            // (The sliders' names start where the box did, beside the label, up to 0.18.7: the same column,
+            // measured without the colon, so that they stay where they are; and measured here, the label
+            // in the window, in its font.)
+            previewColumn = previewLabel.PreferredSize.Width + previewLabel.Margin.Horizontal;
+            previewLabel.Text = "Preview says:";
             // (A label's words start a little inside it: the sections are set that much to the left, so
             // that the words themselves, not their labels, start at the preview box's edge.)
             // (3 px at 100%, seen in the pictures: it grows with the text. Measuring it with TextRenderer gave 0.)
