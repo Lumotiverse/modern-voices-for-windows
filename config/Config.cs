@@ -4340,7 +4340,9 @@ namespace ModernVoicesConfig
             words.Name = "words"; words.UseMnemonic = false; words.AutoSize = false;
             words.Text = AllSpeakersWords(v);
             words.ForeColor = palette.Text; words.BackColor = palette.Back;
-            words.Size = new Size(width, TextRenderer.MeasureText(words.Text, Font, new Size(width, 0), TextFormatFlags.WordBreak).Height + Px(4));
+            words.Font = Font;
+            // (As tall as the label itself wraps its words: measured otherwise, it came out a line short.)
+            words.Size = new Size(width, words.GetPreferredSize(new Size(width, 0)).Height + Px(4));
             words.Location = new Point(Px(20), Px(20));
             window.Controls.Add(words);
             Button all = Btn("Select all"), choose = Btn("Choose");
@@ -5243,7 +5245,8 @@ namespace ModernVoicesConfig
                 {
                     Control askAll = ask.Controls["all"], askChoose = ask.Controls["choose"];
                     Check(askAll != null && askAll.Text == "Select all" && askChoose != null && askChoose.Text == "Choose" && ask.AcceptButton == askChoose &&
-                        ask.CancelButton == askChoose && ask.Controls["words"].Text.Contains("all " + vctkEntry.SpeakerNames.Count + " of its speakers"),
+                        ask.CancelButton == askChoose && ask.Controls["words"].Text.Contains("all " + vctkEntry.SpeakerNames.Count + " of its speakers") &&
+                        askChoose.Top >= ask.Controls["words"].Bottom && ask.Controls["words"].Height >= ask.Controls["words"].GetPreferredSize(new Size(ask.Controls["words"].Width, 0)).Height,
                         "its question: \"" + ConfigForm.AllSpeakersWords(vctkEntry).Replace("\r\n\r\n", " ") + "\" with Select all and Choose (Enter and Esc: Choose)");
                     if (pictures)
                     {
