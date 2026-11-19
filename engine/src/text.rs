@@ -155,6 +155,35 @@ pub fn number(info: &str, key: &str, default: f32) -> f32 {
     rest[..end].parse().ok().filter(|v: &f32| v.is_finite() && *v >= 0.0).unwrap_or(default)
 }
 
+/// What a voice's own settings file sets for one speaker of a voice of several, as text: the inside of
+/// its `"speaker_<number>": { ... }` block (the number is the model's, as in the token's SpeakerId),
+/// or "" when the speaker has none. The keys in there are the voice's own with `s_` in front
+/// (`s_peak`, `s_boost`, `s_length_scale`, `s_own_pauses`, `s_sentence_ms`, `s_comma_ms`,
+/// `s_paragraph_ms`), so that a search for the voice's own key never finds a speaker's.
+pub fn speaker_block(info: &str, speaker: i32) -> &str {
+    let key = format!("\"speaker_{speaker}\"");
+    let Some(at) = info.find(&key) else { return "" };
+    let Some(rest) = info[at + key.len()..].trim_start().strip_prefix(':') else { return "" };
+    let Some(body) = rest.trim_start().strip_prefix('{') else { return "" };
+    &body[..body.find('}').unwrap_or(body.len())]
+}
+
+/// A speaker's own pauses, from its block (`speaker_block`): Some(Some(pauses)) with `s_own_pauses` 1
+/// (any gap the block leaves out is `voice`'s, what the voice's own settings give), Some(None) with
+/// `s_own_pauses` 0 (the pauses for every voice, whatever the voice itself has), None when the block
+/// does not say (as the voice has it).
+pub fn speaker_pauses(block: &str, voice: Pauses) -> Option<Option<Pauses>> {
+    let own = number(block, "s_own_pauses", -1.0);
+    if own < 0.0 {
+        return None;
+    }
+    Some((own >= 1.0).then(|| Pauses {
+        sentence_ms: number(block, "s_sentence_ms", voice.sentence_ms).min(10_000.0),
+        comma_ms: number(block, "s_comma_ms", voice.comma_ms).min(10_000.0),
+        paragraph_ms: number(block, "s_paragraph_ms", voice.paragraph_ms).min(10_000.0),
+    }))
+}
+
 /// How loud a piece of speech is on the whole: the level (rms) of the louder half of its 1024-sample
 /// stretches (about 50 ms each), which leaves out the silence around and between its words.
 pub fn speech_level(audio: &[f32]) -> f32 {
@@ -714,6 +743,39 @@ mod tests {
         assert_eq!(number(&both, "peak", 0.0), 0.5);
         assert_eq!(number(&both, "boost", 0.0), 1.0);
         assert_eq!(number(&both, "length_scale", 1.0), 1.1);
+    }
+
+    #[test]
+    fn speakers_own_settings() {
+        let info = r#"{ "loudness": { "peak": 1, "boost": 1.5 },
+  "inference": { "length_scale": 1 },
+  "pauses": { "own_pauses": 0, "sentence_ms": 400, "comma_ms": 50, "paragraph_ms": 900 },
+  "speaker_1": { "s_peak": 0.3, "s_boost": 2, "s_length_scale": 1.25, "s_own_pauses": 1, "s_sentence_ms": 300, "s_comma_ms": 0 },
+  "speaker_12" : {"s_peak": 0.6, "s_own_pauses": 0},
+  "speaker_3": { "s_length_scale": 0.8 }
+}
+{ "speakers": ["p239"], "loudness": { "peak": 0.9 } }"#;
+        // The voice's own keys are still found first, never a speaker's.
+        assert_eq!(number(info, "peak", 0.0), 1.0);
+        assert_eq!(number(info, "length_scale", 0.0), 1.0);
+        assert_eq!(number(info, "own_pauses", 9.0), 0.0);
+        assert_eq!(number(info, "sentence_ms", 0.0), 400.0);
+        // Each speaker's block is its own: 1 is not 12.
+        let one = speaker_block(info, 1);
+        assert_eq!((number(one, "s_peak", 9.0), number(one, "s_boost", 9.0), number(one, "s_length_scale", 9.0)), (0.3, 2.0, 1.25));
+        assert_eq!(number(speaker_block(info, 12), "s_peak", 9.0), 0.6);
+        assert_eq!(number(speaker_block(info, 12), "s_boost", 9.0), 9.0);
+        assert_eq!(number(speaker_block(info, 3), "s_length_scale", 9.0), 0.8);
+        assert_eq!(speaker_block(info, 2), "");
+        assert_eq!(speaker_block(info, 0), "");
+        assert_eq!(speaker_block("", 0), "");
+        assert_eq!(speaker_block(r#"{ "speaker_0": 5 }"#, 0), "");
+        // Its pauses: its own (a gap it leaves out is the voice's), those for every voice, or as the voice has it.
+        let voice = Pauses::read(info);
+        assert_eq!(speaker_pauses(one, voice), Some(Some(Pauses { sentence_ms: 300.0, comma_ms: 0.0, paragraph_ms: 900.0 })));
+        assert_eq!(speaker_pauses(speaker_block(info, 12), voice), Some(None));
+        assert_eq!(speaker_pauses(speaker_block(info, 3), voice), None);
+        assert_eq!(speaker_pauses("", voice), None);
     }
 
     #[test]

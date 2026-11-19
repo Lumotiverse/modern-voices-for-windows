@@ -15,6 +15,9 @@
 #     the silence added to the voice's own pause after a sentence, at a comma (0 = commas untouched)
 #     and at a line break, in milliseconds at rate 0, 100% speed and the voice's own speed: faster
 #     speech, shorter gaps, in proportion
+#   "speaker_12": { "s_peak": 1, "s_boost": 1.5, "s_length_scale": 1, "s_own_pauses": 0, "s_sentence_ms": 500, ... }
+#     (in the voice's own settings file only) what speaker 12 of a voice of several speakers has of its
+#     own; a speaker without one is as the voice has it
 # The program's settings.json also has "speed_percent": the speed every voice speaks at before a
 # program's own rate (100 unless set; each voice's length_scale adjusts from there).
 
@@ -347,6 +350,62 @@ function Set-VoicePauses([string]$Dir, [bool]$Own, [double]$Sentence, [double]$C
 # The pauses set for a voice (by its folder): as Get-Pauses.
 function Get-VoicePauses([string]$Dir) {
     return (Get-Pauses -From (Get-VoiceText $Dir))
+}
+
+# --- a speaker's own settings (a voice of several speakers; since 0.18.13) ------------------------------
+# A block "speaker_<number>": { ... } in the voice's own settings file. The number is the model's (the
+# token's SpeakerId). Its keys are the voice's own with s_ in front (s_peak, s_boost, s_length_scale,
+# s_own_pauses, s_sentence_ms, s_comma_ms, s_paragraph_ms), so that a search for a voice's key never
+# finds a speaker's. A speaker without a block, or whatever a block leaves out, is as the voice has it.
+# The engine (text::speaker_block) and Modern Voices Config (Store.GetSpeaker) read it the same way.
+function Get-SpeakerPattern([int]$Number) { return '"speaker_' + $Number + '"\s*:\s*\{([^}]*)\}' }
+
+# What a speaker's block sets: Stored (it has one), Peak, Boost, LengthScale, Own, Sentence, Comma,
+# Paragraph ($null where it says nothing).
+function Get-SpeakerSettings([string]$Dir, [int]$Number) {
+    $block = [regex]::Match((Get-VoiceText $Dir), (Get-SpeakerPattern $Number))
+    $inside = if ($block.Success) { $block.Groups[1].Value } else { '' }
+    $c = [Globalization.CultureInfo]::InvariantCulture
+    $read = {
+        param($key)
+        $m = [regex]::Match($inside, '"' + $key + '"\s*:\s*' + $script:PevNumber)
+        if ($m.Success) { [double]::Parse($m.Groups[1].Value, $c) } else { $null }
+    }
+    $ownPauses = & $read 's_own_pauses'
+    return [pscustomobject]@{ Stored = $block.Success; Peak = (& $read 's_peak'); Boost = (& $read 's_boost'); LengthScale = (& $read 's_length_scale')
+        Own = $(if ($null -ne $ownPauses) { $ownPauses -ge 1 } else { $null })
+        Sentence = (& $read 's_sentence_ms'); Comma = (& $read 's_comma_ms'); Paragraph = (& $read 's_paragraph_ms') }
+}
+
+# Records everything a speaker has of its own: loudness, speed, and its pauses ($OwnPauses true: its own;
+# false: those for every voice apply, its values kept for next time).
+function Set-SpeakerSettings([string]$Dir, [int]$Number, [double]$Peak, [double]$Boost, [double]$LengthScale,
+                             [bool]$OwnPauses = $false, [double]$Sentence = 500, [double]$Comma = 60, [double]$Paragraph = 1200) {
+    if ($Number -lt 0) { throw 'no speaker number' }
+    Test-VoiceSettings $Peak $Boost $LengthScale
+    Test-Pauses $Sentence $Comma $Paragraph
+    $path = Get-VoiceFile $Dir
+    $text = Get-SettingsText $path
+    $block = "`"speaker_$Number`": { `"s_peak`": $(Format-Number $Peak), `"s_boost`": $(Format-Number $Boost), `"s_length_scale`": $(Format-Number $LengthScale), " +
+        "`"s_own_pauses`": $([int]$OwnPauses), `"s_sentence_ms`": $(Format-Number $Sentence), `"s_comma_ms`": $(Format-Number $Comma), `"s_paragraph_ms`": $(Format-Number $Paragraph) }"
+    $existing = [regex]::Match($text, (Get-SpeakerPattern $Number))
+    if ($existing.Success) {
+        $text = $text.Substring(0, $existing.Index) + $block + $text.Substring($existing.Index + $existing.Length)
+    } else {
+        $text = Add-SettingsBlock $text $block
+    }
+    Set-SettingsText $path $text
+}
+
+# Takes a speaker's block out: it is as the voice has it again.
+function Clear-SpeakerSettings([string]$Dir, [int]$Number) {
+    $path = Get-VoiceFile $Dir
+    if (-not (Test-Path $path)) { return }
+    $text = Get-SettingsText $path
+    $existing = [regex]::Match($text, ',\s*' + (Get-SpeakerPattern $Number))
+    if (-not $existing.Success) { $existing = [regex]::Match($text, (Get-SpeakerPattern $Number) + '\s*,?') }
+    if (-not $existing.Success) { return }
+    Set-SettingsText $path ($text.Substring(0, $existing.Index) + $text.Substring($existing.Index + $existing.Length))
 }
 
 # The whole job for one voice. $Name is the voice's short id (folder name), $Label what people see.

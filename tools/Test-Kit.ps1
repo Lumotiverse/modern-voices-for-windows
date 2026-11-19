@@ -195,6 +195,41 @@ Check ($silent[$albaName].seconds -gt 0.5) "output volume 0: the speech is still
 Set-OutputVolume $settingsFile 100
 Check ((Get-OutputVolume $settingsFile) -eq 100 -and (Get-GlobalSpeed $settingsFile) -eq 100) 'the output volume is back at 100%, the speed beside it untouched'
 
+Step 'A speaker''s own settings (VCTK p239, of a voice of several speakers)'
+$vctkDir = Join-Path $App 'voices\en_GB-vctk-medium'
+$vctkName = 'VCTK p239 (British)'
+$vctkToken = Get-ItemProperty (Join-Path $Tokens64 'ModernVoices_en_GB-vctk-medium_sp239')
+Check ($null -ne $vctkToken.SpeakerId) "Windows has VCTK p239 as the model's speaker $($vctkToken.SpeakerId)"
+$vctkNumber = [int]$vctkToken.SpeakerId
+$vctkOther = $vctkNumber + 1
+$vctkWas = Get-VoiceSettings $vctkDir
+# Half as loud for p239; another speaker of the voice set quieter and slower still (not p239's business).
+Set-SpeakerSettings $vctkDir $vctkNumber 0.5 1 1
+Set-SpeakerSettings $vctkDir $vctkOther 0.2 1 2
+$ownLoud = Test-Speech $PS64 64 3 @{ $vctkName = 0.5 }
+$ratio = $ownLoud[$vctkName].seconds / $normal[$vctkName].seconds
+Check ([math]::Abs($ratio - 1) -lt 0.15) ("another speaker's settings leave p239 alone: as long as before ({0:N2}x)" -f $ratio)
+$vctkNow = Get-VoiceSettings $vctkDir
+Check ($vctkNow.Peak -eq $vctkWas.Peak -and $vctkNow.Boost -eq $vctkWas.Boost -and $vctkNow.LengthScale -eq $vctkWas.LengthScale) "the voice's own settings are as they were (peak $($vctkNow.Peak), boost $($vctkNow.Boost), length_scale $($vctkNow.LengthScale))"
+$read = Get-SpeakerSettings $vctkDir $vctkNumber
+$readOther = Get-SpeakerSettings $vctkDir $vctkOther
+$readNone = Get-SpeakerSettings $vctkDir ($vctkNumber + 2)
+Check ($read.Stored -and $read.Peak -eq 0.5 -and $read.Boost -eq 1 -and $readOther.Peak -eq 0.2 -and $readOther.LengthScale -eq 2 -and -not $readNone.Stored -and $null -eq $readNone.Peak) "each speaker's block is read back as its own (p239 peak $($read.Peak), the other $($readOther.Peak), a third has none)"
+# Half speed for p239 alone.
+Set-SpeakerSettings $vctkDir $vctkNumber 1 1.5 2
+$ownSlow = Test-Speech $PS64 64 3
+$ratio = $ownSlow[$vctkName].seconds / $normal[$vctkName].seconds
+$albaRatio = $ownSlow[$albaName].seconds / $normal[$albaName].seconds
+Check ($ratio -gt 1.45 -and [math]::Abs($albaRatio - 1) -lt 0.15) ("p239's own length_scale 2: p239 {0:N2}x as long, Alba {1:N2}x" -f $ratio, $albaRatio)
+# Its block taken out: as the voice has it again.
+Clear-SpeakerSettings $vctkDir $vctkNumber
+Clear-SpeakerSettings $vctkDir $vctkOther
+$vctkText = [System.IO.File]::ReadAllText((Get-VoiceFile $vctkDir))
+Check ($vctkText -notmatch 'speaker_' -and $vctkText -notmatch ',\s*\}' -and $vctkText -match '"peak"') 'the blocks taken out, the voice''s own file is as before'
+$ownGone = Test-Speech $PS64 64 3
+$ratio = $ownGone[$vctkName].seconds / $normal[$vctkName].seconds
+Check ([math]::Abs($ratio - 1) -lt 0.15) ("without a block p239 is as the voice has it: full loudness, {0:N2}x as long" -f $ratio)
+
 Step 'Settings take effect in a program already speaking'
 $lines = & $PS64 -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Live $albaName -Dir $albaDir 2>&1
 $lines | ForEach-Object { Write-Host "  $_" }
@@ -241,6 +276,7 @@ function Set-Noise([string]$Dir, [string[]]$Values) {
 $maleDir = Join-Path $App 'voices\en_GB-northern_english_male-medium'
 $albaNoise = Set-Noise $albaDir @('0', '0')
 $maleNoise = Set-Noise $maleDir @('0', '0')
+$vctkNoise = Set-Noise $vctkDir @('0', '0')
 $two = 'Pulling in three. Watch the patrol on the left.'
 $para = "Pulling in three.`nWatch the patrol on the left."
 $comma = 'Pulling in three, watch the patrol on the left.'
@@ -276,6 +312,7 @@ $marked = Measure-Speech $albaName 'This is a test.'
 $unmarked = Measure-Speech $albaName 'This is a test'
 Check ([math]::Abs($marked.Seconds - $unmarked.Seconds) -lt 0.03) ("'This is a test' without a full stop said as with one: {0:N2} s and {1:N2} s" -f $unmarked.Seconds, $marked.Seconds)
 $baseMale = Measure-Speech $maleName $two
+$baseVctk = Measure-Speech $vctkName $two
 Set-GlobalPauses $settingsFile 1000 0 2000
 # Sums of money are said as they are read aloud: a pound sign and 150 as "150 pounds".
 $sum = Measure-Speech $albaName ('It costs ' + [char]0xA3 + '150 a session.')
@@ -296,6 +333,11 @@ Check-Added "Alba's own sentence gap 300 ms" $base (Measure-Speech $albaName $tw
 Check-Added 'Northern English Male still the global 1000 ms' $baseMale (Measure-Speech $maleName $two) 1000 30
 Set-VoicePauses $albaDir $false 300 0 600
 Check-Added 'Alba back on the global 1000 ms' $base (Measure-Speech $albaName $two) 1000 30
+# A speaker's own pauses: VCTK p239 300 ms; switched off again (its values kept), the global 1000 ms.
+Set-SpeakerSettings $vctkDir $vctkNumber 1 1.5 1 $true 300 0 600
+Check-Added "VCTK p239's own sentence gap 300 ms" $baseVctk (Measure-Speech $vctkName $two) 300 30
+Set-SpeakerSettings $vctkDir $vctkNumber 1 1.5 1 $false 300 0 600
+Check-Added 'VCTK p239 back on the global 1000 ms' $baseVctk (Measure-Speech $vctkName $two) 1000 30
 # Speed for every voice 125%: speech and gaps 1.25x as fast (sentence gap 1000 ms -> 800 ms).
 Set-GlobalSpeed $settingsFile 125
 Set-GlobalPauses $settingsFile 0 0 0
@@ -308,6 +350,7 @@ Set-GlobalPauses $settingsFile 500 0 1200
 Set-GlobalSpeed $settingsFile 100
 [void](Set-Noise $albaDir $albaNoise)
 [void](Set-Noise $maleDir $maleNoise)
+[void](Set-Noise $vctkDir $vctkNoise)
 $screens = Join-Path (Split-Path (Resolve-Path $Kit).Path -Parent) 'screens'
 $code = Invoke-ConfigTest $configExe @('--pictures', '--apply') $screens 1800
 Check ($code -eq 0) 'Modern Voices Config again, with pictures; Apply changes adds a voice and removes it (the installer run from the window)'
@@ -332,10 +375,14 @@ if (Test-Path $readerExe) {
 
 Step 'Repair (registers everything again; settings kept)'
 Set-VoiceSettings $albaDir 0.8 2 1
+Set-SpeakerSettings $vctkDir $vctkNumber 0.6 1 1 $true 300 0 600
 $code = Invoke-Install @('-Repair', '-Unattended', '-NoPause')
 Check ($code -eq 0) 'repair finished without errors'
-[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })
+[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8; $vctkName = 0.6 })
+$kept = Get-SpeakerSettings $vctkDir $vctkNumber
+Check ($kept.Peak -eq 0.6 -and $kept.Own -and $kept.Sentence -eq 300) "a speaker's own settings are kept too (VCTK p239: peak $($kept.Peak), own sentence gap $($kept.Sentence) ms)"
 Set-VoiceSettings $albaDir 1 1.5 1
+Clear-SpeakerSettings $vctkDir $vctkNumber
 
 Step 'A nickname from the Reader (Nickname.ps1, which it runs as administrator)'
 $nickScript = Join-Path $App 'installer\Nickname.ps1'

@@ -33,7 +33,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
 [assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.12.0")]
+[assembly: System.Reflection.AssemblyVersion("0.18.13.0")]
 
 namespace ModernVoicesConfig
 {
@@ -496,6 +496,20 @@ namespace ModernVoicesConfig
 
         // A voice's gender as Windows has it (SAPI's Gender attribute, which programs that pick a voice by
         // gender go by): "Female", "Male", or "" (none given).
+        // The model's number of a voice's speaker, as Windows has it (the token's SpeakerId, what the engine
+        // speaks with); -1 when nothing says.
+        public static int SpeakerId(string id)
+        {
+            try
+            {
+                using (RegistryKey token = Registry.LocalMachine.OpenSubKey(Tokens64 + "\\" + TokenName(id)))
+                {
+                    object value = token == null ? null : token.GetValue("SpeakerId");
+                    return value is int ? (int)value : -1;
+                }
+            }
+            catch (Exception) { return -1; }
+        }
         public static string Gender(string id)
         {
             try
@@ -614,6 +628,8 @@ namespace ModernVoicesConfig
 
     public class VoiceSettings { public double? Peak, Boost, LengthScale; }
     public class Pauses { public bool Own, Stored; public double Sentence, Comma, Paragraph; }
+    // What a speaker's own block sets (null where it says nothing: as the voice has it); Stored: it has one.
+    public class SpeakerSettings { public bool Stored; public bool? Own; public double? Peak, Boost, LengthScale, Sentence, Comma, Paragraph; }
     public class Rule { public bool On, Whole, Case; public string From, To; }
 
     // The files the engine reads while speaking (a change takes effect from the next thing said), all in
@@ -688,12 +704,17 @@ namespace ModernVoicesConfig
             return s;
         }
 
-        // Records a voice's loudness and speed in its own settings file.
-        public static void SetVoice(string dir, double peak, double boost, double lengthScale)
+        static void CheckVoice(double peak, double boost, double lengthScale)
         {
             if (peak < 0 || peak > MaxPeak) { throw new ArgumentException("peak must be from 0 to " + Format(MaxPeak) + " (it is " + Format(peak) + ")."); }
             if (boost < 1 || boost > 5) { throw new ArgumentException("boost must be from 1 to 5 (it is " + Format(boost) + ")."); }
             if (lengthScale < 0.3 || lengthScale > 4) { throw new ArgumentException("length_scale must be from 0.3 to 4 (it is " + Format(lengthScale) + ")."); }
+        }
+
+        // Records a voice's loudness and speed in its own settings file.
+        public static void SetVoice(string dir, double peak, double boost, double lengthScale)
+        {
+            CheckVoice(peak, boost, lengthScale);
             string path = App.VoiceFile(dir);
             string text = ToChange(path);
             string block = "\"loudness\": {\n    \"peak\": " + Format(peak) + ",\n    \"boost\": " + Format(boost) + "\n  }";
@@ -759,6 +780,58 @@ namespace ModernVoicesConfig
         {
             CheckPauses(sentence, comma, paragraph);
             SetPausesBlock(App.VoiceFile(dir), PausesBlock(sentence, comma, paragraph, own));
+        }
+
+        // ---- A speaker's own settings (a voice of several speakers; since 0.18.13): a block
+        // "speaker_<number>": { ... } in the voice's own settings file. The number is the model's (the
+        // token's SpeakerId). Its keys are the voice's own with s_ in front (s_peak, s_boost,
+        // s_length_scale, s_own_pauses, s_sentence_ms, s_comma_ms, s_paragraph_ms), so that a search for a
+        // voice's key never finds a speaker's. A speaker without a block, or whatever a block leaves out,
+        // is as the voice has it (so settings from before 0.18.13 still hold for every speaker until one
+        // is changed). The engine (text::speaker_block) and VoiceConvert.ps1 read it the same way.
+        static string SpeakerPattern(int number) { return "\"speaker_" + number + "\"\\s*:\\s*\\{([^}]*)\\}"; }
+
+        public static SpeakerSettings GetSpeaker(string dir, int number)
+        {
+            SpeakerSettings s = new SpeakerSettings();
+            Match block = Regex.Match(VoiceText(dir), SpeakerPattern(number));
+            if (!block.Success) { return s; }
+            string text = block.Groups[1].Value;
+            s.Stored = true;
+            s.Peak = Read(text, "s_peak"); s.Boost = Read(text, "s_boost"); s.LengthScale = Read(text, "s_length_scale");
+            double? own = Read(text, "s_own_pauses");
+            if (own.HasValue) { s.Own = own.Value >= 1; }
+            s.Sentence = Read(text, "s_sentence_ms"); s.Comma = Read(text, "s_comma_ms"); s.Paragraph = Read(text, "s_paragraph_ms");
+            return s;
+        }
+
+        // Records everything a speaker has of its own: loudness, speed, and its pauses (own true: its own;
+        // false: those for every voice apply, its values kept for next time).
+        public static void SetSpeaker(string dir, int number, double peak, double boost, double lengthScale, bool own, double sentence, double comma, double paragraph)
+        {
+            if (number < 0) { throw new ArgumentException("no speaker number"); }
+            CheckVoice(peak, boost, lengthScale);
+            CheckPauses(sentence, comma, paragraph);
+            string path = App.VoiceFile(dir);
+            string text = ToChange(path);
+            string block = "\"speaker_" + number + "\": { \"s_peak\": " + Format(peak) + ", \"s_boost\": " + Format(boost) + ", \"s_length_scale\": " + Format(lengthScale) +
+                ", \"s_own_pauses\": " + (own ? "1" : "0") + ", \"s_sentence_ms\": " + Format(sentence) + ", \"s_comma_ms\": " + Format(comma) +
+                ", \"s_paragraph_ms\": " + Format(paragraph) + " }";
+            Match existing = Regex.Match(text, SpeakerPattern(number));
+            text = existing.Success ? text.Substring(0, existing.Index) + block + text.Substring(existing.Index + existing.Length) : WithBlock(text, block);
+            Replace(path, text);
+        }
+
+        // Takes a speaker's block out: it is as the voice has it again.
+        public static void ClearSpeaker(string dir, int number)
+        {
+            string path = App.VoiceFile(dir);
+            if (!File.Exists(path)) { return; }
+            string text = ToChange(path);
+            Match existing = Regex.Match(text, ",\\s*" + SpeakerPattern(number));
+            if (!existing.Success) { existing = Regex.Match(text, SpeakerPattern(number) + "\\s*,?"); }
+            if (!existing.Success) { return; }
+            Replace(path, text.Substring(0, existing.Index) + text.Substring(existing.Index + existing.Length));
         }
 
         // A number of settings.json's own, by its key: set, or added first.
@@ -3828,6 +3901,19 @@ namespace ModernVoicesConfig
             }
             Pauses voicePauses = Store.GetVoicePauses(row.Dir);
             Pauses shown = voicePauses.Own || voicePauses.Stored ? voicePauses : Store.GetPauses(App.SettingsFile);
+            // A speaker of a voice of several: what it has of its own, over the voice's.
+            int number = SpeakerNumber(row);
+            if (number >= 0)
+            {
+                SpeakerSettings own = Store.GetSpeaker(row.Dir, number);
+                if (own.Peak.HasValue) { peak = own.Peak.Value; }
+                if (own.Boost.HasValue) { boost = own.Boost.Value; }
+                if (own.LengthScale.HasValue && own.LengthScale.Value > 0) { lengthScale = own.LengthScale.Value; }
+                if (own.Own.HasValue) { voicePauses.Own = own.Own.Value; }
+                if (own.Sentence.HasValue) { shown.Sentence = own.Sentence.Value; }
+                if (own.Comma.HasValue) { shown.Comma = own.Comma.Value; }
+                if (own.Paragraph.HasValue) { shown.Paragraph = own.Paragraph.Value; }
+            }
             Filling = true;
             try
             {
@@ -3848,7 +3934,8 @@ namespace ModernVoicesConfig
             bool named = row.Entry != null;
             NickBox.Enabled = named; NickButton.Enabled = named;
             NickBox.Text = named ? Voices.Nickname(Voices.IdOf(row.Key, row.Speaker)) : "";
-            SoundLabel.Text = "How " + row.Title + " sounds" + (row.Shared ? " (all its speakers)" : "");
+            // (A speaker of a voice of several is named as Windows lists it: its settings are its own.)
+            SoundLabel.Text = "How " + (number >= 0 && row.Entry != null ? Voices.DisplayName(row.Entry, row.Speaker) : row.Title) + " sounds";
             UpdatePreviewButtons();
         }
 
@@ -3874,13 +3961,31 @@ namespace ModernVoicesConfig
             double peak = Sliders["Volume"].Bar.Value / 100.0;
             double boost = Sliders["Boost"].Bar.Value / 10.0;
             double lengthScale = Math.Round(100.0 / Sliders["Speed"].Bar.Value, 3);
+            double sentence = RoundedMs(Sliders["Sentence gap"].Bar.Value), comma = RoundedMs(Sliders["Comma gap"].Bar.Value),
+                paragraph = RoundedMs(Sliders["Paragraph gap"].Bar.Value);
+            int number = SpeakerNumber(row);
             try
             {
-                Store.SetVoice(row.Dir, peak, boost, lengthScale);
-                Store.SetVoicePauses(row.Dir, OwnBox.Checked, RoundedMs(Sliders["Sentence gap"].Bar.Value), RoundedMs(Sliders["Comma gap"].Bar.Value),
-                    RoundedMs(Sliders["Paragraph gap"].Bar.Value));
+                // A speaker of a voice of several has its own; the voice's are left as they are (they are
+                // what its other speakers have until they are changed).
+                if (number >= 0) { Store.SetSpeaker(row.Dir, number, peak, boost, lengthScale, OwnBox.Checked, sentence, comma, paragraph); }
+                else
+                {
+                    Store.SetVoice(row.Dir, peak, boost, lengthScale);
+                    Store.SetVoicePauses(row.Dir, OwnBox.Checked, sentence, comma, paragraph);
+                }
             }
             catch (Exception e) { MessageBox.Show(this, "Could not save the settings: " + e.Message, App.Name); }
+        }
+
+        // The model's number of a row's speaker, for a voice of several speakers (each has its own settings:
+        // Store.SetSpeaker); -1 for a voice of one speaker (the voice's settings).
+        public static int SpeakerNumber(InstalledRow row)
+        {
+            if (row == null || string.IsNullOrEmpty(row.Speaker)) { return -1; }
+            int number = Voices.SpeakerId(Voices.IdOf(row.Key, row.Speaker));
+            if (number < 0 && row.Entry != null && !row.Entry.SpeakerIds.TryGetValue(row.Speaker, out number)) { number = -1; }
+            return number;
         }
 
         void ResetSettings()
@@ -6130,6 +6235,73 @@ namespace ModernVoicesConfig
                 Pauses back = Store.GetVoicePauses(dir);
                 Check(offFirst && shown && own.Own && own.Sentence == 300 && !back.Own,
                     "own pauses: off at first " + offFirst + "; ticked: sliders shown " + shown + ", own " + own.Own + ", sentence " + own.Sentence + " ms; unticked: own " + back.Own);
+
+                // A speaker of a voice of several speakers has settings of its own (since 0.18.13): its
+                // sliders are saved for it alone, the voice's own and another speaker's left as they were.
+                ListViewItem spItem = null;
+                foreach (ListViewItem spEach in ui.InstalledList.Items)
+                {
+                    if (!string.IsNullOrEmpty(((InstalledRow)spEach.Tag).Speaker)) { spItem = spEach; break; }
+                }
+                if (spItem != null)
+                {
+                    string spFirst = Voices.IdOf(ui.CurrentInstalled.Key, ui.CurrentInstalled.Speaker);
+                    InstalledRow spRow = (InstalledRow)spItem.Tag;
+                    string spId = Voices.IdOf(spRow.Key, spRow.Speaker);
+                    string spDir = spRow.Dir;
+                    int spNumber = ConfigForm.SpeakerNumber(spRow);
+                    int spOther = spNumber + 1;
+                    SpeakerSettings spWas = Store.GetSpeaker(spDir, spNumber);
+                    VoiceSettings spVoiceWas = Store.GetVoice(spDir);
+                    Pauses spPausesWas = Store.GetVoicePauses(spDir);
+                    Store.ClearSpeaker(spDir, spNumber);
+                    Store.SetSpeaker(spDir, spOther, 0.3, 2, 2, true, 100, 10, 200);
+                    ui.SelectInstalledId(spId);
+                    string spHeading = ui.SoundLabel.Text;
+                    int spVolumeFirst = ui.Sliders["Volume"].Bar.Value, spSpeedFirst = ui.Sliders["Speed"].Bar.Value;
+                    bool spAsVoice = spVolumeFirst == (int)Math.Round((spVoiceWas.Peak ?? App.DefaultPeak) * 100) && ui.OwnBox.Checked == spPausesWas.Own;
+                    ui.Sliders["Volume"].Bar.Value = 40; ui.Sliders["Boost"].Bar.Value = 10; ui.Sliders["Speed"].Bar.Value = 125;
+                    ui.OwnBox.Checked = true;
+                    ui.UpdateOwnPauses();
+                    ui.Sliders["Comma gap"].Bar.Value = 200;
+                    ui.SaveSettings();
+                    ui.StopTimers();
+                    SpeakerSettings spMine = Store.GetSpeaker(spDir, spNumber);
+                    SpeakerSettings spTheirs = Store.GetSpeaker(spDir, spOther);
+                    VoiceSettings spVoiceNow = Store.GetVoice(spDir);
+                    Pauses spPausesNow = Store.GetVoicePauses(spDir);
+                    Check(spNumber >= 0 && spAsVoice && spHeading.Contains(spRow.Speaker) && !spHeading.Contains("all its speakers"),
+                        "a speaker of a voice of several (" + spId + ", the model's speaker " + spNumber + ") starts as the voice has it; its section is headed '" + spHeading + "'");
+                    Check(spMine.Stored && spMine.Peak == 0.4 && spMine.Boost == 1 && spMine.LengthScale == 0.8 && spMine.Own == true && spMine.Comma == 200,
+                        "its sliders are saved as its own: peak " + spMine.Peak + ", boost " + spMine.Boost + ", length_scale " + spMine.LengthScale + ", own pauses " + spMine.Own + ", comma " + spMine.Comma + " ms");
+                    Check(spVoiceNow.Peak == spVoiceWas.Peak && spVoiceNow.Boost == spVoiceWas.Boost && spVoiceNow.LengthScale == spVoiceWas.LengthScale &&
+                        spPausesNow.Own == spPausesWas.Own && spPausesNow.Sentence == spPausesWas.Sentence && spPausesNow.Comma == spPausesWas.Comma &&
+                        spTheirs.Peak == 0.3 && spTheirs.Boost == 2 && spTheirs.LengthScale == 2 && spTheirs.Own == true && spTheirs.Comma == 10,
+                        "the voice's own settings (peak " + spVoiceNow.Peak + ", length_scale " + spVoiceNow.LengthScale + ") and another speaker's (peak " + spTheirs.Peak + ") are as they were");
+                    // Another voice selected and this one again: the sliders show the speaker's own.
+                    ui.SelectInstalledId(spFirst);
+                    ui.SelectInstalledId(spId);
+                    Check(ui.Sliders["Volume"].Bar.Value == 40 && ui.Sliders["Boost"].Bar.Value == 10 && ui.Sliders["Speed"].Bar.Value == 125 && ui.OwnBox.Checked &&
+                        ui.Sliders["Comma gap"].Bar.Value == 200, "selected again, the sliders show the speaker's own (volume " + ui.Sliders["Volume"].Bar.Value +
+                        "%, speed " + ui.Sliders["Speed"].Bar.Value + "%, comma " + ui.Sliders["Comma gap"].Bar.Value + " ms)");
+                    // Its block taken out: as the voice has it again, and the file as it was.
+                    ui.SelectInstalledId(spFirst);
+                    ui.StopTimers();
+                    Store.ClearSpeaker(spDir, spNumber);
+                    Store.ClearSpeaker(spDir, spOther);
+                    string spFile = File.ReadAllText(App.VoiceFile(spDir));
+                    ui.SelectInstalledId(spId);
+                    Check(!spFile.Contains("speaker_") && !Regex.IsMatch(spFile, ",\\s*\\}") && !Store.GetSpeaker(spDir, spNumber).Stored &&
+                        ui.Sliders["Volume"].Bar.Value == spVolumeFirst && ui.Sliders["Speed"].Bar.Value == spSpeedFirst && ui.OwnBox.Checked == spPausesWas.Own,
+                        "its block taken out of the file, the speaker is as the voice has it again (volume " + ui.Sliders["Volume"].Bar.Value + "%)");
+                    ui.SelectInstalledId(spFirst);
+                    ui.StopTimers();
+                    if (spWas.Stored)
+                    {
+                        Store.SetSpeaker(spDir, spNumber, spWas.Peak ?? App.DefaultPeak, spWas.Boost ?? App.DefaultBoost, spWas.LengthScale ?? 1, spWas.Own ?? false,
+                            spWas.Sentence ?? Store.SentenceDefault, spWas.Comma ?? Store.CommaDefault, spWas.Paragraph ?? Store.ParagraphDefault);
+                    }
+                }
 
                 // A nickname: the voice renamed where Windows lists it, and back.
                 string plain = ui.GetCurrentVoice().Voice;

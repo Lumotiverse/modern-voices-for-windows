@@ -1,4 +1,4 @@
-Modern Voices for Windows 0.18.12
+Modern Voices for Windows 0.18.13
 ===============================
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
@@ -116,8 +116,10 @@ using the voice (from the next thing they say): no restarting, no repair. Previe
 "Preview says" box with the voice as it now is (Enter starts a new line, which gets the paragraph
 gap); pressed while that voice is speaking, it stops it, and pressed with another voice selected it
 stops the one speaking and starts that one. Reset puts back 100%, 1.5x, 100%. Each installed speaker of a voice has its own row (the
-voice named on the first): Preview, Make default voice and Nickname act on the row selected. A voice's speakers share its sliders (add or remove speakers on "Add or remove
-voices"). A program's own volume and speed still adjust from there.
+voice named on the first): Preview, Make default voice and Nickname act on the row selected. Each speaker has its own settings too: the
+sliders, Reset and the pause override below are for the speaker selected, and its section is headed
+with its name. A speaker you haven't changed is as its voice was set before (add or remove speakers on
+"Add or remove voices"). A program's own volume and speed still adjust from there.
 
 The list of installed voices shows each voice's name, speaker, nickname, accent (or language), gender,
 size on disk, whether it is Windows' default and its folder. Click a column's heading to sort the list
@@ -181,8 +183,8 @@ Speech settings, sapi.cpl), for programs that leave the speed to Windows: when t
 says so, with a button to set it to 0. Set the speed here instead, and leave Windows' and the
 program's at 0 unless you want faster still.
 
-A voice can have its own: in the Voice manager, tick "Override pause duration for the selected voice" and
-set its three pauses. Changes apply straight away, like volume. Preview on this tab says the Voice
+A voice can have its own (each speaker of a voice of several speakers likewise): in the Voice manager,
+tick "Override pause duration for the selected voice" and set its three pauses. Changes apply straight away, like volume. Preview on this tab says the Voice
 manager's line with the voice chosen beside it.
 
 The window opens no larger than the screen; a tab that doesn't fit in it scrolls. The mouse wheel
@@ -193,7 +195,8 @@ The settings live in the settings folder, C:\ProgramData\Modern Voices for Windo
 PC may change them, which is why Modern Voices Config needs no administrator): settings.json (the Speed
 and pauses tab's "speed_percent" and "pauses", and "output_percent") and, for each voice you have
 changed, voices\<voice>.json ("loudness": peak and boost; "inference": length_scale, higher = slower;
-"pauses": its own), if you'd rather edit them. A voice you haven't changed is as its voice.json in the
+"pauses": its own; "speaker_<number>": what one speaker of a voice of several has of its own, the same
+names with s_ in front), if you'd rather edit them. A voice you haven't changed is as its voice.json in the
 install folder has it. (Before 0.12.0 all of these were in the install folder: updating moves them.)
 
 

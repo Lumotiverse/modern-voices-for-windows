@@ -148,9 +148,10 @@ struct Model {
     busy: Mutex<()>,
     /// The model's folder, for its voice.json.
     dir: String,
-    /// The voice's settings, and when the files they come from were last changed when they were read
-    /// (its voice.json, and its own settings file; None before the first reading).
-    settings: Mutex<(Option<(Option<SystemTime>, Option<SystemTime>)>, Settings)>,
+    /// The voice's settings: when the files they come from were last changed when they were read (its
+    /// voice.json, and its own settings file; None before the first reading), their text (the own
+    /// file's first), and what it gives each speaker asked for since (see `Settings::of`).
+    settings: Mutex<(Option<(Option<SystemTime>, Option<SystemTime>)>, String, HashMap<i32, Settings>)>,
 }
 
 /// What is set for how a voice sounds, read while speaking (so a change takes effect from the next
@@ -174,6 +175,23 @@ impl Settings {
             boost: number(info, "boost", 1.0).clamp(1.0, 5.0),
             length_scale: number(info, "length_scale", 1.0).clamp(0.3, 4.0),
             own_pauses: (number(info, "own_pauses", 0.0) >= 1.0).then(|| Pauses::read(info)),
+        }
+    }
+
+    /// For one speaker of the voice: what its own block in the voice's settings sets
+    /// (`text::speaker_block`), and the voice's for whatever it leaves out. A voice of one speaker,
+    /// or a speaker nobody has set anything for, has no block: the voice's settings as they are.
+    fn of(info: &str, speaker: i32) -> Settings {
+        let voice = Settings::from(info);
+        let own = speaker_block(info, speaker);
+        if own.is_empty() {
+            return voice;
+        }
+        Settings {
+            peak: number(own, "s_peak", voice.peak).min(1.0),
+            boost: number(own, "s_boost", voice.boost).clamp(1.0, 5.0),
+            length_scale: number(own, "s_length_scale", voice.length_scale).clamp(0.3, 4.0),
+            own_pauses: speaker_pauses(own, Pauses::read(info)).unwrap_or(voice.own_pauses),
         }
     }
 }
@@ -247,24 +265,29 @@ fn dictionary(settings_path: Option<&str>, language: &str) -> Arc<Dictionary> {
 }
 
 impl Model {
-    /// The voice's settings now: read again when its voice.json or its own settings file (beside the
-    /// settings file the token names) has changed since last time. What the own file sets comes first.
-    fn settings(&self, settings_file: Option<&str>) -> Settings {
+    /// A speaker's settings now: the files are read again when the voice's voice.json or its own
+    /// settings file (beside the settings file the token names) has changed since last time. What the
+    /// own file sets comes first, and in it what it sets for this speaker.
+    fn settings(&self, settings_file: Option<&str>, speaker: i32) -> Settings {
         let path = format!("{}\\voice.json", self.dir);
         let own = settings_file.map(|file| own_file(file, &self.dir));
         let when = |path: &std::path::Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
         let changed = Some((when(std::path::Path::new(&path)), own.as_deref().and_then(when)));
         let Ok(mut cached) = self.settings.lock() else { return Settings::from("") };
+        let again = cached.0.is_some();
         if cached.0 != changed {
             let first = own.as_deref().and_then(|own| std::fs::read_to_string(own).ok()).unwrap_or_default();
-            let info = format!("{first}\n{}", std::fs::read_to_string(&path).unwrap_or_default());
-            let settings = Settings::from(&info);
-            if cached.0.is_some() || log::enabled() {
-                log::write(&format!("{}: settings {settings:?}", self.dir));
-            }
-            *cached = (changed, settings);
+            *cached = (changed, format!("{first}\n{}", std::fs::read_to_string(&path).unwrap_or_default()), HashMap::new());
         }
-        cached.1
+        if let Some(settings) = cached.2.get(&speaker) {
+            return *settings;
+        }
+        let settings = Settings::of(&cached.1, speaker);
+        if again || log::enabled() {
+            log::write(&format!("{} (speaker {speaker}): settings {settings:?}", self.dir));
+        }
+        cached.2.insert(speaker, settings);
+        settings
     }
 }
 
@@ -400,7 +423,7 @@ fn load_model(model_dir: &str, data_dir: &str, settings_file: Option<&str>) -> O
     let sample_rate = u32::try_from(tts.sample_rate()).unwrap_or(DEFAULT_RATE);
     let speakers = tts.num_speakers().max(1);
     let model = Arc::new(Model { tts, sample_rate, busy: Mutex::new(()), dir: model_dir.to_string(),
-        settings: Mutex::new((None, Settings::from(&info))) });
+        settings: Mutex::new((None, String::new(), HashMap::new())) });
     *cell = Some(model.clone());
     drop(cell);
     log::write(&format!("loaded {model_dir}: {sample_rate} Hz, {speakers} speaker(s), noise {noise_scale}/{noise_w}, {:?} ({})",
@@ -723,7 +746,7 @@ impl Engine_Impl {
         let semitones = run.pitch.clamp(-6, 6) as f32;
         let shift = 2f32.powf(semitones / 12.0);
         let gain = base_volume * (run.volume.min(100) as f32 / 100.0);
-        let settings = voice.model.settings(voice.settings_file.as_deref());
+        let settings = voice.model.settings(voice.settings_file.as_deref(), voice.speaker);
         let global = global_settings(voice.settings_file.as_deref());
         let pauses = settings.own_pauses.unwrap_or(global.pauses);
         let dictionary = dictionary(voice.settings_file.as_deref(), &voice.language);
@@ -971,6 +994,17 @@ mod tests {
         assert_eq!(Settings::from(own).own_pauses, Some(Pauses { sentence_ms: 300.0, comma_ms: 0.0, paragraph_ms: 900.0 }));
         assert_eq!(Settings::from(""), Settings { peak: 0.0, boost: 1.0, length_scale: 1.0, own_pauses: None });
         assert_eq!(Settings::from(r#"{ "loudness": { "peak": 1.7, "boost": 1 } }"#).peak, 1.0);
+        // A speaker's own: what its block sets, the voice's for the rest; a speaker without one, the voice's.
+        let several = r#"{ "loudness": { "peak": 0.9, "boost": 2 }, "inference": { "length_scale": 1.2 },
+            "pauses": { "own_pauses": 1, "sentence_ms": 300, "comma_ms": 0, "paragraph_ms": 900 },
+            "speaker_4": { "s_peak": 0.5, "s_boost": 1, "s_length_scale": 0.8, "s_own_pauses": 0, "s_sentence_ms": 100 },
+            "speaker_5": { "s_boost": 9, "s_own_pauses": 1, "s_comma_ms": 40 } }"#;
+        let voice = Settings::from(several);
+        assert_eq!(Settings::of(several, 0), voice);
+        assert_eq!(Settings::of(several, 4), Settings { peak: 0.5, boost: 1.0, length_scale: 0.8, own_pauses: None });
+        assert_eq!(Settings::of(several, 5), Settings { peak: 0.9, boost: 5.0, length_scale: 1.2,
+            own_pauses: Some(Pauses { sentence_ms: 300.0, comma_ms: 40.0, paragraph_ms: 900.0 }) });
+        assert_eq!(Settings::of("", 3), Settings::from(""));
         assert_eq!(own_file(r"C:\ProgramData\Modern Voices for Windows\settings.json", r"C:\Program Files\Modern Voices for Windows\voices\en_GB-alba-medium"),
             std::path::PathBuf::from(r"C:\ProgramData\Modern Voices for Windows\voices\en_GB-alba-medium.json"));
         assert_eq!(Global::from(r#"{ "output_percent": 25 }"#).output, 0.25);

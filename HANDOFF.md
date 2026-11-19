@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.12 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.13 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -11,11 +11,11 @@ used the current one for a few days. Ask/confirm before calling a build 1.0.
 **The repo is public since 16 Nov 2026** (he made it so when private-repo Actions minutes ran out:
 run #109 was refused for billing). Builds are free again. Anything pushed is visible to everyone.
 
-## State for a new chat (19 Nov 2026, late morning)
+## State for a new chat (19 Nov 2026, afternoon)
 
-**He confirmed 0.18.11 is good.** 0.18.12 (job A without the MP3s, on Opus 5.5) is built: see its section.
-Still to do: the language MP3s (job A's section 1, waiting for his recordings) and job B (per-speaker
-settings, Fable). Ask how 0.18.12 went. 0.18.2 to 0.18.11 were all built on Opus 5.5 in one long chat and
+**He confirmed 0.18.11 is good.** 0.18.12 (job A without the MP3s, on Opus 5.5) and 0.18.13 (job B,
+per-speaker settings, on Fable) are built: see their sections. Still to do: the language MP3s (job A's
+section 1, waiting for his recordings; it will be 0.18.14 or later). Ask how 0.18.12 and 0.18.13 went. 0.18.2 to 0.18.11 were all built on Opus 5.5 in one long chat and
 delivered (each zip sent); he has been trying them as they came (he hit 0.18.2's start-up crash, fixed in
 0.18.3, and corrected 0.18.9's Amplify default in 0.18.10).
 What changed across them, newest first, is in the sections below; the main things a new chat should know:
@@ -29,6 +29,45 @@ What changed across them, newest first, is in the sections below; the main thing
   to 2.5x; output volume 50% on a new install.
 Ideas still on the shelf: see "Ideas" (the pronunciation ignore list is dropped: a rule with "Say it as"
 empty does it).
+
+## 0.18.13 (19 Nov 2026), delivered, not yet confirmed by him: per-speaker settings (job B)
+
+Built on Fable (he asked for "just fable job"). Section 2 of "Planned next" below.
+1. **File shape:** a block per speaker in the voice's OWN settings file (`voices\<folder>.json` in
+   ProgramData), flat, on one line: `"speaker_<n>": { "s_peak": .., "s_boost": .., "s_length_scale": ..,
+   "s_own_pauses": 0|1, "s_sentence_ms": .., "s_comma_ms": .., "s_paragraph_ms": .. }`. `<n>` is the
+   model's speaker number (the token's `SpeakerId`, what the engine speaks with). The `s_` keys are
+   distinct on purpose: every reader finds the FIRST match of a key, so the voice-level reads never see
+   a speaker's. A speaker without a block, or a key a block leaves out, is as the voice has it: no
+   migration, his VCTK settings from before still hold for every speaker until one is changed.
+2. **Engine:** `text::speaker_block` / `text::speaker_pauses`, `Settings::of(info, speaker)` in lib.rs.
+   `Model::settings(file, speaker)` keeps the files' joined text and a `HashMap<speaker, Settings>`,
+   both thrown away when either file's time changes: so live changes work as before (re-read at each
+   Speak). `s_own_pauses` 1 = the speaker's own gaps, 0 = the pauses for every voice (even if the VOICE
+   has its own), absent = as the voice.
+3. **Config:** `Store.GetSpeaker` / `SetSpeaker` / `ClearSpeaker`, `SpeakerSettings`;
+   `ConfigForm.SpeakerNumber(row)` (the token's SpeakerId via `Voices.SpeakerId`, else the catalogue's
+   `SpeakerIds`; -1 for a voice of one speaker = voice-level as before). `UpdateInstalled` lays the
+   speaker's values over the voice's; `SaveSettings` writes the WHOLE block for a speaker row (all seven
+   keys) and leaves the voice-level values alone. A row counts as a speaker whenever it has a speaker
+   name (any model of several speakers, even with one installed). The section's heading names the
+   speaker as Windows lists it ("How VCTK p239 (British) sounds"); "(all its speakers)" is gone.
+4. **Reset** is unchanged code: it sets the three sliders to the defaults (100%, 1.5x, 100%), which for
+   a speaker row are then saved to its block. NOT "back to the voice's values" as the plan said: the
+   voice-level values can no longer be seen or changed in Config for a voice of several speakers, so
+   going back to a hidden value seemed worse. Told him; `Store.ClearSpeaker` is there if he prefers it.
+5. **VoiceConvert.ps1:** `Get-SpeakerSettings`, `Set-SpeakerSettings`, `Clear-SpeakerSettings` (same
+   shape; used by Test-Kit). Nothing in the installer removes a block when a speaker is uninstalled
+   (re-installed, it has its settings back); removing the whole voice deletes the file, as before.
+6. **Tests:** engine unit tests (text.rs `speakers_own_settings`, lib.rs `Settings::of`); Config
+   self-test (installed runs: the VCTK p239 row's sliders saved to its block, the voice's own and
+   another speaker's block untouched, shown again when reselected, cleared); Test-Kit step "A speaker's
+   own settings" (p239 at half loudness / half speed while another speaker's block and the other voices
+   are untouched), p239's own sentence gap in the pauses step, and kept through Repair.
+7. kit/README.txt: the Voice manager paragraph, the pauses paragraph, the settings-folder paragraph.
+
+Not covered by CI: two speakers of one model installed side by side and heard (the tests use one
+installed speaker plus a block for a speaker number that isn't installed); real sound.
 
 ## 0.18.12 (19 Nov 2026), delivered, not yet confirmed by him
 
@@ -60,8 +99,8 @@ Not covered by CI: a real right-click, the UAC prompt (CI is elevated), the drop
 
 ## Planned next (agreed 19 Nov 2026, NOT built)
 
-**Sections 3 and 4 were built in 0.18.12; section 1 (MP3s) waits for his recordings (it will be 0.18.13 or
-later); section 2 is still job B.** He split it: **job A on Opus 5.5** (sections 1, 3, 4: Config only, plus packaging),
+**Sections 3 and 4 were built in 0.18.12, section 2 (job B) in 0.18.13; only section 1 (MP3s) is left,
+waiting for his recordings (0.18.14 or later).** He split it: **job A on Opus 5.5** (sections 1, 3, 4: Config only, plus packaging),
 **job B on Fable** (section 2: engine, Config and VoiceConvert.ps1). Either may go first,
 but A is smaller; if B goes first it takes 0.18.12. Bump the version per build as usual.
 
@@ -80,7 +119,7 @@ but A is smaller; if B goes first it takes 0.18.12. Bump the version per build a
   permissive licence. In 0.18.6 he chose "nothing" over "a phrase"; this replaces that choice.
 - Self-test: VCTK's name now plays (today it checks it is silent: change that check).
 
-**2. (Job B, Fable) Per-speaker settings in the Voice manager.** His words: "currently, dictation speed affects all
+**2. (Job B, Fable) Per-speaker settings in the Voice manager. BUILT in 0.18.13 (see its section).** His words: "currently, dictation speed affects all
 speakers in the voice. can this be changed so each speaker can have its own dictation setting", then
 "it makes sense to do boost and amp, as well as the override settings, at the same time? the voices
 can vary significantly due to the nature of how they were created."
@@ -310,7 +349,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.11.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.13.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 
