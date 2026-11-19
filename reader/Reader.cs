@@ -1722,6 +1722,19 @@ namespace ModernVoicesReader
         public bool TopRowEven { get { return nickBox.Height == voiceBox.Height && nickButton.Height == voiceBox.Height && nickButton.Width == voiceBox.Height; } }
         public string TestToken(int row) { return ((VoiceChoice)voiceBox.Items[row]).TokenId; }
 
+        void DrawSaveChoice(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= saveChoice.Items.Count) { return; }
+            Palette p = Theme.Get(Theme.IsDark());
+            bool closed = (e.State & DrawItemState.ComboBoxEdit) != 0;
+            bool lit = !closed && (e.State & DrawItemState.Selected) != 0;
+            Color back = lit ? p.Accent : p.Input, fore = lit ? Color.White : p.Text;
+            using (SolidBrush fill = new SolidBrush(back)) { e.Graphics.FillRectangle(fill, e.Bounds); }
+            Rectangle area = new Rectangle(e.Bounds.Left + Px(2), e.Bounds.Top, e.Bounds.Width - Px(2), e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, Convert.ToString(saveChoice.Items[e.Index]), saveChoice.Font, area, fore,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis);
+        }
+
         void DrawVoice(object sender, DrawItemEventArgs e)
         {
             if (e.Index < 0 || e.Index >= voiceBox.Items.Count) { return; }
@@ -2095,6 +2108,10 @@ namespace ModernVoicesReader
             int widest = 0;
             foreach (string words in SaveTextWords) { widest = Math.Max(widest, TextRenderer.MeasureText(words, lineFont).Width); }
             saveChoice.Width = widest + SystemInformation.VerticalScrollBarWidth + Px(14);
+            // (Drawn here, as the voice list is: Windows draws a list of choices white even when dark.)
+            saveChoice.DrawMode = DrawMode.OwnerDrawFixed;
+            saveChoice.ItemHeight = saveChoice.Font.Height + Px(5);
+            saveChoice.DrawItem += DrawSaveChoice;
             saveChoice.SelectedIndex = 0;
             saveChoice.SelectedIndexChanged += delegate { if (!loading) { store.State.SaveText = SaveTextMode; store.Save(); } };
             string saveTip = "What happens to the text in the box when you close the Reader.\r\n" +

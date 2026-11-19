@@ -52,7 +52,8 @@ Built on Opus 5.5: sections 3 and 4 of "Planned next" below, and the Reader's sa
    Ask). Ask: the question as before; Yes / No with "Don't ask again" set Always / Never
    (`AnswerSaveText`); the question's X (DialogResult Cancel; its No button now returns No) keeps nothing
    and ignores the tick. Always keeps the text whatever closes the Reader (also in the self-test, which
-   tests it), Never keeps nothing. `underPanel` is as tall as the dropdown needs.
+   tests it), Never keeps nothing. `underPanel` is as tall as the dropdown needs. The dropdown draws its own rows
+   (`DrawSaveChoice`, like the voice list's `DrawVoice`): Windows drew it white in dark (run #150).
 4. kit/README.txt: the menu's Remove voice, the override wording, the Reader's dropdown.
 
 Not covered by CI: a real right-click, the UAC prompt (CI is elevated), the dropdown opened by hand.
