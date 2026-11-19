@@ -65,7 +65,8 @@ function Invoke-ConfigTest([string]$Exe, [string[]]$Options = @(), [string]$Dir 
     return $code
 }
 # Speaks with every voice (Test.ps1 -Quiet), checks words and bookmark, and returns the results by
-# name; $Peaks maps a voice name to the peak it should reach (else 1, full).
+# name; $Peaks maps a voice name to the peak it should reach (else 1, full; -1: as Piper made it, any
+# level that is heard).
 function Test-Speech([string]$PowerShell, [int]$Bits, [int]$Expected, [hashtable]$Peaks = @{}) {
     $lines = & $PowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'installer\Test.ps1') -Quiet 2>&1
     $results = @{}
@@ -81,6 +82,7 @@ function Test-Speech([string]$PowerShell, [int]$Bits, [int]$Expected, [hashtable
         Check ($r.bookmark -eq '7') "$Bits-bit $($r.name): bookmark event ('$($r.bookmark)')"
         $want = if ($Peaks.ContainsKey($r.name)) { $Peaks[$r.name] } else { 1 }
         # (A line is made as loud on the whole as the voice is set; its loudest moment comes near that, never over.)
+        if ($want -lt 0) { Check ($r.peak -gt 0.05 -and $r.peak -le 1.01) "$Bits-bit $($r.name): loudness, peak $($r.peak) (Amplify off: as Piper made it)"; continue }
         Check ($r.peak -le $want + 0.01 -and $r.peak -ge $want * 0.6) "$Bits-bit $($r.name): loudness, peak $($r.peak) (set: $want)"
     }
     return $results
@@ -424,7 +426,9 @@ Set-Dictionary $rulesFile @()
 Check (-not (Test-Path "$menu\Repair.lnk")) "the Start menu's old Repair entry is gone"
 Check ((Get-Item $voiceFile.FullName).LastWriteTimeUtc -eq $voiceWritten) 'the voice files were not downloaded again'
 Check ((Get-ItemProperty $ourKey).DisplayIcon -like '*ModernVoicesReader.exe,0') "Installed apps shows the program's icon (the speaker), not Config's cog"
-[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8 })      # (from its voice.json, as before 0.12.0: nothing of its own says otherwise yet)
+# (Alba from its voice.json, as before 0.12.0: nothing of its own says otherwise yet; the others' voice.json
+# say Amplify off, the default since 0.18.9.)
+[void](Test-Speech $PS64 64 3 @{ $albaName = 0.8; 'Northern English Male (British)' = -1; 'VCTK p239 (British)' = -1 })
 [System.IO.File]::WriteAllText($albaJson, $albaJsonWas)
 Set-GlobalSpeed $settingsFile 100
 Set-VoiceSettings $albaDir 1 1.5 1
