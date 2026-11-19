@@ -4337,12 +4337,11 @@ namespace ModernVoicesConfig
             window.BackColor = palette.Back; window.ForeColor = palette.Text;
             int width = Px(420);
             Label words = new Label();
-            words.Name = "words"; words.UseMnemonic = false; words.AutoSize = false;
+            words.Name = "words"; words.UseMnemonic = false;
             words.Text = AllSpeakersWords(v);
             words.ForeColor = palette.Text; words.BackColor = palette.Back;
-            words.Font = Font;
-            // (As tall as the label itself wraps its words: measured otherwise, it came out a line short.)
-            words.Size = new Size(width, words.GetPreferredSize(new Size(width, 0)).Height + Px(4));
+            // (The label wraps its words and sizes itself to them: measured beforehand, it came out a line short.)
+            words.AutoSize = true; words.MaximumSize = new Size(width, 0); words.MinimumSize = new Size(width, 0);
             words.Location = new Point(Px(20), Px(20));
             window.Controls.Add(words);
             Button all = Btn("Select all"), choose = Btn("Choose");
@@ -4355,11 +4354,17 @@ namespace ModernVoicesConfig
                 Size preferred = b.PreferredSize;
                 b.Size = new Size(Math.Max(preferred.Width, Px(100)), preferred.Height);
             }
-            // (Choose, the recommended one, on the right and the default: Enter and Esc both choose it.)
-            choose.Location = new Point(Px(20) + width - choose.Width, words.Bottom + Px(18));
-            all.Location = new Point(choose.Left - Px(10) - all.Width, choose.Top);
+            // (Choose, the recommended one, on the right and the default: Enter and Esc both choose it. Placed
+            // under the words now, and again as the window opens, the words' size then being final.)
+            MethodInvoker place = delegate
+            {
+                choose.Location = new Point(Px(20) + width - choose.Width, words.Bottom + Px(18));
+                all.Location = new Point(choose.Left - Px(10) - all.Width, choose.Top);
+                window.ClientSize = new Size(width + Px(40), choose.Bottom + Px(18));
+            };
+            place();
+            window.Load += delegate { place(); };
             window.AcceptButton = choose; window.CancelButton = choose;
-            window.ClientSize = new Size(width + Px(40), choose.Bottom + Px(18));
             window.Shown += delegate { choose.Focus(); };
             // (A dark title bar when the window is dark, as the main window has.)
             window.HandleCreated += delegate
@@ -5246,18 +5251,22 @@ namespace ModernVoicesConfig
                     Control askAll = ask.Controls["all"], askChoose = ask.Controls["choose"];
                     Check(askAll != null && askAll.Text == "Select all" && askChoose != null && askChoose.Text == "Choose" && ask.AcceptButton == askChoose &&
                         ask.CancelButton == askChoose && ask.Controls["words"].Text.Contains("all " + vctkEntry.SpeakerNames.Count + " of its speakers") &&
-                        askChoose.Top >= ask.Controls["words"].Bottom && ask.Controls["words"].Height >= ask.Controls["words"].GetPreferredSize(new Size(ask.Controls["words"].Width, 0)).Height,
+                        askChoose.Top >= ask.Controls["words"].Bottom,
                         "its question: \"" + ConfigForm.AllSpeakersWords(vctkEntry).Replace("\r\n\r\n", " ") + "\" with Select all and Choose (Enter and Esc: Choose)");
+                    ask.Show(); Settle(200);
+                    Control askWords = ask.Controls["words"];
+                    int needed = TextRenderer.MeasureText(askWords.Text, askWords.Font, new Size(askWords.Width, 0), TextFormatFlags.WordBreak).Height;
+                    Check(askChoose.Top >= askWords.Bottom && askWords.Height >= needed && ask.ClientSize.Height > askChoose.Bottom,
+                        "shown, its buttons are under all its words (words " + askWords.Height + " px tall, needing " + needed + "; buttons at " + askChoose.Top + ")");
                     if (pictures)
                     {
-                        ask.Show(); Settle(200);
                         using (Bitmap shot = new Bitmap(ask.Width, ask.Height))
                         {
                             ask.DrawToBitmap(shot, new Rectangle(Point.Empty, shot.Size));
                             shot.Save(Path.Combine(folder, "all-speakers-question.png"), ImageFormat.Png);
                         }
-                        ask.Close();
                     }
+                    ask.Close();
                 }
                 // "Select all": all of them.
                 ui.AskAll = delegate(Entry v) { return true; };
