@@ -13,7 +13,9 @@ added (see [Other languages](#other-languages)).
 It comes with its own Reader, which reads aloud whatever you paste or copy, documents (Word, PDF, web
 pages and plain text) and text on the screen, and can save what it reads as an MP3 or WAV file.
 
-Modern Voices for Windows is free to use and open source.
+Modern Voices for Windows is free to use and open source. It is provided as it is, and updated now
+and then rather than all the time: problems and ideas are welcome as
+[issues](https://github.com/Lumotiverse/modern-voices-for-windows/issues), but a reply may take a while.
 
 **Not every voice is as good as the best.** The Piper voices vary a lot in quality. The best are
 excellent: natural-sounding neural voices that are easy to listen to for hours. Others sound robotic
