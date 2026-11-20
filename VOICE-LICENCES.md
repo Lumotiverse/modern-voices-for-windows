@@ -1,6 +1,6 @@
 # Voice licences
 
-Modern Voices for Windows contains no voices. The voices you tick in Modern Voices Config are
+Modern Voices contains no voices. The voices you tick in Modern Voices Config are
 downloaded straight from the [Piper voice collection](https://huggingface.co/rhasspy/piper-voices)
 (version 1.0.0), and each one keeps its own licence. The licence covers the voice, and usually
 the speech you make with it too.

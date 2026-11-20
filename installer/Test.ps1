@@ -1,5 +1,5 @@
 <#
-Modern Voices for Windows - tries the installed voices through Windows' speech API, the way other
+Modern Voices - tries the installed voices through Windows' speech API, the way other
 programs use them (System.Speech, which sits on SAPI 5).
 
   Test.ps1                  says a line aloud with each voice, showing each word as the engine
@@ -187,7 +187,7 @@ if ($Quiet) {
 
 # Aloud, each word shown as the engine reports it.
 $text = 'Speaking a preview of this voice, to hear how natural it sounds. Each word shows here as the engine reports it.'
-Write-Host "Modern Voices for Windows: $($ours.Count) voice(s) for $bits-bit programs`n" -ForegroundColor Cyan
+Write-Host "Modern Voices: $($ours.Count) voice(s) for $bits-bit programs`n" -ForegroundColor Cyan
 $synth.SetOutputToDefaultAudioDevice()
 foreach ($v in $ours) {
     $info = $v.VoiceInfo

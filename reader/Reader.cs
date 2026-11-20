@@ -1,6 +1,6 @@
 // Modern Voices: Reader - reads text aloud with the voices Windows has (the Modern Voices first):
 // pasted or copied text, with pause, a place it remembers, and a list of texts to read later.
-// Part of Modern Voices for Windows. GPL-3.0-or-later.
+// Part of Modern Voices. GPL-3.0-or-later.
 //
 // Written for the C# compiler that is part of Windows' .NET Framework 4 (C# 5), so that it builds
 // with nothing installed.
@@ -25,8 +25,8 @@ using System.Xml;
 using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices: Reader")]
-[assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.14.0")]
+[assembly: System.Reflection.AssemblyProduct("Modern Voices")]
+[assembly: System.Reflection.AssemblyVersion("0.18.15.0")]
 
 namespace ModernVoicesReader
 {

@@ -1,6 +1,6 @@
 # Third-party notices
 
-Modern Voices for Windows' speech engine (`modern_voices.dll`) is based on the Spoken Players
+Modern Voices' speech engine (`modern_voices.dll`) is based on the Spoken Players
 voicepack's engine (https://github.com/f-rolf/spoken-players-voicepack, GPL-3.0-or-later): the
 notices below are that project's, and apply to this engine as they did to `spoken_voice.dll`.
 

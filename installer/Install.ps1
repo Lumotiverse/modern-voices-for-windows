@@ -1,5 +1,5 @@
 <#
-Modern Voices for Windows - install, choose voices, repair.
+Modern Voices - install, choose voices, repair.
 
 Adds modern, offline voices (Piper, English) to Windows' speech API (SAPI 5), for programs that use
 Windows' installed voices but cannot use Narrator's natural voices. 64-bit and 32-bit programs both.
@@ -86,8 +86,9 @@ $Voices = @($Voices | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Tri
 . (Join-Path $Here 'VoiceConvert.ps1')
 . (Join-Path $Here 'Languages.ps1')
 
-$Version = '0.18.14'
-$AppName = 'Modern Voices for Windows'
+$Version = '0.18.15'
+$AppName = 'Modern Voices for Windows'      # its folders' and Start menu folder's name (kept: updates find them by it)
+$ProductName = 'Modern Voices'             # the program's name, where it is shown
 $Clsid = '{F9857585-FF01-467B-84C0-D6CA4E0572D2}'
 $DefaultApp = Join-Path $env:ProgramFiles $AppName
 
@@ -351,7 +352,7 @@ function New-LocationForm([string]$Default, [string]$Pick = 'en') {
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "$AppName $Version - install"
+    $form.Text = "$ProductName $Version - install"
     Set-UiIcon $form
     $form.Size = New-Object System.Drawing.Size(640, 430)
     $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false; $form.MinimizeBox = $false
@@ -359,7 +360,7 @@ function New-LocationForm([string]$Default, [string]$Pick = 'en') {
     $form.Font = New-Object System.Drawing.Font('Segoe UI', 9)
     $form.TopMost = $true
     $form.add_Shown({ $script:Where.Form.Activate(); $script:Where.Form.TopMost = $false })
-    $title = New-Control 'Label' $form 16 14 600 24 "Install $AppName" ''
+    $title = New-Control 'Label' $form 16 14 600 24 "Install $ProductName" ''
     $title.Font = New-Object System.Drawing.Font('Segoe UI', 12, [System.Drawing.FontStyle]::Bold)
     [void](New-Control 'Label' $form 16 50 600 20 'Install to:' '')
     $path = New-Control 'TextBox' $form 16 72 480 24 $Default ''
@@ -403,7 +404,7 @@ function New-LanguageNoteForm([string]$Code) {
     $own = [string]$entry['title'] + "`n`n" + ((@($entry['lines']) | ForEach-Object { "$dot  $_" }) -join "`n")
     $plain = $LanguageNoteEnglish[0] + "`n`n" + ((@($LanguageNoteEnglish | Select-Object -Skip 1) | ForEach-Object { "$dot  $_" }) -join "`n")
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "$AppName - $($entry['native'])"
+    $form.Text = "$ProductName - $($entry['native'])"
     Set-UiIcon $form
     $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false; $form.MinimizeBox = $false
     $form.StartPosition = 'CenterScreen'
@@ -486,7 +487,7 @@ function Read-InstallFolder {
             $drive = [System.IO.Path]::GetPathRoot($folder)
             if (-not $drive -or -not (Test-Path $drive)) { throw "There is no drive $drive." }
         } catch {
-            [void][System.Windows.Forms.MessageBox]::Show("Can't install there: $($_.Exception.Message)", $AppName)
+            [void][System.Windows.Forms.MessageBox]::Show("Can't install there: $($_.Exception.Message)", $ProductName)
             continue
         }
         # Another language than English: what to expect, in that language (Back returns to the first window).
@@ -833,9 +834,9 @@ function Register-Program {
     Write-Launcher (Join-Path $App 'Uninstall.cmd') 'Uninstall.ps1' '' -LeaveFolder
     $sizeKb = [int]((Get-ChildItem $App -Recurse -File | Measure-Object Length -Sum).Sum / 1KB)
     New-Item $OurKey -Force | Out-Null
-    Set-ItemProperty $OurKey -Name 'DisplayName' -Value $AppName
+    Set-ItemProperty $OurKey -Name 'DisplayName' -Value $ProductName
     Set-ItemProperty $OurKey -Name 'DisplayVersion' -Value $Version
-    Set-ItemProperty $OurKey -Name 'Publisher' -Value $AppName
+    Set-ItemProperty $OurKey -Name 'Publisher' -Value $ProductName
     Set-ItemProperty $OurKey -Name 'InstallLocation' -Value $App
     Set-ItemProperty $OurKey -Name 'DisplayIcon' -Value (Get-AppIcon)
     Set-ItemProperty $OurKey -Name 'UninstallString' -Value "`"$PS64`" -NoProfile -ExecutionPolicy Bypass -File `"$App\installer\Uninstall.ps1`""
@@ -845,7 +846,7 @@ function Register-Program {
     New-Item $StartMenu -ItemType Directory -Force | Out-Null
     $common = "-NoProfile -ExecutionPolicy Bypass -File `"$App\installer\"
     $readerExe = Join-Path $App 'reader\ModernVoicesReader.exe'
-    foreach ($menuItem in @(@('Uninstall.lnk', ($common + 'Uninstall.ps1"'), "Uninstall $AppName"),
+    foreach ($menuItem in @(@('Uninstall.lnk', ($common + 'Uninstall.ps1"'), "Uninstall $ProductName"),
                             @('Modern Voices Repair.lnk', ($common + 'Install.ps1" -Repair'), 'Register the voices again (if one went missing from programs)'),
                             @('Modern Voices Test.lnk', ($common + 'Test.ps1"'), 'Hear each Modern Voice, with each word shown as the engine reports it'))) {
         New-Shortcut (Join-Path $StartMenu $menuItem[0]) $menuItem[1] $menuItem[2] "$App\installer\repair.ico,0"
@@ -1034,7 +1035,7 @@ try {
         exit 0
     }
 
-    Write-Host "$AppName $Version" -ForegroundColor Cyan
+    Write-Host "$ProductName $Version" -ForegroundColor Cyan
     $interactive = -not ($Repair -or $Voices.Count -gt 0 -or $Unattended -or $ExactVoices)
     # Where: the installed folder (running from it, or a kit over it), else the one given or chosen.
     $existing = Get-InstalledFolder

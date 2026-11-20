@@ -1,4 +1,4 @@
-# Modern Voices for Windows
+# Modern Voices (for Windows)
 
 Modern, natural-sounding voices for any Windows program that can speak, running entirely on your own
 PC. Free, offline, and open source.
@@ -6,14 +6,14 @@ PC. Free, offline, and open source.
 Windows has had a standard way for programs to speak since the early 2000s (called SAPI 5). Screen
 readers, e-book readers, games and many other programs use it. The voices Windows supplies for it
 are old and robotic, and the newer "natural" voices in Narrator can't be used by those programs.
-Modern Voices for Windows adds modern neural voices that they can use: 64-bit and 32-bit programs
+Modern Voices adds modern neural voices that they can use: 64-bit and 32-bit programs
 alike. English voices are offered first, and voices in over 25 other European languages can be
 added (see [Other languages](#other-languages)).
 
 It comes with its own Reader, which reads aloud whatever you paste or copy, documents (Word, PDF, web
 pages and plain text) and text on the screen, and can save what it reads as an MP3 or WAV file.
 
-Modern Voices for Windows is free to use and open source. It is provided as it is, and updated now
+Modern Voices is free to use and open source. It is provided as it is, and updated now
 and then rather than all the time: problems and ideas are welcome as
 [issues](https://github.com/Lumotiverse/modern-voices-for-windows/issues), but a reply may take a while.
 
@@ -78,7 +78,7 @@ This program is a thin layer over years of work by people who actually know how 
 - **The engine is based on the engine of the
   [Spoken Players voicepack](https://github.com/f-rolf/spoken-players-voicepack) by f-rolf.** That
   project solved the hard problem: a real Windows speech engine, in Rust, that runs Piper voices
-  and reports words and bookmarks as Windows expects. Modern Voices for Windows exists because that
+  and reports words and bookmarks as Windows expects. Modern Voices exists because that
   work was published under a free licence. If you give this repository a star, please give that one
   a star as well: it is where the hard part was done.
 - **Piper** (Michael Hansen and contributors) for the voices and the way of making them.

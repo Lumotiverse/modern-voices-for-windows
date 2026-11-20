@@ -1,4 +1,4 @@
-//! Modern Voices for Windows: a Windows speech (SAPI 5) engine that speaks with offline Piper voices,
+//! Modern Voices: a Windows speech (SAPI 5) engine that speaks with offline Piper voices,
 //! so any program that uses Windows' speech API can use them like any installed voice.
 //!
 //! Based on the Spoken Players voice engine (https://github.com/f-rolf/spoken-players-voicepack),

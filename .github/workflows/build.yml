@@ -149,7 +149,7 @@ jobs:
             gh release upload $tag @files --clobber
             gh release edit $tag --notes $notes
           } else {
-            gh release create $tag @files --title "Modern Voices for Windows $version" --notes $notes --target ${{ github.sha }}
+            gh release create $tag @files --title "Modern Voices (for Windows) $version" --notes $notes --target ${{ github.sha }}
           }
       - uses: actions/upload-artifact@v4
         if: always()

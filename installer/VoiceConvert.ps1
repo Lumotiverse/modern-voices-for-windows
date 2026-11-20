@@ -327,7 +327,7 @@ function Test-DictionaryOff([string]$Path) {
     return $false
 }
 function Set-Dictionary([string]$Path, $Rules, [bool]$Off = $false) {
-    $lines = @('# Modern Voices for Windows - pronunciation dictionary: on, whole words (w) or parts too (p), capitals matched (c) or not (i), said, as')
+    $lines = @('# Modern Voices - pronunciation dictionary: on, whole words (w) or parts too (p), capitals matched (c) or not (i), said, as')
     if ($Off) { $lines += '#off' }
     foreach ($rule in @($Rules)) {
         $from = ([string]$rule.From -replace '[\t\r\n]+', ' ').Trim()

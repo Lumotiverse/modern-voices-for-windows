@@ -1,6 +1,6 @@
-// Modern Voices Config - the settings window of Modern Voices for Windows: the installed voices and how
+// Modern Voices Config - the settings window of Modern Voices: the installed voices and how
 // each sounds (Voice manager), speed and pauses for every voice, pronunciation rules, and the voices to
-// add or remove. Part of Modern Voices for Windows. GPL-3.0-or-later.
+// add or remove. Part of Modern Voices. GPL-3.0-or-later.
 //
 // Written for the C# compiler that is part of Windows' .NET Framework 4 (C# 5), so that it builds with
 // nothing installed. Keep the source pure ASCII (symbols as \uXXXX).
@@ -32,8 +32,8 @@ using System.Windows.Forms.VisualStyles;
 using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Modern Voices Config")]
-[assembly: System.Reflection.AssemblyProduct("Modern Voices for Windows")]
-[assembly: System.Reflection.AssemblyVersion("0.18.14.0")]
+[assembly: System.Reflection.AssemblyProduct("Modern Voices")]
+[assembly: System.Reflection.AssemblyVersion("0.18.15.0")]
 
 namespace ModernVoicesConfig
 {
@@ -98,7 +98,7 @@ namespace ModernVoicesConfig
 
     public static class App
     {
-        public const string Name = "Modern Voices for Windows";
+        public const string Name = "Modern Voices";      // (the program's name; its folders and keys keep "Modern Voices for Windows")
         public const string BaseUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0";   // v1.0.0: the voices as tested
         public const double DefaultPeak = 1;      // Amplify at MAX ("off (default)" names the voice's own level, as Piper made it)
         public const double MaxBoost = 2.5;       // Boost's most (4 until 0.18.9)
@@ -1055,7 +1055,7 @@ namespace ModernVoicesConfig
         public static void SetDictionary(string path, IEnumerable<Rule> rules, bool off = false)
         {
             List<string> lines = new List<string>();
-            lines.Add("# Modern Voices for Windows - pronunciation dictionary: on, whole words (w) or parts too (p), capitals matched (c) or not (i), said, as");
+            lines.Add("# Modern Voices - pronunciation dictionary: on, whole words (w) or parts too (p), capitals matched (c) or not (i), said, as");
             if (off) { lines.Add("#off"); }
             foreach (Rule rule in rules)
             {

@@ -1,5 +1,5 @@
 <#
-Modern Voices for Windows - uninstaller. Removes the voices (64- and 32-bit), the engine's
+Modern Voices - uninstaller. Removes the voices (64- and 32-bit), the engine's
 registration and its certificate's trust, the Start menu folder, the Installed apps entry, the
 program's folder (Modern Voices Config and the Reader with it) and the Reader's saved texts. Nothing else is touched.
 #>
@@ -28,7 +28,7 @@ $App = $App.TrimEnd('\')
 $isOurs = ((Split-Path $App -Leaf) -eq $AppName) -and (Test-Path (Join-Path $App 'engine'))
 $Cer = Join-Path $App 'engine\modern_voices.cer'
 
-Write-Host "Uninstalling $AppName" -ForegroundColor Cyan
+Write-Host "Uninstalling Modern Voices" -ForegroundColor Cyan
 try {
     # Modern Voices Config, if it is open, is closed (its file is about to be deleted).
     foreach ($open in @(Get-Process 'ModernVoicesConfig' -ErrorAction SilentlyContinue)) {

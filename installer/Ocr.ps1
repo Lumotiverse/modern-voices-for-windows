@@ -1,5 +1,5 @@
 <#
-Modern Voices for Windows - reads the text in a picture with Windows' own text recognition (the one
+Modern Voices - reads the text in a picture with Windows' own text recognition (the one
 Photos and the Snipping Tool use). Used by the Reader's "Read from the screen".
 
   Ocr.ps1 -Image PICTURE -Out FILE    writes the text found (UTF-8) to FILE

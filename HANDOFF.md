@@ -1,7 +1,7 @@
 # Handoff: Modern Voices for Windows
 
 For a fresh Claude session continuing this project. Read this first, then the code it points to.
-Last updated at version 0.18.14 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
+Last updated at version 0.18.15 (19 Nov 2026). Model rule: say which model a batch suits BEFORE
 starting; Opus-level work while he is on Fable: recommend switching and wait (he often answers
 "build on Fable": then go ahead).
 
@@ -29,6 +29,19 @@ What changed across them, newest first, is in the sections below; the main thing
   to 2.5x; output volume 50% on a new install.
 Ideas still on the shelf: see "Ideas" (the pronunciation ignore list is dropped: a rule with "Say it as"
 empty does it).
+
+## 0.18.15 (20 Nov 2026), delivered, not yet confirmed by him: the name
+
+**The program is "Modern Voices"; "for Windows" only says what it is for.** His words: the repo is
+modern voices for windows, but the program is technically "Modern Voices (for Windows)". So: running
+text, messages, window titles, Installed apps' DisplayName and Publisher, AssemblyProduct, App.Name
+(Config) and $ProductName (Install.ps1) say "Modern Voices". "(for Windows)" only in titles: README's
+heading, kit/README.txt's first line, the GitHub release title. UNCHANGED on purpose (updates and
+settings find them by it): every folder (Program Files, ProgramData, Start menu folder), every
+registry key (HKLM/HKCU\Software\Modern Voices for Windows, the Uninstall key ModernVoicesForWindows),
+$AppName in Install.ps1/Uninstall.ps1, the zip's name ModernVoicesForWindows<version>.zip, the repo,
+the signing certificate's subject. Also README: "provided as it is, updated now and then" (he asked);
+topic tags can't be set through the proxy (he does them on GitHub).
 
 ## 0.18.14 (19 Nov 2026), delivered, not yet confirmed by him: voice licences
 
@@ -378,7 +391,7 @@ right-click (the test drives the menu's items), the UAC prompt for a gender.
 
 **Version numbers (his rule, 18 Nov 2026):** the middle number (0.18 -> 0.19) goes up only for a major
 new feature or change; everything else is 0.18.1, 0.18.2, ... Engine Cargo.toml, both AssemblyVersions
-(0.18.14.0), Install.ps1 $Version and kit/README.txt's first line carry it.
+(0.18.15.0), Install.ps1 $Version and kit/README.txt's first line carry it.
 
 ## 0.18.1 (18 Nov 2026), delivered, not yet confirmed by him: the Opus half of his 18 Nov batch
 
