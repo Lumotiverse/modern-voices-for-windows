@@ -3,7 +3,7 @@ Modern Voices (for Windows) 0.18.15
 
 Modern, offline neural voices for Windows' speech API (SAPI 5): for programs that speak with
 Windows' installed voices but can't use Narrator's natural voices. The voices are Piper voices
-(English for now), each running on your own PC: no internet needed once installed, and nothing
+(English, and 25 other European languages), each running on your own PC: no internet needed once installed, and nothing
 sent anywhere.
 
 Not every voice is as good as the best. The Piper voices vary a lot in quality: the best are
@@ -16,7 +16,8 @@ only the ones you like.
 They show up in Windows' Speech settings (Control Panel > Speech) and in programs that use
 Windows' installed voices: text readers like Balabolka, screen readers in their SAPI 5 mode (NVDA,
 JAWS), games and apps with text to speech, Chromium-based browsers'
-speech, and anything built on System.Speech or SAPI. 64-bit and 32-bit programs both.
+speech, and anything built on System.Speech or SAPI. 64-bit and 32-bit programs both. Balabolka has
+been tried; most of the others have not been tested.
 
 They do not appear in Narrator, Edge's Read Aloud or other apps that use Windows' newer voice system,
 which has no way in for voices from anyone but Microsoft.
@@ -353,5 +354,5 @@ THIRD-PARTY-NOTICES.md.
 Voices: Piper (https://huggingface.co/rhasspy/piper-voices). Each voice has its own licence and
 dataset, given in its MODEL_CARD there. What each allows is grouped in the Licence column of "Add or
 remove voices" (hover over a voice for its licence and what it was trained from) and explained in
-VOICE-LICENCES.md on the program's GitHub page: any of them is fine for use at home; it matters if you
-publish or sell speech made with a voice. The models are installed as published; the loudness is applied by the engine as it speaks.
+VOICE-LICENCES.md on the program's GitHub page: it matters most if you publish or sell speech made
+with a voice, and a few voices are strictly for research only. The models are installed as published; the loudness is applied by the engine as it speaks.

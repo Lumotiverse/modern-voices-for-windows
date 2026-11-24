@@ -1,13 +1,14 @@
 # Modern Voices (for Windows)
 
-Modern, natural-sounding voices for any Windows program that can speak, running entirely on your own
-PC. Free, offline, and open source.
+Modern, natural-sounding voices for Windows programs that speak with Windows' installed voices
+(SAPI 5). The speech is made on your own PC, with no internet needed once a voice is downloaded.
+Free and open source.
 
 Windows has had a standard way for programs to speak since the early 2000s (called SAPI 5). Screen
 readers, e-book readers, games and many other programs use it. The voices Windows supplies for it
-are old and robotic, and the newer "natural" voices in Narrator can't be used by those programs.
-Modern Voices adds modern neural voices that they can use: 64-bit and 32-bit programs
-alike. English voices are offered first, and voices in over 25 other European languages can be
+are old and robotic, and the newer "natural" voices in Narrator aren't offered to those programs
+as standard. Modern Voices adds modern neural voices that they can use: 64-bit and 32-bit programs
+alike. English voices are offered first, and voices in 25 other European languages can be
 added (see [Other languages](#other-languages)).
 
 It comes with its own Reader, which reads aloud whatever you paste or copy, documents (Word, PDF, web
@@ -27,13 +28,13 @@ click each speaker's name), and install only the ones you like.
 
 **Better voices for Balabolka, and other text to speech programs.** If you are looking for more natural
 voices for [Balabolka](https://www.cross-plus-a.com/balabolka.htm), or any other reader that lists
-Windows' SAPI 5 voices, these appear in its voice list as soon as they are installed, in place of the
+Windows' SAPI 5 voices, these appear in its voice list once they are installed, alongside the
 old Microsoft David, Zira and Hazel.
 
 ## Who wrote the code
 
-All work (including uploading to GitHub) was done by Claude.ai
-Code provided by Fable5.2, assisted by Opus5.5
+All of the coding (including uploading to GitHub) was done by Claude.ai.
+Code provided by Fable 5.2, assisted by Opus 5.5.
 
 To be plain about it: every line of code in this repository beyond the engine it is based on was
 written by Claude, Anthropic's AI model, which is why Claude appears as the main contributor. The
@@ -57,17 +58,17 @@ Lumoti paid £18 for one month of Claude Pro, and used all of the Fable model's 
 that month to make the program and get it to this point. He can't afford to keep paying for a Claude
 subscription, so the project can't be maintained continuously.
 
-It appears to be stable and working, and hopefully that will stay the case. The only real bug found
-so far: sometimes the first start of a program after installing hangs for a while before its window
+It appears to be stable and working, and hopefully that will stay the case. The only known bug still
+open: sometimes the first start of a program after installing hangs for a while before its window
 appears (Windows checking a new program; later starts are quick).
 
 **Testing:** all testing was done on Windows 10, apart from one older version that was tried on
 Windows 11, where everything worked as normal. Each build is also tested automatically on a clean
 Windows Server machine (see [Open and transparent](#open-and-transparent)).
 
-**Other programs:** the voices work in any program that uses Windows' speech voices (SAPI 5). The
-program has its own Reader, but the voices also show up automatically in programs such as
-[Balabolka](https://www.cross-plus-a.com/balabolka.htm). That is largely untested and may run into
+**Other programs:** the voices should work in any program that uses Windows' speech voices (SAPI 5).
+The program has its own Reader, but the voices also show up automatically in programs such as
+[Balabolka](https://www.cross-plus-a.com/balabolka.htm). Use in other programs is largely untested and may run into
 issues, though the little testing done in Balabolka has worked exactly as intended, including
 Balabolka's own pitch control.
 
@@ -84,8 +85,8 @@ This program is a thin layer over years of work by people who actually know how 
 - **Piper** (Michael Hansen and contributors) for the voices and the way of making them.
 - **eSpeak NG** (Jonathan Duddington, Reece H. Dunn and contributors) for pronunciation.
 - **sherpa-onnx** (the k2-fsa project) and **ONNX Runtime** (Microsoft) for running the voices.
-- **Claude** (Anthropic) translated the parts written in other languages: each voice's preview text
-  and the installer's note.
+- **Claude** (Anthropic) translated the parts written in other languages: each voice's preview text,
+  the installer's note and the note on where to start.
 - **[PdfPig](https://github.com/UglyToad/PdfPig)** (UglyToad and contributors) for reading the
   text of PDFs in the Reader.
 - **[LAME](https://lame.sourceforge.io)** (the LAME Project) for saving MP3 files; the Windows builds
@@ -141,7 +142,7 @@ magnifying glass instead), and a PDF locked with a password can't be opened.
 
 ## Other languages
 
-Voices in over 25 European languages (German, French, Spanish, Italian, Dutch, Polish, Russian and
+Voices in 25 European languages besides English (German, French, Spanish, Italian, Dutch, Polish, Russian and
 more) can be added from **Modern Voices Config > Add or remove voices > Additional languages**. Tick a
 language and its voices appear in the list to install, like the English ones. Windows is told each
 voice's language, so programs that choose voices by language find them.
@@ -199,7 +200,8 @@ Think of it as an adapter between Windows and a modern AI voice.
    word is being spoken, so that programs can follow along.
 
 All of this happens on your computer. Nothing you have read aloud is sent anywhere. The program only
-goes online to fetch the list of available voices and to download the ones you choose.
+goes online to fetch the list of available voices, to play their samples, and to download the ones
+you choose.
 
 ## Where the voices come from
 
@@ -210,8 +212,9 @@ The recordings come from university research collections, public-domain audioboo
 each voice's page in the [Piper voice collection](https://huggingface.co/rhasspy/piper-voices) says
 whose it is and under what licence. Modern Voices Config downloads the voices you tick from that
 collection (version 1.0.0). They are not part of this project and keep their own licences: see
-[VOICE-LICENCES.md](VOICE-LICENCES.md) for what each one allows (any of them is fine for use at home;
-it matters if you publish or sell speech made with a voice). The same shows in Config's Licence column.
+[VOICE-LICENCES.md](VOICE-LICENCES.md) for what each one allows (it matters most if you publish or
+sell speech made with a voice, and a few voices are strictly for research only). The same shows in
+Config's Licence column.
 
 ## Open and transparent
 
@@ -224,8 +227,9 @@ it matters if you publish or sell speech made with a voice). The same shows in C
   during each build, whose private key is deleted straight after. That lets programs which insist
   on signed engines load it; it is not a statement from a certificate authority about who we are.
   Uninstalling removes the trust.
-- **It only touches what it says.** The program folder, its Start menu folder, its registry entries
-  for the voices, and the Reader's settings. Uninstall removes all of it.
+- **It only touches what it says.** The program folder, its settings folder in ProgramData, its
+  Start menu folder, its registry entries for the voices, its certificate's trust, and the settings
+  of Config and the Reader. Uninstall removes all of it.
 
 ## For developers
 

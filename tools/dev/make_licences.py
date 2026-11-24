@@ -27,8 +27,8 @@ GROUPS = [
      'was itself trained from it). Their own licence, shown in brackets, is often generous, but the '
      'recordings lessac was made from are licensed for research only, with no commercial use and no '
      'passing them on without permission. Nobody has settled whether those terms carry over to voices '
-     'trained from it; Piper\'s maintainer has said it is for each user to judge. They are fine for '
-     'personal use at home. Be careful about using their speech commercially or publishing it.'),
+     'trained from it; Piper\'s maintainer has said it is for each user to judge. Using them at '
+     'home, for yourself, is the least risky use. Be careful about using their speech commercially or publishing it.'),
     ('Research only', 'Research only',
      'Lessac itself: the Blizzard Challenge 2013 licence allows research and exploration only. No '
      'commercial use, and no passing the recordings on without permission.'),
@@ -67,9 +67,10 @@ md = ['# Voice licences', '',
       'below), which names the recordings it was made from, their licence, and what it was trained from.',
       'The same group shows in the **Licence** column of *Add or remove voices*; hover over a voice there',
       'to see its licence and what it was trained from.', '',
-      '**For using a voice at home** (reading to yourself, in a game, with a screen reader) any of them',
-      'is fine. The groups matter if you publish or sell speech made with a voice: a video, a podcast,',
-      'an audiobook, a product.', '',
+      '**For using a voice at home** (reading to yourself, in a game, with a screen reader) most of',
+      'these licences allow it. Strictly read, the two "Research only" voices allow research only, and',
+      'the voices trained from lessac are uncertain (see their sections). The groups matter most if you',
+      'publish or sell speech made with a voice: a video, a podcast, an audiobook, a product.', '',
       '*This is a plain-language summary to help you choose, not legal advice. Where it matters, read the',
       'voice\'s own page and its dataset\'s licence.*', '']
 for gid, title, text in GROUPS:
