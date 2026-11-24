@@ -30,6 +30,15 @@ What changed across them, newest first, is in the sections below; the main thing
 Ideas still on the shelf: see "Ideas" (the pronunciation ignore list is dropped: a rule with "Say it as"
 empty does it).
 
+## Texts only (24 Nov 2026, commit [skip ci], no build)
+
+He asked to remove false claims after a look at similar projects (piper-chromium-sapi5, Lej77's
+windows-text-to-speech, willwade's SherpaOnnx SAPI5, VoiceGarden-SAPI): Piper-as-SAPI-5 is not unique,
+so never claim "the only" or "the first". README, kit/README.txt and make_licences.py (VOICE-LICENCES.md
+regenerated) no longer say: any Windows program, voices replace David/Zira/Hazel, over 25 languages
+(it is 25 besides English), English only (kit), only bug found, every voice fine at home. The GitHub
+description can't be set through the proxy: he pastes it himself.
+
 ## 0.18.15 (20 Nov 2026), delivered, not yet confirmed by him: the name
 
 **The program is "Modern Voices"; "for Windows" only says what it is for.** His words: the repo is
